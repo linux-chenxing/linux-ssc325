@@ -22,10 +22,6 @@
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
 #include <linux/interrupt.h>
-#include <linux/clk.h>
-#include <linux/clk-provider.h>
-#include <linux/version.h>
-#include <linux/slab.h>
 #include "ms_platform.h"
 #include "ms_types.h"
 #include "registers.h"
@@ -124,66 +120,6 @@ static irqreturn_t HalBdma3_ISR(int irq, void* priv)
     return IRQ_HANDLED;
 }
 
-void _HalBdmaPowerOn(struct device_node *dev_node)
-{
-    struct clk **bdma_clks;
-    struct clk *clk_parent;
-    int num_parents, i;
-
-    // If any channel of BDMA is initialized, the power is already turn on
-    for (i = 0; i < HAL_BDMA_CH_NUM; i++)
-    {
-        if (m_bBdmaInited[i])
-            return;
-    }
-
-#if CONFIG_OF
-    num_parents = of_clk_get_parent_count(dev_node);
-    if(num_parents > 0)
-    {
-        bdma_clks = kzalloc((sizeof(struct clk *) * num_parents), GFP_KERNEL);
-        if(bdma_clks == NULL)
-        {
-            printk( "[BDMA]kzalloc failed!\n" );
-            return;
-        }
-
-        //enable all clk
-        for(i = 0; i < num_parents; i++)
-        {
-            bdma_clks[i] = of_clk_get(dev_node, i);
-            if (IS_ERR(bdma_clks[i]))
-            {
-                printk( "Fail to get BDMA clk!\n" );
-                clk_put(bdma_clks[i]);
-                kfree(bdma_clks);
-                return;
-            }
-
-            /* Get parent clock */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
-            clk_parent = clk_hw_get_parent_by_index(__clk_get_hw(bdma_clks[i]), 0)->clk;
-#else
-            clk_parent = clk_get_parent_by_index(bdma_clks[i], 0);
-#endif
-            if(IS_ERR(clk_parent))
-            {
-                printk( "[BDMA]can't get parent clock\n" );
-                clk_put(bdma_clks[i]);
-                kfree(bdma_clks);
-                return;
-            }
-            /* Set clock parent */
-            clk_set_parent(bdma_clks[i], clk_parent);
-            clk_prepare_enable(bdma_clks[i]);
-            clk_put(bdma_clks[i]);
-        }
-        kfree(bdma_clks);
-    }
-#endif
-
-}
-
 //------------------------------------------------------------------------------
 //  Function    : HalBdma_Initialize
 //  Description :
@@ -204,8 +140,6 @@ HalBdmaErr_e HalBdma_Initialize(u8 u8DmaCh)
         if (!dev_node) {
             return HAL_BDMA_ERROR;
         }
-
-        _HalBdmaPowerOn(dev_node);
 
         /* Register interrupt handler */
         iIrqNum = irq_of_parse_and_map(dev_node, 0);

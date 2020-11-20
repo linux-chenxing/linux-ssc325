@@ -59,23 +59,13 @@
 #include <asm/mach-types.h>
 #endif
 
-#if 0
-#include "padmux.h"
-#include "mdrv_padmux.h"
-#include "mdrv_gpio.h"
-#include "mdrv_gpio_io.h"
-#endif
-
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
 
-#include <msb250x/msb250x_udc_reg.h>
 #include <msb250x/msb250x_udc.h>
 #include <msb250x/msb250x_gadget.h>
 #include <msb250x/msb250x_ep.h>
 #include <msb250x/msb250x_dma.h>
-
-//#define REG_ADDR_BASE_PM_GPIO         GET_REG8_ADDR(RIU_BASE_ADDR, 0x0F00)
 
 /* the module parameter */
 #define DRIVER_DESC "MSB250x USB Device Controller Gadget"
@@ -178,8 +168,7 @@ static int msb250x_udc_write_riu(struct msb250x_ep *ep,
         is_last = 1;
     }
 
-#if 0
-    if (!IS_ERR_OR_NULL(_ep->desc))
+#if 1
     printk(KERN_DEBUG "<USB>[UDC][%d][TX] maxpacket/bytesDone(0x%04x/0x%04x) buff/last/actual/length(%p/%d/0x%04x/0x%04x) \n",
                       ep_num,
                       ep->ep.maxpacket,
@@ -188,12 +177,6 @@ static int msb250x_udc_write_riu(struct msb250x_ep *ep,
                       is_last,
                       req->req.actual,
                       req->req.length);
-#endif
-#if 1
-    if (is_last)
-    {
-        msb250x_request_done(ep, req, 0);
-    }
 #endif
     return is_last;
 }
@@ -257,12 +240,8 @@ static int msb250x_udc_read_riu(struct msb250x_ep *ep,
         }
     }
 
-    if (req->req.length == req->req.actual)
-    {
-        is_last = 1;
-    }
+    is_last = (req->req.length == req->req.actual)? 1 : is_last;
 
-#if 0
     if (!IS_ERR_OR_NULL(_ep->desc))
     {
         printk(KERN_DEBUG "<USB>[UDC][%d] RX[RIU] count/maxpacket(0x%04x/0x%04x) buff/last/actual/length(%p/%d/0x%04x/0x%04x) \n",
@@ -273,12 +252,6 @@ static int msb250x_udc_read_riu(struct msb250x_ep *ep,
                           is_last,
                           req->req.actual,
                           req->req.length);
-    }
-#endif
-
-    if (is_last)
-    {
-        msb250x_request_done(ep, req, 0);
     }
 
     return is_last;
@@ -323,22 +296,15 @@ int msb250x_udc_release_autoNAK_cfg(u8 cfg)
     {
         case 0:
             ms_writeb((ms_readb(MSB250X_OTG0_AUTONAK0_EP_BULKOUT) & 0xf0), MSB250X_OTG0_AUTONAK0_EP_BULKOUT);
-            ms_writew(0x0000, MSB250X_OTG0_USB_CFG5_L);
-        #if 0
             ms_writeb((ms_readb(MSB250X_OTG0_AUTONAK0_CTRL) & ~(MSB250X_OTG0_AUTONAK0_EN | MSB250X_OTG0_AUTONAK0_OK2Rcv | MSB250X_OTG0_AUTONAK0_AllowAck)),
                       MSB250X_OTG0_AUTONAK0_CTRL);
             ms_writew((ms_readw(MSB250X_OTG0_AUTONAK0_RX_PKT_CNT) & 0xE000), MSB250X_OTG0_AUTONAK0_RX_PKT_CNT);
-        #endif
             break;
         case 1:
-            ms_writeb(ms_readb(MSB250X_OTG0_USB_CFG0_H) & 0x80, MSB250X_OTG0_USB_CFG0_H);
-            ms_writew((ms_readw(MSB250X_OTG0_AUTONAK1_RX_PKT_CNT) & 0xE000), MSB250X_OTG0_AUTONAK1_RX_PKT_CNT);
-        #if 0
             ms_writeb((ms_readb(MSB250X_OTG0_AUTONAK1_EP_BULKOUT) & 0xf0), MSB250X_OTG0_AUTONAK1_EP_BULKOUT);
             ms_writeb((ms_readb(MSB250X_OTG0_AUTONAK1_CTRL) & ~(MSB250X_OTG0_AUTONAK1_EN | MSB250X_OTG0_AUTONAK1_OK2Rcv | MSB250X_OTG0_AUTONAK1_AllowAck)),
                       MSB250X_OTG0_AUTONAK1_CTRL);
             ms_writew((ms_readw(MSB250X_OTG0_AUTONAK1_RX_PKT_CNT) & 0xE000), MSB250X_OTG0_AUTONAK1_RX_PKT_CNT);
-        #endif
             break;
         case 2:
             ms_writeb((ms_readb(MSB250X_OTG0_AUTONAK2_EP_BULKOUT) & 0x0f), MSB250X_OTG0_AUTONAK2_EP_BULKOUT);
@@ -364,109 +330,100 @@ int msb250x_udc_init_autoNAK_cfg(void)
 }
 EXPORT_SYMBOL(msb250x_udc_init_autoNAK_cfg);
 
-void msb250x_udc_enable_autoNAK(u8 ep_num, u8 cfg)
+void msb250x_udc_set_autoNAK_cfg(u8 ep_num, u8 cfg)
 {
     cfg--;
+
+    msb250x_udc_release_autoNAK_cfg(cfg);
 
     switch(cfg)
     {
         case 0:
             ep_num &= 0x0f;
             ms_writeb(ep_num, MSB250X_OTG0_AUTONAK0_EP_BULKOUT);
-            {
-                u16 ctrl = 0;
-                ctrl |= MSB250X_OTG0_AUTONAK0_EN;
-                ms_writew(ctrl, MSB250X_OTG0_AUTONAK0_CTRL);
-            }
+            ms_writeb(MSB250X_OTG0_AUTONAK0_EN, MSB250X_OTG0_AUTONAK0_CTRL);
             break;
         case 1:
             ep_num &= 0x0f;
             ms_writeb(MSB250X_OTG0_AUTONAK1_EN | ep_num, MSB250X_OTG0_AUTONAK1_CTRL);
+            break;
+        case 2:
+            ep_num &= 0xf0;
+            ms_writew(MSB250X_OTG0_AUTONAK2_EN | (u16) ep_num, MSB250X_OTG0_AUTONAK2_CTRL);
+            break;
+    }
+
+    printk(KERN_DEBUG "<USB>[UDC][NAK][%d] setup autoNAK!\n", cfg);
+}
+EXPORT_SYMBOL(msb250x_udc_set_autoNAK_cfg);
+
+void msb250x_udc_enable_autoNAK(u8 cfg)
+{
+    cfg--;
+
+    switch(cfg)
+    {
+        case 0:
+            ms_writeb((ms_readb(MSB250X_OTG0_AUTONAK0_CTRL) & ~(MSB250X_OTG0_AUTONAK0_OK2Rcv | MSB250X_OTG0_AUTONAK0_AllowAck)), MSB250X_OTG0_AUTONAK0_CTRL);
+            ms_writew((ms_readw(MSB250X_OTG0_AUTONAK0_RX_PKT_CNT) & 0xE000), MSB250X_OTG0_AUTONAK0_RX_PKT_CNT);
+            break;
+        case 1:
             ms_writeb((ms_readb(MSB250X_OTG0_AUTONAK1_CTRL) & ~(MSB250X_OTG0_AUTONAK1_OK2Rcv | MSB250X_OTG0_AUTONAK1_AllowAck)), MSB250X_OTG0_AUTONAK1_CTRL);
             ms_writew((ms_readw(MSB250X_OTG0_AUTONAK1_RX_PKT_CNT) & 0xE000), MSB250X_OTG0_AUTONAK1_RX_PKT_CNT);
             break;
         case 2:
-            ep_num = ep_num << 4;
-            ep_num &= 0xf0;
-            ms_writew(MSB250X_OTG0_AUTONAK2_EN | (u16) ep_num, MSB250X_OTG0_AUTONAK2_CTRL);
             ms_writew((ms_readw(MSB250X_OTG0_AUTONAK2_CTRL) & ~(MSB250X_OTG0_AUTONAK2_OK2Rcv | (u16) MSB250X_OTG0_AUTONAK2_AllowAck)), MSB250X_OTG0_AUTONAK2_CTRL);
             ms_writew((ms_readw(MSB250X_OTG0_AUTONAK2_RX_PKT_CNT) & 0xE000), MSB250X_OTG0_AUTONAK2_RX_PKT_CNT);
             break;
     }
 
-    //printk(KERN_DEBUG "<USB>[UDC][NAK][%d] enable autoNAK!\n", cfg);
+    printk(KERN_DEBUG "<USB>[UDC][NAK][%d] enable autoNAK!\n", cfg);
 }
 EXPORT_SYMBOL(msb250x_udc_enable_autoNAK);
 
-void msb250x_udc_ok2rcv_for_packets(u8 cfg, u16 pkt_num)
+void msb250x_udc_disable_autoNAK_for_packets(u8 cfg, u16 pkt_num)
 {
-    u16 ctrl = 0;
     cfg--;
 
     switch(cfg)
     {
         case 0:
-            ctrl |= MSB250X_OTG0_AUTONAK0_EN;
-            ctrl |= (pkt_num & ~0xE000);
-
-            if (0 < pkt_num)
-            {
-                ctrl |= MSB250X_OTG0_AUTONAK0_OK2Rcv;
-            }
-
-            ms_writew(ctrl, MSB250X_OTG0_AUTONAK0_CTRL);
+            ms_writew((ms_readw(MSB250X_OTG0_AUTONAK0_RX_PKT_CNT) | pkt_num), MSB250X_OTG0_AUTONAK0_RX_PKT_CNT);
+            ms_writeb(((ms_readb(MSB250X_OTG0_AUTONAK0_CTRL) | MSB250X_OTG0_AUTONAK0_OK2Rcv)), MSB250X_OTG0_AUTONAK0_CTRL);
             break;
         case 1:
-            ms_writew((ms_readw(MSB250X_OTG0_AUTONAK1_RX_PKT_CNT) & ~0xE000) | pkt_num, MSB250X_OTG0_AUTONAK1_RX_PKT_CNT);
-            ctrl = ms_readb(MSB250X_OTG0_AUTONAK1_CTRL);
-
-            if (0 < pkt_num)
-            {
-                ctrl |= MSB250X_OTG0_AUTONAK1_OK2Rcv;
-            }
-
-            ms_writeb(ctrl & 0xFF, MSB250X_OTG0_AUTONAK1_CTRL);
+            ms_writew((ms_readw(MSB250X_OTG0_AUTONAK1_RX_PKT_CNT) | pkt_num), MSB250X_OTG0_AUTONAK1_RX_PKT_CNT);
+            ms_writeb(((ms_readb(MSB250X_OTG0_AUTONAK1_CTRL) | MSB250X_OTG0_AUTONAK1_OK2Rcv)), MSB250X_OTG0_AUTONAK1_CTRL);
             break;
         case 2:
-            ms_writew((ms_readw(MSB250X_OTG0_AUTONAK2_RX_PKT_CNT) & ~0xE000) | pkt_num, MSB250X_OTG0_AUTONAK2_RX_PKT_CNT);
-            ctrl = ms_readw(MSB250X_OTG0_AUTONAK2_CTRL);
-
-            if (0 < pkt_num)
-            {
-                ctrl |= MSB250X_OTG0_AUTONAK2_OK2Rcv;
-            }
-
-            ms_writew(ctrl, MSB250X_OTG0_AUTONAK2_CTRL);
+            ms_writew((ms_readw(MSB250X_OTG0_AUTONAK2_RX_PKT_CNT) | pkt_num), MSB250X_OTG0_AUTONAK2_RX_PKT_CNT);
+            ms_writew((ms_readw(MSB250X_OTG0_AUTONAK2_CTRL) | MSB250X_OTG0_AUTONAK2_OK2Rcv), MSB250X_OTG0_AUTONAK2_CTRL);
             break;
-
     }
 
-    printk(KERN_DEBUG "<USB>[UDC][NAK][%d] ok2rcv %d packets\n", cfg, pkt_num);
+    printk(KERN_DEBUG "<USB>[UDC][NAK][%d] disable for %d packets\n", cfg, pkt_num);
 }
-EXPORT_SYMBOL(msb250x_udc_ok2rcv_for_packets);
+EXPORT_SYMBOL(msb250x_udc_disable_autoNAK_for_packets);
 
-void msb250x_udc_allowAck(u8 cfg)
+void msb250x_udc_disable_autoNAK_for_packet(u8 cfg)
 {
     cfg--;
 
     switch(cfg)
     {
         case 0:
-            ms_writew(ms_readw(MSB250X_OTG0_AUTONAK0_CTRL), MSB250X_OTG0_AUTONAK0_CTRL);
-            ms_writew((ms_readw(MSB250X_OTG0_AUTONAK0_CTRL) | MSB250X_OTG0_AUTONAK0_AllowAck), MSB250X_OTG0_AUTONAK0_CTRL);
+            ms_writeb((ms_readb(MSB250X_OTG0_AUTONAK0_CTRL) | MSB250X_OTG0_AUTONAK0_AllowAck), MSB250X_OTG0_AUTONAK0_CTRL);
             break;
         case 1:
-            ms_writeb(ms_readb(MSB250X_OTG0_AUTONAK1_CTRL), MSB250X_OTG0_AUTONAK1_CTRL);
             ms_writeb((ms_readb(MSB250X_OTG0_AUTONAK1_CTRL) | MSB250X_OTG0_AUTONAK1_AllowAck), MSB250X_OTG0_AUTONAK1_CTRL);
             break;
         case 2:
-            ms_writeb(ms_readw(MSB250X_OTG0_AUTONAK2_CTRL), MSB250X_OTG0_AUTONAK2_CTRL);
             ms_writeb((ms_readw(MSB250X_OTG0_AUTONAK2_CTRL) | MSB250X_OTG0_AUTONAK2_AllowAck), MSB250X_OTG0_AUTONAK2_CTRL);
             break;
     }
-    //printk(KERN_DEBUG "<USB>[UDC][NAK][%d] allowAck\n", cfg);
+
 }
-EXPORT_SYMBOL(msb250x_udc_allowAck);
+EXPORT_SYMBOL(msb250x_udc_disable_autoNAK_for_packet);
 
 /*
 +------------------------------------------------------------------------------
@@ -504,7 +461,7 @@ msb250x_request_handler(struct msb250x_ep* ep,
 
     if (0 == ep->halted)
     {
-        msb250x_set_ep_halt(ep, 1);
+        ep->halted = 1;
 
         intrusb = ms_readb(MSB250X_OTG0_INTRUSB_REG);
 
@@ -567,7 +524,7 @@ msb250x_request_handler(struct msb250x_ep* ep,
                     printk(KERN_ERR "<USB_ERR> EP0 Request Error !!\n");
             }
 
-            msb250x_set_ep_halt(ep, 0);
+            ep->halted = 0;
         }
         else
         {
@@ -581,7 +538,7 @@ msb250x_request_handler(struct msb250x_ep* ep,
                 //if (0 == (txcsr_l->bTxPktRdy | txcsr_l->bFIFONotEmpty))
                 if (0 == txcsr_l->bTxPktRdy)
                 {
-                    if (0 == dev->using_dma || 0 != msb250x_dma_setup_control(&ep->ep, req))
+                    if (0 == dev->using_dma || usb_endpoint_xfer_int(_ep->desc) || 0 != msb250x_dma_setup_control(&ep->ep, req))
                     {
                         is_last = msb250x_udc_write_riu(ep, req);
                         ep_set_ipr(ep_num);
@@ -593,57 +550,59 @@ msb250x_request_handler(struct msb250x_ep* ep,
                 csr = ms_readb(MSB250X_OTG0_EP_RXCSR1_REG(ep_num));
                 rxcsr_l = (struct otg0_ep_rxcsr_l*) &csr;
 
-                if (usb_endpoint_xfer_bulk(_ep->desc))
+                /* DMA RX: */
+                if (!usb_endpoint_xfer_bulk(_ep->desc))
                 {
-                    if (0 == rxcsr_l->bRxPktRdy && 0 == req->req.actual)
+                    if (1 == rxcsr_l->bRxPktRdy)
                     {
-                        if (1 == ep->shortPkt)
+                        if (0 == dev->using_dma || usb_endpoint_xfer_int(_ep->desc) || 0 != msb250x_dma_setup_control(&ep->ep, req))
                         {
-                            udelay(125);
-                            ep->shortPkt = 0;
-                        }
-
-                        if (ep->ep.maxpacket >= req->req.length)
-                        {
-                            msb250x_udc_allowAck(ep->autoNAK_cfg);
-                        }
-                        else
-                        {
-                        #if 0
-                            if (1 == ep->shortPkt)
-                            {
-                                udelay(125);
-                                ep->shortPkt = 0;
-                            }
-                        #endif
-
-                        #if !defined(CONFIG_USB_MSB250X_BULK_OUT_WITHOUT_DMA)
-                            msb250x_dma_setup_control(&ep->ep, req);
-                        #endif
-
-                            pkt_num = (req->req.length + (ep->ep.maxpacket - 1)) / ep->ep.maxpacket;
-                            msb250x_udc_ok2rcv_for_packets(ep->autoNAK_cfg, pkt_num);
+                            is_last = msb250x_udc_read_riu(ep, req);
+                            ep_set_opr(ep_num);
                         }
                     }
                 }
-
-                if (1 == rxcsr_l->bRxPktRdy)
+                else
                 {
-                #if !defined(CONFIG_USB_MSB250X_BULK_OUT_WITHOUT_DMA)
-                    if (0 == dev->using_dma || 0 != msb250x_dma_setup_control(&ep->ep, req))
-                #endif
+                    if (0 == rxcsr_l->bRxPktRdy)
                     {
-                        is_last = msb250x_udc_read_riu(ep, req);
-                        ep_set_opr(ep_num);
+                        if (ep->ep.maxpacket >= (req->req.length - req->req.actual))
+                        {
+                            msb250x_udc_disable_autoNAK_for_packet(ep->autoNAK_cfg);
+                            //ms_writeb((ms_readb(MSB250X_OTG0_USB_CFG5_H) | MSB250X_OTG0_AUTONAK0_AllowAck), MSB250X_OTG0_USB_CFG5_H);
+                            printk(KERN_DEBUG "<USB>[UDC][%d] disable for 1 packets\n", ep_num);
+
+                        }
+                        else
+                        {
+                            if (0 != msb250x_dma_setup_control(&ep->ep, req))
+                            {
+                                /*if fail to config dma, then use riu mode*/
+                                pkt_num = ((req->req.length - req->req.actual) + (ep->ep.maxpacket - 1)) / ep->ep.maxpacket;
+                                printk("<USB>[UDC][%d] disable autoNAK for %d packets. bRxPktRdy(%d)\n", ep_num, pkt_num, rxcsr_l->bRxPktRdy);
+                                msb250x_udc_disable_autoNAK_for_packets(ep->autoNAK_cfg, pkt_num);
+                                //ms_writew((M_Mode1_P_OK2Rcv | pkt_num), MSB250X_OTG0_DMA_MODE_CTL);
+
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (0 == dev->using_dma || 1 == ep->shortPkt || 0 != msb250x_dma_setup_control(&ep->ep, req))
+                        {
+                            is_last = msb250x_udc_read_riu(ep, req);
+                            ep_set_opr(ep_num);
+                        }
                     }
                 }
             }
         }
-    }
 
-    if (1 == is_last)
-    {
-        req = NULL;
+        if (1 == is_last)
+        {
+            msb250x_request_done(ep, req, 0);
+            req = NULL;
+        }
     }
 
     return req;
@@ -757,11 +716,11 @@ void msb250x_request_done(struct msb250x_ep *ep,
     else
         status = req->req.status;
 
-    msb250x_set_ep_halt(ep, 1);
+    ep->halted = 1;
     spin_unlock(&dev->lock);
     usb_gadget_giveback_request(&ep->ep, &req->req);
     spin_lock(&dev->lock);
-    msb250x_set_ep_halt(ep, halted);
+    ep->halted = halted;
 }
 
 EXPORT_SYMBOL(msb250x_request_done);
@@ -788,11 +747,11 @@ static irqreturn_t msb250x_udc_link_isr(struct msb250x_udc *dev)
          * - reset start -> pwr reg = 8
          * - reset end   -> pwr reg = 0
          **/
-        printk(KERN_INFO "<USB>[LINK] Bus reset.\r\n");
+        printk(KERN_INFO "<USB>[LINK] Bus reset\r\n");
 
-        ms_writeb(0x10, GET_REG16_ADDR(UTMI_BASE_ADDR, 0x16));        //TX-current adjust to 105%=> bit <4> set 1
-        ms_writeb(0x02, (GET_REG16_ADDR(UTMI_BASE_ADDR, 0x16) + 1));  // Pre-emphasis enable=> bit <1> set 1
-        ms_writeb(0x01, (GET_REG16_ADDR(UTMI_BASE_ADDR, 0x17) + 1));  //HS_TX common mode current enable (100mV)=> bit <7> set 1
+        ms_writeb(0x10, GET_REG_ADDR(UTMI_BASE_ADDR, 0x16));        //TX-current adjust to 105%=> bit <4> set 1
+        ms_writeb(0x02, (GET_REG_ADDR(UTMI_BASE_ADDR, 0x16) + 1));  // Pre-emphasis enable=> bit <1> set 1
+        ms_writeb(0x01, (GET_REG_ADDR(UTMI_BASE_ADDR, 0x17) + 1));  //HS_TX common mode current enable (100mV)=> bit <7> set 1
 
 
         if (dev->driver && dev->driver->disconnect)
@@ -813,16 +772,22 @@ static irqreturn_t msb250x_udc_link_isr(struct msb250x_udc *dev)
         {
             dev->gadget.speed = USB_SPEED_HIGH;
             printk(KERN_INFO "<USB>[LINK] High speed device\r\n");
-            ms_writew(0x0230, GET_REG16_ADDR(UTMI_BASE_ADDR, 0x16));  //B2 analog parameter
+            ms_writew(0x0230, GET_REG_ADDR(UTMI_BASE_ADDR, 0x16));  //B2 analog parameter
         }
         else
         {
             dev->gadget.speed = USB_SPEED_FULL;
             printk(KERN_INFO "<USB>[LINK] Full speed device\r\n");
-            ms_writew(0x0030, GET_REG16_ADDR(UTMI_BASE_ADDR, 0x16));  //B2 analog parameter
+            ms_writew(0x0030, GET_REG_ADDR(UTMI_BASE_ADDR, 0x16));  //B2 analog parameter
         }
 
         msb250x_udc_init_autoNAK_cfg();
+
+        ms_writew(0, MSB250X_OTG0_USB_CFG5_L);
+        ms_writeb((ms_readb(MSB250X_OTG0_USB_CFG6_H) | 0x20), MSB250X_OTG0_USB_CFG6_H);//short_mode
+
+        //ms_writew((ms_readw(MSB250X_OTG0_AUTONAK0_EP_BULKOUT)&0xfff0), MSB250X_OTG0_AUTONAK0_EP_BULKOUT); //wayne added
+        //ms_writew((ms_readw(MSB250X_OTG0_AUTONAK0_EP_BULKOUT)|M_Mode1_P_BulkOut_EP), MSB250X_OTG0_AUTONAK0_EP_BULKOUT); //wayne added
 
         usb_gadget_set_state(&dev->gadget, USB_STATE_DEFAULT);
     }
@@ -876,12 +841,12 @@ static irqreturn_t msb250x_udc_ep_isr(struct msb250x_udc *dev)
 {
     u8 ep_num = 0;
 
-    u8 usb_intr_rx = 0, usb_intr_tx = 0;
+    u16 usb_intr_rx = 0, usb_intr_tx = 0;
 
-    usb_intr_rx = ms_readb(MSB250X_OTG0_INTRRX_REG);
-    usb_intr_tx = ms_readb(MSB250X_OTG0_INTRTX_REG);
-    ms_writeb(usb_intr_rx, MSB250X_OTG0_INTRRX_REG);
-    ms_writeb(usb_intr_tx, MSB250X_OTG0_INTRTX_REG);
+    usb_intr_rx = ms_readw(MSB250X_OTG0_INTRRX_REG);
+    usb_intr_tx = ms_readw(MSB250X_OTG0_INTRTX_REG);
+    ms_writew(usb_intr_rx, MSB250X_OTG0_INTRRX_REG);
+    ms_writew(usb_intr_tx, MSB250X_OTG0_INTRTX_REG);
 
     if (usb_intr_tx & MSB250X_OTG0_INTR_EP(0))
     {
@@ -928,14 +893,11 @@ static irqreturn_t msb250x_udc_isr(int irq, void *_dev)
     unsigned long flags;
 
     spin_lock_irqsave(&dev->lock, flags);
-/*
-    ms_writeb(ms_readb(GET_REG8_ADDR(REG_ADDR_BASE_PM_GPIO, 0X94)) & ~BIT1, GET_REG8_ADDR(REG_ADDR_BASE_PM_GPIO, 0X94));
-    ms_writeb(ms_readb(GET_REG8_ADDR(REG_ADDR_BASE_PM_GPIO, 0X94)) | BIT1, GET_REG8_ADDR(REG_ADDR_BASE_PM_GPIO, 0X94));
-*/
+
     msb250x_udc_dma_isr(dev);
     msb250x_udc_link_isr(dev);
     msb250x_udc_ep_isr(dev);
-    //ms_writeb((ms_readb(GET_REG8_ADDR(REG_ADDR_BASE_PM_GPIO, 0X94)) & ~BIT1), GET_REG8_ADDR(REG_ADDR_BASE_PM_GPIO, 0X94));
+
     spin_unlock_irqrestore(&dev->lock, flags);
 
     return IRQ_HANDLED;
@@ -978,7 +940,7 @@ int msb250x_udc_get_status(struct msb250x_udc *dev,
 
             if (ep_num == 0)
             {
-                status = ms_readb(MSB250X_OTG0_EP0_CSR0_REG);
+                status = ms_readb(MSB250X_OTG0_EP_TXCSR1_REG(0));
                 status &= MSB250X_OTG0_CSR0_SENDSTALL;
             }
             else
@@ -1028,14 +990,14 @@ void msb250x_udc_disable(struct msb250x_udc *dev)
 {
     /* Disable all interrupts */
     ms_writeb(0x00, MSB250X_OTG0_INTRUSBE_REG);
-    ms_writeb(0x00, MSB250X_OTG0_INTRTXE_REG);
-    ms_writeb(0x00, MSB250X_OTG0_INTRRXE_REG);
+    ms_writew(0x00, MSB250X_OTG0_INTRTXE_REG);
+    ms_writew(0x00, MSB250X_OTG0_INTRRXE_REG);
 
     /* Clear the interrupt registers */
     /* All active interrupts will be cleared when this register is read */
     ms_writeb(ms_readb(MSB250X_OTG0_INTRUSB_REG), MSB250X_OTG0_INTRUSB_REG);
-    ms_writeb(ms_readb(MSB250X_OTG0_INTRTX_REG), MSB250X_OTG0_INTRTX_REG);
-    ms_writeb(ms_readb(MSB250X_OTG0_INTRRX_REG), MSB250X_OTG0_INTRRX_REG);
+    ms_writew(ms_readw(MSB250X_OTG0_INTRTX_REG), MSB250X_OTG0_INTRTX_REG);
+    ms_writew(ms_readw(MSB250X_OTG0_INTRRX_REG), MSB250X_OTG0_INTRRX_REG);
 
     /* Good bye, cruel world */
     msb250x_gadget_pullup_i(0);
@@ -1095,21 +1057,21 @@ void msb250x_udc_init_usb_ctrl(void)
     // Reset OTG controllers
     //USBC_REG_WRITE8(0, 0xC);
     //USBC_REG_WRITE8(0, USBC_REG_READ8(0)|(OTG_BIT3|OTG_BIT2));
-    ctrl_l = ms_readb(GET_REG16_ADDR(USBC_BASE_ADDR, 0));
+    ctrl_l = ms_readb(GET_REG_ADDR(USBC_BASE_ADDR, 0));
     pst_usbc0_rst_ctrl_l->bOTG_RST = 1;
     pst_usbc0_rst_ctrl_l->bREG_SUSPEND = 1;
-    ms_writeb(ctrl_l, GET_REG16_ADDR(USBC_BASE_ADDR, 0));
+    ms_writeb(ctrl_l, GET_REG_ADDR(USBC_BASE_ADDR, 0));
 
     // Unlock Register R/W functions  (RST_CTRL[6] = 1)
     // Enter suspend  (RST_CTRL[3] = 1)
     //USBC_REG_WRITE8(0, 0x48);
     //USBC_REG_WRITE8(0, (USBC_REG_READ8(0)&~(OTG_BIT2))|OTG_BIT6);
-    ctrl_l = ms_readb(GET_REG16_ADDR(USBC_BASE_ADDR, 0));
+    ctrl_l = ms_readb(GET_REG_ADDR(USBC_BASE_ADDR, 0));
     pst_usbc0_rst_ctrl_l->bOTG_RST = 0;
     pst_usbc0_rst_ctrl_l->bOTG_XIU_ENABLE = 1;
-    ms_writeb(ctrl_l, GET_REG16_ADDR(USBC_BASE_ADDR, 0));
+    ms_writeb(ctrl_l, GET_REG_ADDR(USBC_BASE_ADDR, 0));
 
-    printk(KERN_DEBUG "<USB>[GADGET] Init USB controller\n");
+    printk("<USB>[GADGET] Init USB controller\n");
 }
 
 EXPORT_SYMBOL(msb250x_udc_init_usb_ctrl);
@@ -1131,12 +1093,12 @@ EXPORT_SYMBOL(msb250x_udc_init_usb_ctrl);
 #if defined(ENABLE_OTG_USB_NEW_MIU_SLE)
 static void msb250x_udc_init_MIU_sel(void)
 {
-    printk("<USB>[miu] [%x] [%x] [%x] [%x].\n", USB_MIU_SEL0, USB_MIU_SEL1, USB_MIU_SEL2, USB_MIU_SEL3);
-    ms_writeb(USB_MIU_SEL0, GET_REG16_ADDR(USBC_BASE_ADDR, 0x0A));	                                            //Setting MIU0 segment
-    ms_writeb(USB_MIU_SEL1, GET_REG16_ADDR(USBC_BASE_ADDR, 0x0B));	                                            //Setting MIU1 segment
-    ms_writeb(USB_MIU_SEL2, GET_REG16_ADDR(USBC_BASE_ADDR, 0x0B) + 1);	                                        //Setting MIU2 segment
-    ms_writeb(USB_MIU_SEL3, GET_REG16_ADDR(USBC_BASE_ADDR, 0x0C));	                                            //Setting MIU3 segment
-    ms_writeb((ms_readb(GET_REG16_ADDR(USBC_BASE_ADDR, 0x0C) + 1) | 0x1), GET_REG16_ADDR(USBC_BASE_ADDR, 0x0C) + 1);  //Enable miu partition mechanism
+    printk("[UDC] config miu select [%x] [%x] [%x] [%x].\n", USB_MIU_SEL0, USB_MIU_SEL1, USB_MIU_SEL2, USB_MIU_SEL3);
+    ms_writeb(USB_MIU_SEL0, GET_REG_ADDR(USBC_BASE_ADDR, 0x0A));	                                            //Setting MIU0 segment
+    ms_writeb(USB_MIU_SEL1, GET_REG_ADDR(USBC_BASE_ADDR, 0x0B));	                                            //Setting MIU1 segment
+    ms_writeb(USB_MIU_SEL2, GET_REG_ADDR(USBC_BASE_ADDR, 0x0B) + 1);	                                        //Setting MIU2 segment
+    ms_writeb(USB_MIU_SEL3, GET_REG_ADDR(USBC_BASE_ADDR, 0x0C));	                                            //Setting MIU3 segment
+    ms_writeb((ms_readb(GET_REG_ADDR(USBC_BASE_ADDR, 0x0C) + 1) | 0x1), GET_REG_ADDR(USBC_BASE_ADDR, 0x0C) + 1);  //Enable miu partition mechanism
 
 #if  0//defined(DISABLE_MIU_LOW_BOUND_ADDR_SUBTRACT_ECO)
     printk("[USB] enable miu lower bound address subtraction\n");
@@ -1148,6 +1110,7 @@ static void msb250x_udc_init_MIU_sel(void)
 void msb250x_udc_init_hw(void)
 {
 #if defined(ENABLE_OTG_USB_NEW_MIU_SLE)
+    //size_t UTMI_base=USBC_BASE_ADDR;
     msb250x_udc_init_MIU_sel();
 #endif
 
@@ -1155,7 +1118,7 @@ void msb250x_udc_init_hw(void)
     //USBC_REG_WRITE8(0x4, USBC_REG_READ8(0x4)& (~0x3));
 #if !defined(CONFIG_USB_MS_OTG)
     // Enable OTG controller
-    ms_writeb(((ms_readb(GET_REG16_ADDR(USBC_BASE_ADDR, 0x01)) & ~(BIT0 | BIT1)) | BIT1), GET_REG16_ADDR(USBC_BASE_ADDR, 0x01));
+    ms_writeb(((ms_readb(GET_REG_ADDR(USBC_BASE_ADDR, 0x01)) & ~(BIT0 | BIT1)) | BIT1), GET_REG_ADDR(USBC_BASE_ADDR, 0x01));
 #endif
 
 #if 0//defined(CONFIG_ARCH_CHICAGO)
@@ -1164,49 +1127,53 @@ void msb250x_udc_init_hw(void)
 
 #ifdef USB_ENABLE_UPLL
     //UTMI_REG_WRITE16(0, 0x4000);
-    ms_writew(0x6BC3, GET_REG16_ADDR(UTMI_BASE_ADDR, 0)); // Turn on UPLL, reg_pdn: bit<9> reg_pdn: bit<15>, bit <2> ref_pdn
+    ms_writew(0x6BC3, GET_REG_ADDR(UTMI_BASE_ADDR, 0)); // Turn on UPLL, reg_pdn: bit<9> reg_pdn: bit<15>, bit <2> ref_pdn
     mdelay(1);
-    ms_writeb(0x69, GET_REG16_ADDR(UTMI_BASE_ADDR, 0));   // Turn on UPLL, reg_pdn: bit<9>
+    ms_writeb(0x69, GET_REG_ADDR(UTMI_BASE_ADDR, 0));   // Turn on UPLL, reg_pdn: bit<9>
     mdelay(2);
-    ms_writew(0x0001, GET_REG16_ADDR(UTMI_BASE_ADDR, 0)); //Turn all (including hs_current) use override mode
+    ms_writew(0x0001, GET_REG_ADDR(UTMI_BASE_ADDR, 0)); //Turn all (including hs_current) use override mode
     // Turn on UPLL, reg_pdn: bit<9>
     mdelay(3);
 #else
     // Turn on UTMI if it was powered down
-    if (0x0001 != ms_readw(GET_REG16_ADDR(UTMI_BASE_ADDR, 0)))
+    if (0x0001 != ms_readw(GET_REG_ADDR(UTMI_BASE_ADDR, 0)))
     {
-        ms_writew(0x0001, GET_REG16_ADDR(UTMI_BASE_ADDR, 0)); //Turn all (including hs_current) use override mode
+        ms_writew(0x0001, GET_REG_ADDR(UTMI_BASE_ADDR, 0)); //Turn all (including hs_current) use override mode
         mdelay(3);
     }
 #endif
 
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x1E)) | 0x01), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x1E)); // set CA_START as 1
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x1E)) | 0x1), GET_REG_ADDR(UTMI_BASE_ADDR, 0x1E)); // set CA_START as 1
     mdelay(10);
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x1E)) & ~0x01), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x1E)); // release CA_START
-    while (0 == (ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x1E)) & 0x02));        // polling bit <1> (CA_END)
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x1E)) & ~0x01), GET_REG_ADDR(UTMI_BASE_ADDR, 0x1E)); // release CA_START
+    while (0 == (ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x1E)) & 0x02));        // polling bit <1> (CA_END)
 
     //msb250x_udc_init_usb_ctrl();
 
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x03)) & 0x9F) | 0x40, GET_REG16_ADDR(UTMI_BASE_ADDR, 0x03));      //reg_tx_force_hs_current_enable
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x01) + 1) | 0x28), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x01) + 1);     //Disconnect window select
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x01) + 1) & 0xef), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x01) + 1);     //Disconnect window select
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x03) + 1) & 0xfd), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x03) + 1);     //Disable improved CDR
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x04) + 1) | 0x81), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x04) + 1);     // UTMI RX anti-dead-loc, ISI effect improvement
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x0A) + 1) | 0x20), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x0A) + 1);     // Chirp signal source select
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x05) + 1) | 0x80), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x05) + 1);     // set reg_ck_inv_reserved[6] to solve timing problem
+    printk("<USB>[UDC] +UTMI\n");
+
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x03)) & 0x9F) | 0x40, GET_REG_ADDR(UTMI_BASE_ADDR, 0x03));      //reg_tx_force_hs_current_enable
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x01) + 1) | 0x28), GET_REG_ADDR(UTMI_BASE_ADDR, 0x01) + 1);     //Disconnect window select
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x01) + 1) & 0xef), GET_REG_ADDR(UTMI_BASE_ADDR, 0x01) + 1);     //Disconnect window select
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x03) + 1) & 0xfd), GET_REG_ADDR(UTMI_BASE_ADDR, 0x03) + 1);     //Disable improved CDR
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x04) + 1) | 0x81), GET_REG_ADDR(UTMI_BASE_ADDR, 0x04) + 1);     // UTMI RX anti-dead-loc, ISI effect improvement
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x0A) + 1) | 0x20), GET_REG_ADDR(UTMI_BASE_ADDR, 0x0A) + 1);     // Chirp signal source select
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x05) + 1) | 0x80), GET_REG_ADDR(UTMI_BASE_ADDR, 0x05) + 1);     // set reg_ck_inv_reserved[6] to solve timing problem
 
 #if 0//defined(CONFIG_MSTAR_CEDRIC)
     UTMI_REG_WRITE8(0x2c*2,   0x10);
     UTMI_REG_WRITE8(0x2d*2-1, 0x02);
     UTMI_REG_WRITE8(0x2f*2-1, 0x81);
 #else
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x16)) | 0x98), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x16));
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x16) + 1) | 0x02), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x16) + 1);
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x17)) | 0x10), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x17));
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x17) + 1) | 0x01), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x17) + 1);
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x16)) | 0x98), GET_REG_ADDR(UTMI_BASE_ADDR, 0x16));
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x16) + 1) | 0x02), GET_REG_ADDR(UTMI_BASE_ADDR, 0x16) + 1);
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x17)) | 0x10), GET_REG_ADDR(UTMI_BASE_ADDR, 0x17));
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x17) + 1) | 0x01), GET_REG_ADDR(UTMI_BASE_ADDR, 0x17) + 1);
 #endif
 
-    ms_writeb((ms_readb(GET_REG16_ADDR(UTMI_BASE_ADDR, 0x02)) | 0x80), GET_REG16_ADDR(UTMI_BASE_ADDR, 0x02)); //avoid glitch
+    ms_writeb((ms_readb(GET_REG_ADDR(UTMI_BASE_ADDR, 0x02)) | 0x80), GET_REG_ADDR(UTMI_BASE_ADDR, 0x02));
+    printk("<USB>[UDC] -UTMI\n");
+
 }
 
 void msb250x_udc_init_OTG(struct msb250x_udc *udc)
@@ -1223,8 +1190,6 @@ void msb250x_udc_init_OTG(struct msb250x_udc *udc)
     struct otg0_usb_power* pst_power = (struct otg0_usb_power*) &power;
     struct otg0_usb_intr* pst_intr_usb = (struct otg0_usb_intr*) &usb_intr;
 
-    ms_writeb((ms_readb(MSB250X_OTG0_USB_CFG6_H) | (CFG6_H_SHORT_MODE | CFG6_H_BUS_OP_FIX | CFG6_H_REG_MI_WDFIFO_CTRL)), MSB250X_OTG0_USB_CFG6_H);
-
     usb_cfg_l = ms_readb(MSB250X_OTG0_USB_CFG0_L);
     usb_cfg_h = ms_readb(MSB250X_OTG0_USB_CFG0_H);
 
@@ -1233,11 +1198,11 @@ void msb250x_udc_init_OTG(struct msb250x_udc *udc)
 
     pst_usb_cfg0_l->bSRST_N = 1; //default set as 1
     ms_writeb(usb_cfg_l, MSB250X_OTG0_USB_CFG0_L);
-    //printk("<USB>[UDC] Reset OTG\n");
+    printk("<USB>[UDC] Reset OTG\n");
 
     pst_usb_cfg0_h->bDMPullDown = 1;
     ms_writeb(usb_cfg_h, MSB250X_OTG0_USB_CFG0_H); //Enable DM pull down
-    //printk("<USB>[UDC] Enable DM pull down\n");
+    printk("<USB>[UDC] Enable DM pull down\n");
 
     //USB_REG_WRITE16(0x100, USB_REG_READ16(0x100)|0x8000); /* Disable DM pull-down */
 
@@ -1262,6 +1227,7 @@ void msb250x_udc_init_OTG(struct msb250x_udc *udc)
 
     pst_power->bSuspendMode = 0;
     pst_power->bSoftConn = 0;
+    //pst_power->bISOUpdate = 1;
 
     if (USB_SPEED_HIGH == udc->gadget.max_speed)
     {
@@ -1271,12 +1237,12 @@ void msb250x_udc_init_OTG(struct msb250x_udc *udc)
     {
         pst_power->bHSEnab = 0;
     }
+
     ms_writeb(power, MSB250X_OTG0_PWR_REG);
 
     ms_writeb(0, MSB250X_OTG0_DEVCTL_REG);
 
     usb_intr = 0xff;
-    pst_intr_usb->bConn = 0;
     pst_intr_usb->bSOF = 0;
     ms_writeb(usb_intr, MSB250X_OTG0_INTRUSB_REG);
     printk("<USB>[UDC] Enable usb interrupt\n");
@@ -1290,11 +1256,11 @@ void msb250x_udc_init_OTG(struct msb250x_udc *udc)
     ms_writeb(0, MSB250X_OTG0_INDEX_REG);
     ms_writeb(0x1 , MSB250X_OTG0_CSR0_FLSH_REG);
 
-    ms_writeb(0x01, MSB250X_OTG0_INTRTXE_REG);
-    ms_writeb(0x01, MSB250X_OTG0_INTRRXE_REG);
+    ms_writew(0x0001, MSB250X_OTG0_INTRTXE_REG);
+    ms_writew(0x0001, MSB250X_OTG0_INTRRXE_REG);
 
-    ms_readb(MSB250X_OTG0_INTRTXE_REG);
-    ms_readb(MSB250X_OTG0_INTRRXE_REG);
+    ms_readw(MSB250X_OTG0_INTRTXE_REG);
+    ms_readw(MSB250X_OTG0_INTRRXE_REG);
 }
 EXPORT_SYMBOL(msb250x_udc_init_OTG);
 
@@ -1375,7 +1341,7 @@ static int msb250x_udc_probe(struct platform_device *pdev)
     int retval = 0;
     int ret,irq=-1;
 
-    spin_lock_init(&dev->lock);
+    spin_lock_init (&dev->lock);
 
     dev->gadget.dev.parent = &pdev->dev;
     dev->pdev = pdev;
@@ -1391,16 +1357,18 @@ static int msb250x_udc_probe(struct platform_device *pdev)
 
     if (0 != (retval = request_irq(irq/*INT_MS_OTG*/, msb250x_udc_isr, 0, sg_gadget_name, dev)))
     {
-        printk(KERN_ERR "cannot get irq, err %d\n", retval);
+        printk("cannot get irq, err %d\n", retval);
         return -EBUSY;
     }
-
-    dev->got_irq = 1;
-    printk(KERN_INFO "<USB>[DRV] %s irq --> %d\n", pdev->name, irq);
+    else
+    {
+        dev->got_irq = 1;
+        printk(KERN_INFO "<USB>[DRV] %s irq --> %d\n", pdev->name, irq);
+    }
 
     if (0 != (ret = usb_add_gadget_udc(&pdev->dev, &dev->gadget)))
     {
-        printk(KERN_ERR "<USB>[DRV] Error in probe.\n");
+        printk("<USB>[DRV] error probe\n");
         while(1);
     }
 
@@ -1408,11 +1376,8 @@ static int msb250x_udc_probe(struct platform_device *pdev)
 
     //msb250x_udc_init_OTG(udc);
     msb250x_udc_init_hw();
-#if 0
-    MDrv_GPIO_PadVal_Set(76, PINMUX_FOR_GPIO_MODE);
-    ms_writeb(ms_readb(GET_REG8_ADDR(REG_ADDR_BASE_PM_GPIO, 0X94)) & ~BIT0, GET_REG8_ADDR(REG_ADDR_BASE_PM_GPIO, 0X94));
-#endif
-    printk(KERN_INFO "<USB>[DRV] complete porbe\n");
+
+    printk("<USB>[DRV] end porbe\n");
     return retval;
 }
 
@@ -1447,9 +1412,10 @@ static int msb250x_udc_remove(struct platform_device *pdev)
 
     platform_set_drvdata(pdev, NULL);
 
+    printk("%s: remove ok\n", __FUNCTION__);
+
     usb_del_gadget_udc(&dev->gadget);
 
-    printk(KERN_INFO "<USB>[UDC] remove ok\n");
     return 0;
 }
 
@@ -1457,6 +1423,11 @@ static int msb250x_udc_remove(struct platform_device *pdev)
 static int msb250x_udc_suspend(struct platform_device *pdev, pm_message_t message)
 {
     struct msb250x_udc *udc = platform_get_drvdata(pdev);
+
+    printk("Entered %s\n", __FUNCTION__);
+#if 1//def UDC_FUNCTION_LOG
+    printk("UDC suspend....\n");
+#endif
 
     // disable udc
     msb250x_udc_disable(udc);
@@ -1469,6 +1440,10 @@ static int msb250x_udc_suspend(struct platform_device *pdev, pm_message_t messag
 int msb250x_udc_resume(struct platform_device *pdev)
 {
     struct msb250x_udc *udc = platform_get_drvdata(pdev);
+    printk("Entered %s\n", __FUNCTION__);
+#if 1//def UDC_FUNCTION_LOG
+    printk("UDC resume....\n");
+#endif
 
     {
         if (udc->driver)

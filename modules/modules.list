@@ -33,8 +33,6 @@ mmc_core.ko
 pwrseq_simple.ko
 pwrseq_emmc.ko
 mmc_block.ko
-mdrv_timer.ko
-mdrv_pwm_customer.ko
 kdrv_emmc.ko
 kdrv_sdmmc.ko
 kdrv_spinand.ko

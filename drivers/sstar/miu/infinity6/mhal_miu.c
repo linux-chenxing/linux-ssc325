@@ -504,7 +504,7 @@ MS_BOOL HAL_MIU_GetHitProtectInfo(MS_U8 u8MiuSel, MIU_PortectInfo *pInfo)
         u32EndAddr = (pInfo->uAddress + MIU_PROTECT_ADDRESS_UNIT - 1);
 
         HAL_MIU_ClientIdToName((MS_U8)(GET_HIT_CLIENT(u16Ret)), clientName);
-        printk(KERN_EMERG "MIU%u Block:%u Client:%s ID:%u-%u Hitted_Address(MIU):0x%x<->0x%x\n",
+        printk("MIU%u Block:%u Client:%s ID:%u-%u Hitted_Address(MIU):0x%x<->0x%x\n",
                u8MiuSel, pInfo->u8Block, clientName,
                pInfo->u8Group, pInfo->u8ClientID,
                pInfo->uAddress, u32EndAddr);
@@ -513,11 +513,6 @@ MS_BOOL HAL_MIU_GetHitProtectInfo(MS_U8 u8MiuSel, MIU_PortectInfo *pInfo)
         HAL_MIU_Write2BytesMask(u32RegBase + REG_MIU_PROTECT_STATUS, REG_MIU_PROTECT_LOG_CLR, TRUE);
         HAL_MIU_Write2BytesMask(u32RegBase + REG_MIU_PROTECT_STATUS, REG_MIU_PROTECT_LOG_CLR, FALSE);
 
-        // FIXME: Workaround for the unknown VEN_R request addr over DRAM size
-        if (MIU_CLIENT_VEN_R == GET_HIT_CLIENT(u16Ret))
-        {
-            pInfo->bHit = FALSE;
-        }
     }
 
     return TRUE;

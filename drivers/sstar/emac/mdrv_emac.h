@@ -361,9 +361,8 @@ struct emac_handle
 #endif
 
 #if EMAC_SG
-    // char*               pTxBuf;
-    // int                 TxBufIdx;
-    int                 maxSG;
+    char*               pTxBuf;
+    int                 TxBufIdx;
 #endif // #if EMAC_SG
 
 };

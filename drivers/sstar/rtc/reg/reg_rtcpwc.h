@@ -25,21 +25,16 @@
 #ifndef __KERNEL_RTC_PWC_H__
 #define __KERNEL_RTC_PWC_H__
 
+ 
 
 #define RTCPWC_DIG2RTC_BASE_WR					(0x00 << 2)
 	#define RTCPWC_DIG2RTC_BASE_WR_BIT			BIT1
 	#define RTCPWC_DIG2RTC_BASE_RD				BIT2
-       #define RTCPWC_DIG2RTC_CNT_RST_WR                 BIT3
-       #define RTCPWC_DIG2RTC_ALARM_WR                    BIT4
-       #define RTCPWC_DIG2RTC_SW0_WR                        BIT5
-       #define RTCPWC_DIG2RTC_SW1_WR                        BIT6
-       #define RTCPWC_DIG2RTC_SW0_RD                        BIT7
-       #define RTCPWC_DIG2RTC_SW1_RD                        BIT8
-//#define RTCPWC_DIG2RTC_CNT_RST_WR				(0x00 << 2)
-//	#define RTCPWC_DIG2RTC_CNT_RST_WR_BIT		BIT3
+#define RTCPWC_DIG2RTC_CNT_RST_WR				(0x00 << 2)
+	#define RTCPWC_DIG2RTC_CNT_RST_WR_BIT		BIT3
 #define RTCPWC_DIG2RTC_CNT_RD					(0x04) //(0x01 << 2)
 	#define RTCPWC_DIG2RTC_CNT_RD_BIT			BIT0
-
+ 
 #define RTCPWC_DIG2RTC_ISO_CTRL					(0x0C) //(0x03 << 2)
 	#define RTCPWC_DIG2RTC_BASE_WR_MASK		BIT0|BIT1|BIT2
 #define RTCPWC_DIG2RTC_WRDATA_L					(0x10) //(0x04 << 2)

@@ -552,10 +552,6 @@ static BOOL HAL_HWI2C_DMA_SetMiuAddr(U16 u16PortOffset, U32 u32MiuAddr)
     if(HAL_HWI2C_GetPortIdxByOffset(u16PortOffset,&u8Port)==FALSE)
         return FALSE;
     g_u32DmaPhyAddr[u8Port] = u32MiuAddr;
-
-    /*Enable I2C DMA wait MIU done*/
-    HAL_HWI2C_WriteRegBit(REG_HWI2C_DMA_RESERVED0+u16PortOffset, __BIT7|__BIT4, TRUE);
-
     return HAL_HWI2C_Write4Byte(REG_HWI2C_DMA_MIU_ADR+u16PortOffset, Chip_Phys_to_MIU(u32MiuAddr));
 }
 

@@ -461,7 +461,7 @@ int voltage_control_init(void)
     // Check MIUPLL and determine core voltage request
     miupll_freq_Mhz = 24 * INREGMSK16(BASE_REG_MIUPLL_PA + REG_ID_03, 0x00FF) / ((INREGMSK16(BASE_REG_MIUPLL_PA + REG_ID_03, 0x0700) >> 8) + 2);
     miu_data_rate = 1 << (INREGMSK16(BASE_REG_MIU_PA + REG_ID_01, 0x0300) >> 8);
-    if(miupll_freq_Mhz > 433 || (miu_data_rate <=4 && miupll_freq_Mhz > 216))
+    if(miupll_freq_Mhz > 333 || (miu_data_rate <=4 && miupll_freq_Mhz > 166))
         set_core_voltage(VOLTAGE_DEMANDER_MIU, VOLTAGE_CORE_1000);
     else
         set_core_voltage(VOLTAGE_DEMANDER_MIU, VOLTAGE_CORE_900);

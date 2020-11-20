@@ -44,7 +44,6 @@
 
 
 #define BASE_REG_ISP_ADDR			GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x000800)
-#define BASE_REG_PMSLEEP_ADDR       GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x000E00)
 #define BASE_REG_FSP_ADDR			GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x001600)
 #define BASE_REG_QSPI_ADDR			GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x001700)
 #define BASE_REG_CHIPTOP_ADDR		GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x101E00)
@@ -208,7 +207,7 @@
 #define SF_SR_PROG_ERASE_ERR_MASK       BMASK(6:6)
 #define SF_SR_SRWD_MASK                 BMASK(7:7)
     #define SF_SR_SRWD                      BITS(7:7, 1)
-    #define SF_SR_QUAD                      BITS(6:6, 1)
+    #define SF_SR_QUALD                     BITS(6:6, 1)
 
 // PM_SLEEP CMD.
 #define REG_PM_CKG_SPI              0x20 // Ref spec. before using these setting.

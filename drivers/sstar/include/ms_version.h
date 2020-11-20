@@ -5,7 +5,7 @@
 #define MVXV_HEAD_VER   "2"
 #define MVXV_LIB_TYPE   "##"
 #define MVXV_CHIP_ID    "I6"
-#define MVXV_CHANGELIST "g615d18d"
+#define MVXV_CHANGELIST "g20b7d48"
 #define MVXV_COMP_ID    "KL_LX409####"
-#define MVXV_EXT        "[BR:stable_i6_ipc]"
+#define MVXV_EXT        "[BR:release_i6_ipc_cus07_dev]"
 

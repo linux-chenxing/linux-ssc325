@@ -1,19 +1,15 @@
-/*
-* cam_os_wrapper.c - Sigmastar
-*
-* Copyright (C) 2018 Sigmastar Technology Corp.
-*
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
-*
-* This software is licensed under the terms of the GNU General Public
-* License version 2, as published by the Free Software Foundation, and
-* may be copied, distributed, and modified under those terms.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
+/* Copyright (c) 2018-2019 Sigmastar Technology Corp.
+ All rights reserved.
+
+ Unless otherwise stipulated in writing, any and all information contained
+herein regardless in any format shall remain the sole proprietary of
+Sigmastar Technology Corp. and be kept in strict confidence
+(Sigmastar Confidential Information) by the recipient.
+Any unauthorized act including without limitation unauthorized disclosure,
+copying, use, reproduction, sale, distribution, modification, disassembling,
+reverse engineering and compiling of the contents of Sigmastar Confidential
+Information is unlawful and strictly prohibited. Sigmastar hereby reserves the
+rights to any and all damages, losses, costs and expenses resulting therefrom.
 */
 
 
@@ -55,7 +51,6 @@
 #include "cam_os_util_list.h"
 #include "cam_os_util_bitmap.h"
 
-#define OS_NAME "RTK"
 
 #define CAM_OS_THREAD_STACKSIZE_DEFAULT         8192
 
@@ -117,9 +112,6 @@ typedef struct
 static Ms_Mutex_t _gtSelfInitLock = {0};
 static Ms_Mutex_t _gtMemLock = {0};
 
-static u32 _gTimeOfDayOffsetSec = 0;
-static u32 _gTimeOfDayOffsetNanoSec = 0;
-
 _Static_assert(sizeof(CamOsMutex_t) >= sizeof(Ms_Flag_t) + 4, "CamOsMutex_t size define not enough!");
 _Static_assert(sizeof(CamOsTsem_t) >= sizeof(CamOsTsemRtk_t), "CamOsTsem_t size define not enough!");
 _Static_assert(sizeof(CamOsRwsem_t) >= sizeof(CamOsRwsemRtk_t), "CamOsRwsem_t size define not enough!");
@@ -161,8 +153,6 @@ static u8 nThreadStopBitmapInited=0;
 #include "cam_os_util.h"
 #include "cam_os_util_list.h"
 #include "cam_os_util_bitmap.h"
-
-#define OS_NAME "LINUX USER"
 
 typedef void *CamOsThreadEntry_t(void *);
 
@@ -258,8 +248,6 @@ _Static_assert(sizeof(CamOsIdr_t) >= sizeof(CamOsIdrLU_t), "CamOsIdr_t size defi
 #include "cam_os_util_list.h"
 #include "cam_os_util_bitmap.h"
 
-#define OS_NAME "LINUX KERNEL"
-
 #define CAM_OS_THREAD_STACKSIZE_DEFAULT         8192
 #define KMALLOC_THRESHOLD_SIZE                  (PAGE_SIZE >> 1)
 #define LOG_MAX_TRACE_LEN                       256
@@ -343,7 +331,7 @@ _Static_assert(sizeof(CamOsIdr_t) >= sizeof(CamOsIdrLK_t), "CamOsIdr_t size defi
 
 #endif
 
-// common macro define
+// common cacro define
 #define RIU_BASE_ADDR           0x1F000000
 #define RIU_MEM_SIZE_OFFSET     0x2025A4
 #define RIU_CHIP_ID_OFFSET      0x003C00
@@ -353,13 +341,6 @@ _Static_assert(sizeof(CamOsIdr_t) >= sizeof(CamOsIdrLK_t), "CamOsIdr_t size defi
 #define INIT_MAGIC_NUM          0x55AA5AA5
 
 #define CAM_OS_MAX_LIST_LENGTH_BITS 20
-
-#define CAM_OS_WARN_TRACE_LR
-#ifdef CAM_OS_WARN_TRACE_LR
-#define CAM_OS_WARN(x)      CamOsPrintf("%s "x", LR:0x%08X\n", __FUNCTION__, __builtin_return_address(0))
-#else
-#define CAM_OS_WARN(x)      CamOsPrintf("%s "x"\n", __FUNCTION__)
-#endif
 
 typedef struct MemoryList_t
 {
@@ -539,7 +520,7 @@ static s32 _CamOsVsscanf(char* szBuf, char* szFmt, va_list tArgp)
             }
             else
             {
-                CamOsPrintf("%s error: unsupported format (\%%s)\n", __FUNCTION__, pFmt);
+                CamOsPrintf("_CamOsVsscanf error: unsupported format (\%%s)\n", pFmt);
             }
         }
     }
@@ -656,77 +637,48 @@ s32 CamOsSnprintf(char *szBuf, u32 nSize, const char *szFmt, ...)
 void CamOsHexdump(char *szBuf, u32 nSize)
 {
     int i, j;
-    int cx = 0;
-    char szLine[80] = {0};
+    char szAscii[17] = "";
 
     CamOsPrintf("\nOffset(h)  00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F\n"
-                "-----------------------------------------------------------\n");
-
-    if ((u32)szBuf % 16)
-    {
-        cx = 0;
-        cx += snprintf(szLine + cx, sizeof(szLine) - cx, "%08X  ", (u32)szBuf & 0xFFFFFFF0);
-
-        for (i = 0; i < (u32)szBuf % 16; i++)
-        {
-            cx += snprintf(szLine + cx, sizeof(szLine) - cx, "   ");
-            szLine[i + 62] = ' ';
-            if (i % 8 == 0)
-            {
-                cx += snprintf(szLine + cx, sizeof(szLine) - cx, " ");
-            }
-        }
-    }
-
+                "-----------------------------------------------------------");
     for (i = 0; i < nSize; i++)
     {
-        if ((i + (u32)szBuf) % 16 == 0)
+        if (i % 16 == 0)
         {
-            cx = 0;
-            cx += snprintf(szLine + cx, sizeof(szLine) - cx, "%08X  ", (u32)szBuf + i);
+            CamOsPrintf("\n%08X  ", i);
+            memset(szAscii, 0x00, sizeof(szAscii));
         }
-        if ((i + (u32)szBuf) % 8 == 0)
+        if (i % 8 == 0)
         {
-            cx += snprintf(szLine + cx, sizeof(szLine) - cx, " ");
+            CamOsPrintf(" ");
         }
 
-        cx += snprintf(szLine + cx, sizeof(szLine) - cx, "%02X ", szBuf[i]);
+        CamOsPrintf("%02X ", szBuf[i]);
 
         if (((unsigned char*)szBuf)[i] >= ' ' && ((unsigned char*)szBuf)[i] <= '~')
         {
-            szLine[(i + (u32)szBuf) % 16 + 62] = ((unsigned char*)szBuf)[i];
+            szAscii[i % 16] = ((unsigned char*)szBuf)[i];
         }
         else
         {
-            szLine[(i + (u32)szBuf) % 16 + 62] = '.';
+            szAscii[i % 16] = '.';
         }
 
-        if ((i + (u32)szBuf) % 16 == 15)
+        if (i % 16 == 15)
         {
-            szLine[59] = ' ';
-            szLine[60] = ' ';
-            szLine[61] = '|';
-            szLine[78] = '|';
-            szLine[79] = 0;
-            CamOsPrintf("%s\n", szLine);
+            CamOsPrintf(" |%s|", szAscii);
         }
         else if (i == nSize-1)
         {
-            for (j = ((i + (u32)szBuf) + 1) % 16; j < 16; j++)
+            for (j = (i+1) % 16; j < 16; ++j)
             {
-                cx += snprintf(szLine + cx, sizeof(szLine) - cx, "   ");
-                szLine[j + 62] = ' ';
+                CamOsPrintf("   ");
             }
-            if (((i + (u32)szBuf) + 1) % 16 <= 8)
+            if ((i+1) % 16 <= 8)
             {
-                cx += snprintf(szLine + cx, sizeof(szLine) - cx, " ");
+                CamOsPrintf(" ");
             }
-            szLine[59] = ' ';
-            szLine[60] = ' ';
-            szLine[61] = '|';
-            szLine[78] = '|';
-            szLine[79] = 0;
-            CamOsPrintf("%s\n", szLine);
+            CamOsPrintf(" |%s|", szAscii);
         }
     }
     CamOsPrintf("\n");
@@ -792,39 +744,13 @@ void CamOsUsDelay(u32 nUsec)
 #endif
 }
 
-#ifdef CAM_OS_RTK
-static void TimeNormalise(u32 *nSec, s32 *nNanoSec)
-{
-    while(*nNanoSec >= 1000000000)
-    {
-        ++(*nSec);
-        *nNanoSec -= 1000000000;
-    }
-
-    while(*nNanoSec <= 0)
-    {
-        --(*nSec);
-        *nNanoSec += 1000000000;
-    }
-
-    return;
-}
-#endif
-
 void CamOsGetTimeOfDay(CamOsTimespec_t *ptRes)
 {
 #ifdef CAM_OS_RTK
-    u32 nCurrSec = 0;
-    u32 nCurrNanoSec = 0;
-
     if(ptRes)
     {
-        CamOsGetMonotonicTime(ptRes);
-        nCurrSec = ptRes->nSec + _gTimeOfDayOffsetSec;
-        nCurrNanoSec = ptRes->nNanoSec + _gTimeOfDayOffsetNanoSec;
-        TimeNormalise(&nCurrSec, (s32 *)&nCurrNanoSec);
-        ptRes->nSec = nCurrSec;
-        ptRes->nNanoSec = nCurrNanoSec;
+        SysTimeGetUTCSeconds(&ptRes->nSec);
+        ptRes->nNanoSec = 0;
     }
 #elif defined(CAM_OS_LINUX_USER)
     struct timeval tTV;
@@ -848,17 +774,23 @@ void CamOsGetTimeOfDay(CamOsTimespec_t *ptRes)
 void CamOsSetTimeOfDay(const CamOsTimespec_t *ptRes)
 {
 #ifdef CAM_OS_RTK
-    CamOsTimespec_t tCurr = {0};
+    struct tm * tTm;
+    vm_rtcTimeFormat_t tLocalTime;
+    time_t nRawTime;
     if(ptRes)
     {
-        // Calculate time offset
-        CamOsGetMonotonicTime(&tCurr);
-        _gTimeOfDayOffsetSec = ptRes->nSec - tCurr.nSec;
-        _gTimeOfDayOffsetNanoSec = ptRes->nNanoSec - tCurr.nNanoSec;
+        nRawTime = (time_t)ptRes->nSec;
+        tTm = localtime(&nRawTime);
 
-        // Save time to RTC
-        DrvRtcInit();
-        DrvRtcSetSecondCount(ptRes->nSec);
+        tLocalTime.Year = tTm->tm_year;
+        tLocalTime.Month = tTm->tm_mon + 1;
+        tLocalTime.Day = tTm->tm_mday;
+        tLocalTime.DayOfWeek = tTm->tm_wday ? tTm->tm_wday : 7;
+        tLocalTime.Hour = tTm->tm_hour;
+        tLocalTime.Minute = tTm->tm_min;
+        tLocalTime.Second = tTm->tm_sec;
+
+        SysTimeSetTime(&tLocalTime);
     }
 #elif defined(CAM_OS_LINUX_USER)
     struct timeval tTV;
@@ -978,7 +910,7 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
     {
         if(!(ptTaskHandle = MsCallocateMem(sizeof(CamOsThreadHandleRtk_t))))
         {
-            CAM_OS_WARN("alloc handle fail");
+            CamOsPrintf("%s : Allocate ptHandle fail\n\r", __FUNCTION__);
             eRet = CAM_OS_ALLOCMEM_FAIL;
             break;
         }
@@ -987,7 +919,7 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
         ptTaskHandle->pArg   = pArg;
         if(!(ptTaskHandle->pStack = MsAllocateMem((nStkSz) ? nStkSz : CAM_OS_THREAD_STACKSIZE_DEFAULT)))
         {
-            CAM_OS_WARN("alloc stack fail");
+            CamOsPrintf("%s : Allocate stack fail\n\r", __FUNCTION__);
             eRet = CAM_OS_ALLOCMEM_FAIL;
             break;
         }
@@ -1010,7 +942,7 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
 
         if(MS_OK != MsCreateTask(&tTaskArgs))
         {
-            CAM_OS_WARN("create fail");
+            CamOsPrintf("%s : Create task fail\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
             break;
         }
@@ -1032,7 +964,7 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
         }
     }
 
-    //CamOsPrintf("%s get taskid: %d(%s)  priority: %d\n", __FUNCTION__, (u32)ptTaskHandle->eHandleObj, tTaskArgs.TaskName, tTaskArgs.Priority);
+    //CamOsPrintf("%s get taskid: %d(%s)  priority: %d\n\r", __FUNCTION__, (u32)ptTaskHandle->eHandleObj, tTaskArgs.TaskName, tTaskArgs.Priority);
 #elif defined(CAM_OS_LINUX_USER)
     CamOsThreadHandleLinuxUser_t *ptTaskHandle = NULL;
     struct sched_param tSched;
@@ -1044,7 +976,7 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
     {
         if(!(ptTaskHandle = CamOsMemCalloc(sizeof(CamOsThreadHandleLinuxUser_t), 1)))
         {
-            CAM_OS_WARN("alloc handle fail");
+            CamOsPrintf("%s : Allocate ptHandle fail\n\r", __FUNCTION__);
             eRet = CAM_OS_ALLOCMEM_FAIL;
             break;
         }
@@ -1066,13 +998,10 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
                     pthread_attr_getschedparam(&tAttr, &tSched);
                     pthread_attr_setinheritsched(&tAttr, PTHREAD_EXPLICIT_SCHED);
                     pthread_attr_setschedpolicy(&tAttr, SCHED_RR);
-                    if (ptAttrb->nPriority < 95)    // nPriority 71~94 mapping to Linux PrioRT 1~94
-                        tSched.sched_priority = (ptAttrb->nPriority - 71) * 93 / 23 + 1;
-                    else                            // nPriority 95~99 mapping to Linux PrioRT 95~99
-                        tSched.sched_priority = (ptAttrb->nPriority < 100)? ptAttrb->nPriority : 99;
+                    tSched.sched_priority = (ptAttrb->nPriority - 71) * 98 / 28 + 1;
                     if(0 != pthread_attr_setschedparam(&tAttr, &tSched))
                     {
-                        CAM_OS_WARN("set priority fail");
+                        CamOsPrintf("%s: pthread_attr_setschedparam failed\n\r", __FUNCTION__);
                         eRet = CAM_OS_FAIL;
                         break;
                     }
@@ -1083,7 +1012,7 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
                     if(0 != pthread_attr_setstacksize(&tAttr, (size_t) ptAttrb->nStackSize))
                     {
                         eRet = CAM_OS_FAIL;
-                        CAM_OS_WARN("set stack size fail");
+                        CamOsPrintf("%s pthread_attr_setstacksize failed\n\r", __FUNCTION__);
                         break;
                     }
                 }
@@ -1120,7 +1049,7 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
             }
             else
             {
-                CAM_OS_WARN("set priority fail");
+                CamOsPrintf("%s : set priority fail\n", __FUNCTION__);
             }
         }
 
@@ -1159,13 +1088,10 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
         }
         else if((ptAttrb->nPriority > 70) && (ptAttrb->nPriority <= 100))
         {
-            if (ptAttrb->nPriority < 95)    // nPriority 71~94 mapping to Linux PrioRT 1~94
-                tSched.sched_priority = (ptAttrb->nPriority - 71) * 93 / 23 + 1;
-            else                            // nPriority 95~99 mapping to Linux PrioRT 95~99
-                tSched.sched_priority = (ptAttrb->nPriority < 100)? ptAttrb->nPriority : 99;
+            tSched.sched_priority = (ptAttrb->nPriority - 71) * 98 / 28 + 1;
             if(sched_setscheduler(tpThreadHandle, SCHED_RR, &tSched) != 0)
             {
-                CAM_OS_WARN("set priority fail");
+                CamOsPrintf("%s sched_setscheduler err\n",__FUNCTION__);
             }
         }
     }
@@ -1175,7 +1101,9 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
 
     return eRet;
 }
-
+// [FIX ME]:sched_setscheduler seems not to work after pthread run in Linux
+//          kernel and user space
+#if 0
 CamOsRet_e CamOsThreadChangePriority(CamOsThread tThread, u32 nPriority)
 {
     CamOsRet_e eRet = CAM_OS_OK;
@@ -1195,39 +1123,18 @@ CamOsRet_e CamOsThreadChangePriority(CamOsThread tThread, u32 nPriority)
         eRet = CAM_OS_PARAM_ERR;
     }
 #elif defined(CAM_OS_LINUX_USER)
+    // [FIX ME]:sched_setscheduler seems not to work after pthread run
     CamOsThreadHandleLinuxUser_t *ptTaskHandle = (CamOsThreadHandleLinuxUser_t *)tThread;
-    struct sched_param tSched = { .sched_priority = 0 };
-    s32 nNiceVal = 0;
-
-    if(ptTaskHandle && (nPriority >= 0) && (nPriority <= 70))
+    struct sched_param tSched;
+    int policy;
+    if(ptTaskHandle && ptTaskHandle->tThreadHandle && nPriority > 0 && nPriority < 100)
     {
-        nPriority = nPriority? nPriority : 50;
-        if (nPriority <= 50)
-        {
-            nNiceVal = 19 - nPriority * 19 / 50;
-        }
-        else
-        {
-            nNiceVal = 50 - nPriority;
-        }
+        pthread_getschedparam(ptTaskHandle->tThreadHandle, &policy, &tSched);
+        tSched.sched_priority = nPriority;
 
-        setpriority(PRIO_PROCESS, ptTaskHandle->nPid, nNiceVal);
-        tSched.sched_priority = 0;
-        if(pthread_setschedparam(ptTaskHandle->tThreadHandle, SCHED_OTHER, &tSched) != 0)
+        if(0 != pthread_setschedparam(ptTaskHandle->tThreadHandle, policy, &tSched))
         {
-            CAM_OS_WARN("set priority fail");
-            eRet = CAM_OS_FAIL;
-        }
-    }
-    else if(ptTaskHandle && (nPriority > 70) && (nPriority <= 100))
-    {
-        if (nPriority < 95)     // nPriority 71~94 mapping to Linux PrioRT 1~94
-            tSched.sched_priority = (nPriority - 71) * 93 / 23 + 1;
-        else                    // nPriority 95~99 mapping to Linux PrioRT 95~99
-            tSched.sched_priority = (nPriority < 100)? nPriority : 99;
-        if(pthread_setschedparam(ptTaskHandle->tThreadHandle, SCHED_RR, &tSched) != 0)
-        {
-            CAM_OS_WARN("set priority fail");
+            CamOsPrintf("%s: pthread_setschedparam failed\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1236,39 +1143,16 @@ CamOsRet_e CamOsThreadChangePriority(CamOsThread tThread, u32 nPriority)
         eRet = CAM_OS_PARAM_ERR;
     }
 #elif defined(CAM_OS_LINUX_KERNEL)
+    // [FIX ME]:sched_setscheduler seems not to work after kthread run
     struct task_struct *tpThreadHandle = (struct task_struct *)tThread;
     struct sched_param tSched = { .sched_priority = 0 };
-    s32 nNiceVal = 0;
-
-    if(tpThreadHandle && (nPriority >= 0) && (nPriority <= 70))
+    if(tpThreadHandle && nPriority > 0 && nPriority < 100)
     {
-        nPriority = nPriority? nPriority : 50;
-        if (nPriority <= 50)
-        {
-            nNiceVal = 19 - nPriority * 19 / 50;
-        }
-        else
-        {
-            nNiceVal = 50 - nPriority;
-        }
+        tSched.sched_priority = nPriority;
 
-        set_user_nice(tpThreadHandle, nNiceVal);
-        tSched.sched_priority = 0;
-        if(sched_setscheduler(tpThreadHandle, SCHED_NORMAL, &tSched) != 0)
+        if(0 != sched_setscheduler(tpThreadHandle, SCHED_RR, &tSched))
         {
-            CAM_OS_WARN("set priority fail");
-            eRet = CAM_OS_FAIL;
-        }
-    }
-    else if(tpThreadHandle && (nPriority > 70) && (nPriority <= 100))
-    {
-        if (nPriority < 95)     // nPriority 71~94 mapping to Linux PrioRT 1~94
-            tSched.sched_priority = (nPriority - 71) * 93 / 23 + 1;
-        else                    // nPriority 95~99 mapping to Linux PrioRT 95~99
-            tSched.sched_priority = (nPriority < 100)? nPriority : 99;
-        if(sched_setscheduler(tpThreadHandle, SCHED_RR, &tSched) != 0)
-        {
-            CAM_OS_WARN("set priority fail");
+            CamOsPrintf("%s : pthread_setschedparam failed\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1279,7 +1163,7 @@ CamOsRet_e CamOsThreadChangePriority(CamOsThread tThread, u32 nPriority)
 #endif
     return eRet;
 }
-
+#endif
 CamOsRet_e CamOsThreadSchedule(u8 bInterruptible, u32 nMsec)
 {
     CamOsRet_e eRet = CAM_OS_OK;
@@ -1296,7 +1180,7 @@ CamOsRet_e CamOsThreadSchedule(u8 bInterruptible, u32 nMsec)
             eRet = CAM_OS_TIMEOUT;
     }
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     if(nMsec == CAM_OS_MAX_TIMEOUT)
@@ -1338,7 +1222,7 @@ CamOsRet_e CamOsThreadWakeUp(CamOsThread tThread)
         eRet = CAM_OS_PARAM_ERR;
     }
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     struct task_struct *tpThreadHandle = (struct task_struct *)tThread;
@@ -1386,7 +1270,7 @@ CamOsRet_e CamOsThreadJoin(CamOsThread tThread)
         eRet = CAM_OS_PARAM_ERR;
     }
 #elif defined(CAM_OS_LINUX_KERNEL)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #endif
     return eRet;
@@ -1405,7 +1289,7 @@ CamOsRet_e CamOsThreadStop(CamOsThread tThread)
         CAM_OS_CLEAR_BIT(eHandleObj, aThreadStopBitmap);
     }
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     struct task_struct *tpThreadHandle = (struct task_struct *)tThread;
@@ -1414,8 +1298,7 @@ CamOsRet_e CamOsThreadStop(CamOsThread tThread)
     {
         if(0 != (nErr = kthread_stop(tpThreadHandle)))
         {
-            CAM_OS_WARN("stop fail");
-            CamOsPrintf("%s Err=%d\n", __FUNCTION__, nErr);
+            CamOsPrintf("%s : kthread_stop failed(nErr=%d)\n\r", __FUNCTION__, nErr);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1434,7 +1317,7 @@ CamOsRet_e CamOsThreadShouldStop(void)
     if (!CAM_OS_TEST_BIT(MsCurrTask(), aThreadStopBitmap))
         eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     if(kthread_should_stop())
@@ -1481,7 +1364,7 @@ CamOsRet_e CamOsThreadSetName(CamOsThread tThread, const char *szName)
         }
         else
         {
-            CAM_OS_WARN("not support set by other thread (in uclibc?)");
+            CamOsPrintf("%s: Only support set thread name by itself in this libc(uclibc?)\n\r", __FUNCTION__);
         }
 #endif
     }
@@ -1490,7 +1373,7 @@ CamOsRet_e CamOsThreadSetName(CamOsThread tThread, const char *szName)
         eRet = CAM_OS_PARAM_ERR;
     }
 #elif defined(CAM_OS_LINUX_KERNEL)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #endif
 
@@ -1529,7 +1412,7 @@ CamOsRet_e CamOsThreadGetName(CamOsThread tThread, char *szName, u32 nLen)
         }
         else
         {
-            CAM_OS_WARN("not support set by other thread (in uclibc?)");
+            CamOsPrintf("%s: Only support get thread name by itself in this libc(uclibc?)\n\r", __FUNCTION__);
         }
 #endif
     }
@@ -1538,7 +1421,7 @@ CamOsRet_e CamOsThreadGetName(CamOsThread tThread, char *szName, u32 nLen)
         eRet = CAM_OS_PARAM_ERR;
     }
 #elif defined(CAM_OS_LINUX_KERNEL)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #endif
     return eRet;
@@ -1569,7 +1452,7 @@ CamOsRet_e CamOsMutexInit(CamOsMutex_t *ptMutex)
             {
                 if(CUS_OS_OK != MsInitMutex(&ptHandle->tMutex))
                 {
-                    CAM_OS_WARN("init fail");
+                    CamOsPrintf("%s : Init mutex fail\n\r", __FUNCTION__);
                     eRet = CAM_OS_FAIL;
                 }
                 else
@@ -1579,7 +1462,7 @@ CamOsRet_e CamOsMutexInit(CamOsMutex_t *ptMutex)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Mutex was already inited\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1598,7 +1481,7 @@ CamOsRet_e CamOsMutexInit(CamOsMutex_t *ptMutex)
             {
                 if(0 != pthread_mutex_init(&ptHandle->tMutex, NULL))
                 {
-                    CAM_OS_WARN("init fail");
+                    fprintf(stderr, "%s : Init mutex fail\n\r", __FUNCTION__);
                     eRet = CAM_OS_FAIL;
                 }
                 else
@@ -1608,7 +1491,7 @@ CamOsRet_e CamOsMutexInit(CamOsMutex_t *ptMutex)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Mutex was already inited\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1632,7 +1515,7 @@ CamOsRet_e CamOsMutexInit(CamOsMutex_t *ptMutex)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Mutex was already inited\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1653,7 +1536,7 @@ CamOsRet_e CamOsMutexDestroy(CamOsMutex_t *ptMutex)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Mutex not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -1669,7 +1552,7 @@ CamOsRet_e CamOsMutexDestroy(CamOsMutex_t *ptMutex)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Mutex not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -1688,7 +1571,7 @@ CamOsRet_e CamOsMutexDestroy(CamOsMutex_t *ptMutex)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Mutex not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -1716,7 +1599,7 @@ CamOsRet_e CamOsMutexLock(CamOsMutex_t *ptMutex)
 
         if(CUS_OS_OK != MsMutexLock(&ptHandle->tMutex))
         {
-            CAM_OS_WARN("lock fail");
+            CamOsPrintf("%s : Lock mutex fail\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1736,7 +1619,7 @@ CamOsRet_e CamOsMutexLock(CamOsMutex_t *ptMutex)
 
         if(0 != (nErr = pthread_mutex_lock(&ptHandle->tMutex)))
         {
-            CAM_OS_WARN("lock fail");
+            fprintf(stderr, "%s : Lock mutex fail, err %d\n\r", __FUNCTION__, nErr);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1781,7 +1664,7 @@ CamOsRet_e CamOsMutexTryLock(CamOsMutex_t *ptMutex)
         }
         else
         {
-            CAM_OS_WARN("lock fail");
+            CamOsPrintf("%s : MsMutexLock failed\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1807,7 +1690,7 @@ CamOsRet_e CamOsMutexTryLock(CamOsMutex_t *ptMutex)
             }
             else
             {
-                CAM_OS_WARN("lock fail");
+                fprintf(stderr, "%s : Lock mutex fail, err %d\n\r", __FUNCTION__, nErr);
                 eRet = CAM_OS_FAIL;
             }
         }
@@ -1850,7 +1733,7 @@ CamOsRet_e CamOsMutexUnlock(CamOsMutex_t *ptMutex)
 
         if(CUS_OS_OK != MsMutexUnlock(&ptHandle->tMutex))
         {
-            CAM_OS_WARN("unlock fail");
+            CamOsPrintf("%s : Unlock mutex fail\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1870,7 +1753,7 @@ CamOsRet_e CamOsMutexUnlock(CamOsMutex_t *ptMutex)
 
         if(0 != (nErr = pthread_mutex_unlock(&ptHandle->tMutex)))
         {
-            CAM_OS_WARN("unlock fail");
+            fprintf(stderr, "%s : Unlock mutex fail, err %d\n\r", __FUNCTION__, nErr);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1910,7 +1793,7 @@ CamOsRet_e CamOsTsemInit(CamOsTsem_t *ptTsem, u32 nVal)
 
             if(CUS_OS_OK != MsCreateDynSemExtend(&ptHandle->pTsem, CAM_OS_MAX_INT - 1, nVal))
             {
-                CAM_OS_WARN("init fail");
+                CamOsPrintf("%s : Init semaphore fail, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
                 eRet = CAM_OS_FAIL;
             }
             else
@@ -1920,7 +1803,7 @@ CamOsRet_e CamOsTsemInit(CamOsTsem_t *ptTsem, u32 nVal)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Semaphore was already inited, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1938,7 +1821,7 @@ CamOsRet_e CamOsTsemInit(CamOsTsem_t *ptTsem, u32 nVal)
 
             if(0 != sem_init(&ptHandle->tSem, 1, nVal))
             {
-                CAM_OS_WARN("init fail");
+                CamOsPrintf("%s : Init semaphore fail, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
                 eRet = CAM_OS_FAIL;
             }
             else
@@ -1948,7 +1831,7 @@ CamOsRet_e CamOsTsemInit(CamOsTsem_t *ptTsem, u32 nVal)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Semaphore was already inited, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1971,7 +1854,7 @@ CamOsRet_e CamOsTsemInit(CamOsTsem_t *ptTsem, u32 nVal)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Semaphore was already inited, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
     }
@@ -1992,7 +1875,7 @@ CamOsRet_e CamOsTsemDeinit(CamOsTsem_t *ptTsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else
@@ -2011,7 +1894,7 @@ CamOsRet_e CamOsTsemDeinit(CamOsTsem_t *ptTsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else if(0 != sem_destroy(&ptHandle->tSem))
@@ -2032,7 +1915,7 @@ CamOsRet_e CamOsTsemDeinit(CamOsTsem_t *ptTsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else
@@ -2053,7 +1936,7 @@ void CamOsTsemUp(CamOsTsem_t *ptTsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
         else
             MsProduceDynSem(ptHandle->pTsem);
     }
@@ -2062,7 +1945,7 @@ void CamOsTsemUp(CamOsTsem_t *ptTsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
         else
             sem_post(&ptHandle->tSem);
     }
@@ -2071,7 +1954,7 @@ void CamOsTsemUp(CamOsTsem_t *ptTsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
         else
             up(&ptHandle->tSem);
     }
@@ -2085,7 +1968,7 @@ void CamOsTsemDown(CamOsTsem_t *ptTsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
         else
             MsConsumeDynSem(ptHandle->pTsem);
     }
@@ -2094,7 +1977,7 @@ void CamOsTsemDown(CamOsTsem_t *ptTsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
         else
             sem_wait(&ptHandle->tSem);
     }
@@ -2103,7 +1986,7 @@ void CamOsTsemDown(CamOsTsem_t *ptTsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
         else
             down(&ptHandle->tSem);
     }
@@ -2119,7 +2002,7 @@ CamOsRet_e CamOsTsemDownInterruptible(CamOsTsem_t *ptTsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else
@@ -2135,7 +2018,7 @@ CamOsRet_e CamOsTsemDownInterruptible(CamOsTsem_t *ptTsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else
@@ -2151,7 +2034,7 @@ CamOsRet_e CamOsTsemDownInterruptible(CamOsTsem_t *ptTsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else
@@ -2179,7 +2062,7 @@ CamOsRet_e CamOsTsemTimedDown(CamOsTsem_t *ptTsem, u32 nMsec)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else if(CUS_OS_NO_MESSAGE == MsConsumeDynSemDelay(ptHandle->pTsem, RTK_MS_TO_TICK(nMsec)))
@@ -2197,7 +2080,7 @@ CamOsRet_e CamOsTsemTimedDown(CamOsTsem_t *ptTsem, u32 nMsec)
     if(ptHandle)
     {
         if(clock_gettime(CLOCK_REALTIME, &tFinalTime) == -1)
-            CAM_OS_WARN("clock_gettime fail");
+            CamOsPrintf("%s : clock_gettime fail, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
 
         nNanoDelay = (nMsec * 1000000LL) + tFinalTime.tv_nsec;
         tFinalTime.tv_sec += (nNanoDelay / 1000000000LL);
@@ -2205,7 +2088,7 @@ CamOsRet_e CamOsTsemTimedDown(CamOsTsem_t *ptTsem, u32 nMsec)
 
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else if(0 != sem_timedwait(&ptHandle->tSem, &tFinalTime))
@@ -2216,7 +2099,7 @@ CamOsRet_e CamOsTsemTimedDown(CamOsTsem_t *ptTsem, u32 nMsec)
             }
             else
             {
-                CAM_OS_WARN("down fail");
+                CamOsPrintf("%s : sem_timedwait failed(errno=%d), Lr:0x%08X\n\r", __FUNCTION__, errno, __builtin_return_address(0));
                 eRet = CAM_OS_FAIL;
             }
         }
@@ -2231,7 +2114,7 @@ CamOsRet_e CamOsTsemTimedDown(CamOsTsem_t *ptTsem, u32 nMsec)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else if(0 != down_timeout(&ptHandle->tSem, msecs_to_jiffies(nMsec)))
@@ -2254,7 +2137,7 @@ CamOsRet_e CamOsTsemTryDown(CamOsTsem_t *ptTsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else if(CUS_OS_UNIT_NOAVAIL == MsPollDynSem(ptHandle->pTsem))
@@ -2263,7 +2146,7 @@ CamOsRet_e CamOsTsemTryDown(CamOsTsem_t *ptTsem)
         }
         else
         {
-            CAM_OS_WARN("down fail");
+            CamOsPrintf("%s : MsPollDynSem failed, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
     }
@@ -2277,7 +2160,7 @@ CamOsRet_e CamOsTsemTryDown(CamOsTsem_t *ptTsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else if(0 != sem_trywait(&ptHandle->tSem))
@@ -2288,7 +2171,7 @@ CamOsRet_e CamOsTsemTryDown(CamOsTsem_t *ptTsem)
             }
             else
             {
-                CAM_OS_WARN("down fail");
+                CamOsPrintf("%s : sem_trywait failed(errno=%d), Lr:0x%08X\n\r", __FUNCTION__, errno, __builtin_return_address(0));
                 eRet = CAM_OS_FAIL;
             }
         }
@@ -2304,12 +2187,12 @@ CamOsRet_e CamOsTsemTryDown(CamOsTsem_t *ptTsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Semaphore not init, Lr:0x%08X\n\r", __FUNCTION__, __builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
         else if(0 != (nErr = down_trylock(&ptHandle->tSem)))
         {
-            CAM_OS_WARN("down fail");
+            CamOsPrintf("%s : down_trylock failed(nErr=%d), Lr:0x%08X\n\r", __FUNCTION__, nErr, __builtin_return_address(0));
             eRet = CAM_OS_RESOURCE_BUSY;
         }
     }
@@ -2333,7 +2216,7 @@ CamOsRet_e CamOsRwsemInit(CamOsRwsem_t *ptRwsem)
             if(CUS_OS_OK != MsInitMutex(&ptHandle->tRMutex) ||
                CUS_OS_OK != MsCreateDynSem(&ptHandle->pWTsem, 1))
             {
-                CAM_OS_WARN("init fail");
+                CamOsPrintf("%s : Init rw semaphore fail\n\r", __FUNCTION__);
                 eRet = CAM_OS_FAIL;
             }
             else
@@ -2344,7 +2227,7 @@ CamOsRet_e CamOsRwsemInit(CamOsRwsem_t *ptRwsem)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Rw semaphore was already inited\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -2362,7 +2245,7 @@ CamOsRet_e CamOsRwsemInit(CamOsRwsem_t *ptRwsem)
 
             if(0 != pthread_rwlock_init(&ptHandle->tRwsem, NULL))
             {
-                CAM_OS_WARN("init fail");
+                CamOsPrintf("%s : Init rw semaphore fail\n\r", __FUNCTION__);
                 eRet = CAM_OS_FAIL;
             }
             else
@@ -2372,7 +2255,7 @@ CamOsRet_e CamOsRwsemInit(CamOsRwsem_t *ptRwsem)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Rw semaphore was already inited\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -2395,7 +2278,7 @@ CamOsRet_e CamOsRwsemInit(CamOsRwsem_t *ptRwsem)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Rw semaphore was already inited\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -2416,7 +2299,7 @@ CamOsRet_e CamOsRwsemDeinit(CamOsRwsem_t *ptRwsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -2435,7 +2318,7 @@ CamOsRet_e CamOsRwsemDeinit(CamOsRwsem_t *ptRwsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else if(0 != pthread_rwlock_destroy(&ptHandle->tRwsem))
@@ -2456,7 +2339,7 @@ CamOsRet_e CamOsRwsemDeinit(CamOsRwsem_t *ptRwsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -2477,7 +2360,7 @@ void CamOsRwsemUpRead(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
         {
             MsMutexLock(&ptHandle->tRMutex);
@@ -2492,7 +2375,7 @@ void CamOsRwsemUpRead(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
             pthread_rwlock_unlock(&ptHandle->tRwsem);
     }
@@ -2501,7 +2384,7 @@ void CamOsRwsemUpRead(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
             up_read(&ptHandle->tRwsem);
     }
@@ -2515,7 +2398,7 @@ void CamOsRwsemUpWrite(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
             MsProduceDynSem(ptHandle->pWTsem);
     }
@@ -2524,7 +2407,7 @@ void CamOsRwsemUpWrite(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
             pthread_rwlock_unlock(&ptHandle->tRwsem);
     }
@@ -2533,7 +2416,7 @@ void CamOsRwsemUpWrite(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
             up_write(&ptHandle->tRwsem);
     }
@@ -2547,7 +2430,7 @@ void CamOsRwsemDownRead(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
         {
             MsMutexLock(&ptHandle->tRMutex);
@@ -2562,7 +2445,7 @@ void CamOsRwsemDownRead(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
             pthread_rwlock_rdlock(&ptHandle->tRwsem);
     }
@@ -2571,7 +2454,7 @@ void CamOsRwsemDownRead(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
             down_read(&ptHandle->tRwsem);
     }
@@ -2585,7 +2468,7 @@ void CamOsRwsemDownWrite(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
             MsConsumeDynSem(ptHandle->pWTsem);
     }
@@ -2594,7 +2477,7 @@ void CamOsRwsemDownWrite(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
             pthread_rwlock_wrlock(&ptHandle->tRwsem);
     }
@@ -2603,7 +2486,7 @@ void CamOsRwsemDownWrite(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else
             down_write(&ptHandle->tRwsem);
     }
@@ -2618,7 +2501,7 @@ CamOsRet_e CamOsRwsemTryDownRead(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else if(CUS_OS_UNIT_NOAVAIL == MsMutexTryLock(&ptHandle->tRMutex))
             eRet = CAM_OS_RESOURCE_BUSY;
         else
@@ -2645,7 +2528,7 @@ CamOsRet_e CamOsRwsemTryDownRead(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else if(0 != (nErr = pthread_rwlock_tryrdlock(&ptHandle->tRwsem)))
         {
             if(nErr == EBUSY)
@@ -2654,7 +2537,7 @@ CamOsRet_e CamOsRwsemTryDownRead(CamOsRwsem_t *ptRwsem)
             }
             else
             {
-                CAM_OS_WARN("lock fail");
+                CamOsPrintf("%s : pthread_rwlock_tryrdlock failed(nErr=%d)\n\r", __FUNCTION__, nErr);
                 eRet = CAM_OS_FAIL;
             }
         }
@@ -2669,7 +2552,7 @@ CamOsRet_e CamOsRwsemTryDownRead(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else if(1 != (nErr = down_read_trylock(&ptHandle->tRwsem)))
         {
             eRet = CAM_OS_RESOURCE_BUSY;
@@ -2692,7 +2575,7 @@ CamOsRet_e CamOsRwsemTryDownWrite(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else if(CUS_OS_UNIT_NOAVAIL == MsPollDynSem(ptHandle->pWTsem))
         {
             eRet = CAM_OS_RESOURCE_BUSY;
@@ -2708,7 +2591,7 @@ CamOsRet_e CamOsRwsemTryDownWrite(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else if(0 != (nErr = pthread_rwlock_trywrlock(&ptHandle->tRwsem)))
         {
             if(nErr == EBUSY)
@@ -2717,7 +2600,7 @@ CamOsRet_e CamOsRwsemTryDownWrite(CamOsRwsem_t *ptRwsem)
             }
             else
             {
-                CAM_OS_WARN("lock fail");
+                CamOsPrintf("%s : pthread_rwlock_trywrlock failed(nErr=%d)\n\r", __FUNCTION__, nErr);
                 eRet = CAM_OS_FAIL;
             }
         }
@@ -2732,7 +2615,7 @@ CamOsRet_e CamOsRwsemTryDownWrite(CamOsRwsem_t *ptRwsem)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Rw semaphore not init\n\r", __FUNCTION__);
         else if(1 != (nErr = down_write_trylock(&ptHandle->tRwsem)))
         {
             eRet = CAM_OS_RESOURCE_BUSY;
@@ -2759,7 +2642,7 @@ CamOsRet_e CamOsTcondInit(CamOsTcond_t *ptTcond)
 
             if(CUS_OS_OK != MsCreateDynSem(&ptHandle->pTsem, 0))
             {
-                CAM_OS_WARN("create fail");
+                CamOsPrintf("%s : MsCreateDynSem fail\n\r", __FUNCTION__);
                 eRet = CAM_OS_FAIL;
             }
             else
@@ -2769,7 +2652,7 @@ CamOsRet_e CamOsTcondInit(CamOsTcond_t *ptTcond)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Condition was already inited,Lr=0x%08x\n\r", __FUNCTION__,__builtin_return_address(0));
             eRet = CAM_OS_FAIL;
         }
     }
@@ -2789,18 +2672,18 @@ CamOsRet_e CamOsTcondInit(CamOsTcond_t *ptTcond)
             if(0 != pthread_condattr_init(&cattr) ||
                     0 != pthread_condattr_setclock(&cattr, CLOCK_MONOTONIC))
             {
-                CAM_OS_WARN("pthread_condattr_init fail");
+                CamOsPrintf("%s : pthread_condattr_init failed(errno=%d)\n\r", __FUNCTION__, errno);
                 eRet = CAM_OS_FAIL;
             }
 
             if(0 != pthread_cond_init(&ptHandle->tCondition, &cattr))
             {
-                CAM_OS_WARN("pthread_cond_init fail");
+                CamOsPrintf("%s : pthread_cond_init failed(errno=%d)\n\r", __FUNCTION__, errno);
                 eRet = CAM_OS_FAIL;
             }
             if(0 != pthread_mutex_init(&ptHandle->tMutex, NULL))
             {
-                CAM_OS_WARN("pthread_mutex_init fail");
+                CamOsPrintf("%s : pthread_mutex_init failed(errno=%d)\n\r", __FUNCTION__, errno);
                 eRet = CAM_OS_FAIL;
             }
             else
@@ -2810,7 +2693,7 @@ CamOsRet_e CamOsTcondInit(CamOsTcond_t *ptTcond)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Condition was already inited\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -2833,7 +2716,7 @@ CamOsRet_e CamOsTcondInit(CamOsTcond_t *ptTcond)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Condition was already inited\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -2854,7 +2737,7 @@ CamOsRet_e CamOsTcondDeinit(CamOsTcond_t *ptTcond)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -2873,7 +2756,7 @@ CamOsRet_e CamOsTcondDeinit(CamOsTcond_t *ptTcond)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -2893,7 +2776,7 @@ CamOsRet_e CamOsTcondDeinit(CamOsTcond_t *ptTcond)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -2914,7 +2797,7 @@ void CamOsTcondSignal(CamOsTcond_t *ptTcond)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
         else
             MsProduceSafeDynSem(ptHandle->pTsem, 0);
     }
@@ -2923,7 +2806,7 @@ void CamOsTcondSignal(CamOsTcond_t *ptTcond)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
         else
         {
             pthread_mutex_lock(&ptHandle->tMutex);
@@ -2936,7 +2819,7 @@ void CamOsTcondSignal(CamOsTcond_t *ptTcond)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
         else
             complete(&ptHandle->tCompletion);
     }
@@ -2950,7 +2833,7 @@ void CamOsTcondSignalAll(CamOsTcond_t *ptTcond)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
         else
             MsProduceSafeDynSem(ptHandle->pTsem, 1);
     }
@@ -2959,7 +2842,7 @@ void CamOsTcondSignalAll(CamOsTcond_t *ptTcond)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
         else
         {
             pthread_mutex_lock(&ptHandle->tMutex);
@@ -2972,7 +2855,7 @@ void CamOsTcondSignalAll(CamOsTcond_t *ptTcond)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
         else
         {
             complete_all(&ptHandle->tCompletion);
@@ -2988,7 +2871,7 @@ void CamOsTcondWait(CamOsTcond_t *ptTcond)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
         else
             MsConsumeAllDynSem(ptHandle->pTsem);
     }
@@ -2997,7 +2880,7 @@ void CamOsTcondWait(CamOsTcond_t *ptTcond)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
         else
         {
             pthread_mutex_lock(&ptHandle->tMutex);
@@ -3011,7 +2894,7 @@ void CamOsTcondWait(CamOsTcond_t *ptTcond)
     if(ptHandle)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
         else
         {
             reinit_completion(&ptHandle->tCompletion);
@@ -3030,7 +2913,7 @@ CamOsRet_e CamOsTcondTimedWait(CamOsTcond_t *ptTcond, u32 nMsec)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else if(CUS_OS_NO_MESSAGE == MsConsumeAllDynSemDelay(ptHandle->pTsem, RTK_MS_TO_TICK(nMsec)))
@@ -3050,13 +2933,13 @@ CamOsRet_e CamOsTcondTimedWait(CamOsTcond_t *ptTcond, u32 nMsec)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
         {
             if(clock_gettime(CLOCK_MONOTONIC, &tFinalTime) == -1)
-                CAM_OS_WARN("clock_gettime fail");
+                CamOsPrintf("%s : clock_gettime fail\n\r", __FUNCTION__);
 
             nNanoDelay = (nMsec * 1000000LL) + tFinalTime.tv_nsec;
             tFinalTime.tv_sec += (nNanoDelay / 1000000000LL);
@@ -3079,7 +2962,7 @@ CamOsRet_e CamOsTcondTimedWait(CamOsTcond_t *ptTcond, u32 nMsec)
             }
             else
             {
-                CAM_OS_WARN("pthread_cond_timedwait fail");
+                CamOsPrintf("%s : pthread_cond_timedwait failed(errno=%d)\n\r", __FUNCTION__, errno);
                 eRet = CAM_OS_FAIL;
             }
         }
@@ -3094,7 +2977,7 @@ CamOsRet_e CamOsTcondTimedWait(CamOsTcond_t *ptTcond, u32 nMsec)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -3127,7 +3010,7 @@ CamOsRet_e CamOsTcondWaitInterruptible(CamOsTcond_t *ptTcond)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -3155,7 +3038,7 @@ CamOsRet_e CamOsTcondTimedWaitInterruptible(CamOsTcond_t *ptTcond, u32 nMsec)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -3190,7 +3073,7 @@ CamOsRet_e CamOsTcondWaitActive(CamOsTcond_t *ptTcond)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -3209,7 +3092,7 @@ CamOsRet_e CamOsTcondWaitActive(CamOsTcond_t *ptTcond)
         eRet = CAM_OS_PARAM_ERR;
     }
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     CamOsTcondLK_t *ptHandle = (CamOsTcondLK_t *)ptTcond;
@@ -3217,7 +3100,7 @@ CamOsRet_e CamOsTcondWaitActive(CamOsTcond_t *ptTcond)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("not inited");
+            CamOsPrintf("%s : Condition not init\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
         else
@@ -3265,7 +3148,7 @@ CamOsRet_e CamOsSpinInit(CamOsSpinlock_t *ptSpinlock)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Spinlock was already inited\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -3300,7 +3183,7 @@ CamOsRet_e CamOsSpinInit(CamOsSpinlock_t *ptSpinlock)
         }
         else
         {
-            CAM_OS_WARN("already inited");
+            CamOsPrintf("%s : Spinlock was already inited\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -3420,7 +3303,7 @@ CamOsRet_e CamOsSpinLockIrqSave(CamOsSpinlock_t *ptSpinlock)
         eRet = CAM_OS_PARAM_ERR;
     }
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     CamOsSpinlockLK_t *ptHandle = (CamOsSpinlockLK_t *)ptSpinlock;
@@ -3455,7 +3338,7 @@ CamOsRet_e CamOsSpinUnlockIrqRestore(CamOsSpinlock_t *ptSpinlock)
         eRet = CAM_OS_PARAM_ERR;
     }
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     CamOsSpinlockLK_t *ptHandle = (CamOsSpinlockLK_t *)ptSpinlock;
@@ -3533,23 +3416,10 @@ void CamOsMemFlush(void* pPtr, u32 nSize)
     sys_flush_data_cache_buffer((u32)pPtr, nSize);
 #elif defined(CAM_OS_LINUX_USER)
     // TODO: implement cache flush in linux user space.
-    CAM_OS_WARN("not support in "OS_NAME);
 #elif defined(CAM_OS_LINUX_KERNEL)
     //flush_icache_range((unsigned long)pPtr, nSize);
     Chip_Flush_Cache_Range((unsigned long)pPtr, nSize);
     Chip_Flush_Memory();
-#endif
-}
-
-void CamOsMemInvalidate(void* pPtr, u32 nSize)
-{
-#ifdef CAM_OS_RTK
-    sys_Invalidate_data_cache_buffer((u32)pPtr, nSize);
-#elif defined(CAM_OS_LINUX_USER)
-    // TODO: implement cache flush in linux user space.
-    CAM_OS_WARN("not support in "OS_NAME);
-#elif defined(CAM_OS_LINUX_KERNEL)
-    Chip_Inv_Cache_Range((unsigned long)pPtr, nSize);
 #endif
 }
 
@@ -3653,7 +3523,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
         eRet = CAM_OS_FAIL;
     }
 
-    /*CamOsPrintf("%s    0x%08X  0x%08X  0x%08X\n",
+    /*CamOsPrintf("%s    0x%08X  0x%08X  0x%08X\r\n",
             __FUNCTION__,
             (u32)*ppVirtPtr,
             (u32)*ppPhysPtr,
@@ -3764,7 +3634,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
         if(pMmapPtr == (void *) - 1)
         {
             ioctl(nMsysFd, IOCTL_MSYS_RELEASE_DMEM, ptMsysMem);
-            fprintf(stderr, "%s failed!! physAddr<0x%x> size<0x%x> errno<%d, %s> \n",
+            fprintf(stderr, "%s failed!! physAddr<0x%x> size<0x%x> errno<%d, %s> \r\n",
                     __FUNCTION__,
                     (u32)ptMsysMem->phys,
                     (u32)ptMsysMem->length, errno, strerror(errno));
@@ -3774,7 +3644,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
         }
         ASSIGN_POINTER_VALUE(ppVirtPtr, pMmapPtr);
 
-        fprintf(stderr, "%s <%s> physAddr<0x%x> size<%d>\n",
+        fprintf(stderr, "%s <%s> physAddr<0x%x> size<%d>\r\n",
                 __FUNCTION__,
                 szName, (u32)ptMsysMem->phys,
                 (u32)ptMsysMem->length);
@@ -3823,7 +3693,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
 
             if(ptTmp->pPtr && ptTmp->szName && 0 == strcmp(szName, ptTmp->szName))
             {
-                printk(KERN_WARNING "%s name conflict: %s\n", __FUNCTION__, szName);
+                printk(KERN_WARNING "%s request same dmem name: %s\n", __FUNCTION__, szName);
                 eRet = CAM_OS_PARAM_ERR;
             }
         }
@@ -3838,7 +3708,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
 
         if(0 == (ptDmem = (MSYS_DMEM_INFO *)kzalloc(sizeof(MSYS_DMEM_INFO), GFP_KERNEL)))
         {
-            printk(KERN_WARNING "%s alloc DMEM INFO fail\n", __FUNCTION__);
+            printk(KERN_WARNING "%s kzalloc MSYS_DMEM_INFO fail\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
             break;
         }
@@ -3848,7 +3718,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
 
         if(0 != msys_request_dmem(ptDmem))
         {
-            printk(KERN_WARNING "%s request dmem fail\n", __FUNCTION__);
+            printk(KERN_WARNING "%s msys_request_dmem fail\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
             break;
         }
@@ -3857,7 +3727,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
         ASSIGN_POINTER_VALUE(ppMiuPtr, (void *)(uintptr_t)Chip_Phys_to_MIU(ptDmem->phys));
         ASSIGN_POINTER_VALUE(ppPhysPtr, (void *)(uintptr_t)ptDmem->phys);
 
-        printk(KERN_INFO "%s <%s> physAddr<0x%08X> size<%d>\n",
+        printk(KERN_INFO "%s <%s> physAddr<0x%08X> size<%d>  \r\n",
                __FUNCTION__,
                szName,
                (u32)ptDmem->phys,
@@ -3866,7 +3736,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
         mutex_lock(&_gtMemLock);
         if(0 == (ptNewEntry = (MemoryList_t*) kzalloc(sizeof(MemoryList_t), GFP_KERNEL)))
         {
-            printk(KERN_WARNING "%s alloc entry fail\n", __FUNCTION__);
+            printk(KERN_WARNING "%s kzalloc MemoryList_t fail\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
             break;
         }
@@ -3874,7 +3744,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
         ptNewEntry->pMemifoPtr = (void *) ptDmem;
         if(0 == (ptNewEntry->szName = (char *)kzalloc(strlen(szName) + 1, GFP_KERNEL)))
         {
-            printk(KERN_WARNING "%s alloc entry name fail\n", __FUNCTION__);
+            printk(KERN_WARNING "%s kzalloc MemoryList_t szName fail\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
             break;
         }
@@ -3919,7 +3789,7 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
     if(pVirtPtr)
     {
         MsReleaseMemory(pVirtPtr);
-        //CamOsPrintf("%s do release\n", __FUNCTION__);
+        //CamOsPrintf("%s do release\n\r", __FUNCTION__);
 
         _CheckDmemInfoListInited();
 
@@ -3973,7 +3843,7 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
             pthread_mutex_unlock(&_gtMemLock);
             if(pMsysMem == NULL)
             {
-                fprintf(stderr, "%s find Msys_DMEM_Info node failed!! <0x%08X>\n", __FUNCTION__, (u32)pVirtPtr);
+                fprintf(stderr, "%s find Msys_DMEM_Info node failed!! <0x%08X>  \r\n", __FUNCTION__, (u32)pVirtPtr);
                 eRet = CAM_OS_FAIL;
                 break;
             }
@@ -3983,7 +3853,7 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
                 nErr = munmap((void *)pVirtPtr, pMsysMem->length);
                 if(0 != nErr)
                 {
-                    fprintf(stderr, "%s munmap failed!! <0x%08X> size<%d> err<%d> errno<%d, %s>\n",
+                    fprintf(stderr, "%s munmap failed!! <0x%08X> size<%d> err<%d> errno<%d, %s> \r\n",
                             __FUNCTION__, (u32)pVirtPtr, (u32)pMsysMem->length, nErr, errno, strerror(errno));
                 }
             }
@@ -3992,7 +3862,7 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
                 nErr = munmap((void *)pVirtPtr, nSize);
                 if(0 != nErr)
                 {
-                    fprintf(stderr, "%s munmap failed!! <0x%08X> size<%d> err<%d> errno<%d, %s>\n",
+                    fprintf(stderr, "%s munmap failed!! <0x%08X> size<%d> err<%d> errno<%d, %s> \r\n",
                             __FUNCTION__, (u32)pVirtPtr, (u32)nSize, nErr, errno, strerror(errno));
                 }
             }
@@ -4059,7 +3929,7 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
             mutex_unlock(&_gtMemLock);
             if(tpDmem == NULL)
             {
-                printk(KERN_WARNING "%s find node fail <0x%08X>\n", __FUNCTION__, (u32)pVirtPtr);
+                printk(KERN_WARNING "%s find Msys_DMEM_Info node failed!! <0x%08X>  \r\n", __FUNCTION__, (u32)pVirtPtr);
                 eRet = CAM_OS_FAIL;
                 break;
             }
@@ -4204,7 +4074,7 @@ CamOsRet_e CamOsDirectMemStat(void)
 
         if(ptTmp->pPtr)
         {
-            printk(KERN_WARNING "%s allocated 0x%08X %s\n", __FUNCTION__, (u32)ptTmp->pPtr, ptTmp->szName);
+            printk(KERN_WARNING "%s memory allocated 0x%08X %s\n", __FUNCTION__, (u32)ptTmp->pPtr, ptTmp->szName);
         }
     }
     mutex_unlock(&_gtMemLock);
@@ -4256,8 +4126,7 @@ void* CamOsDirectMemPhysToMiu(void* pPtr)
     }
     else
     {
-        CAM_OS_WARN("wrong addr");
-        CamOsPrintf("%s input MIU addr 0x%08X\n", __FUNCTION__, (u32)pPtr);
+        CamOsPrintf("CamOs WARNING: PhysToMiu input a MIU addr 0x%08X\n", (u32)pPtr);
     }
 
     return pPtr;
@@ -4304,8 +4173,7 @@ void* CamOsDirectMemMiuToPhys(void* pPtr)
 #elif defined(CAM_OS_LINUX_KERNEL)
     if((u32)pPtr & 0xF0000000)
     {
-        CAM_OS_WARN("wrong addr");
-        CamOsPrintf("%s input PHYS addr 0x%08X\n", __FUNCTION__, (u32)pPtr);
+        CamOsPrintf("CamOs WARNING: MiuToPhys input a PHYS addr 0x%08X\n", (u32)pPtr);
     }
     else
     {
@@ -4322,7 +4190,6 @@ void* CamOsDirectMemPhysToVirt(void* pPtr)
     return MsPA2VA(pPtr);
 #elif defined(CAM_OS_LINUX_USER)
     // TODO: implement PhysToVirt in linux user space.
-    CAM_OS_WARN("not support in "OS_NAME);
     return NULL;
 #elif defined(CAM_OS_LINUX_KERNEL)
 #if 0
@@ -4351,7 +4218,6 @@ void* CamOsDirectMemVirtToPhys(void* pPtr)
     return MsVA2PA(pPtr);
 #elif defined(CAM_OS_LINUX_USER)
     // TODO: implement VirtToPhys in linux user space.
-    CAM_OS_WARN("not support in "OS_NAME);
     return NULL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     return (void *)virt_to_phys(pPtr);
@@ -4394,8 +4260,7 @@ void* CamOsPhyMemMap(void* pPhyPtr, u32 nSize, u8 bNonCache)
     }
     else
     {
-        CAM_OS_WARN("wrong addr");
-        CamOsPrintf("%s input MIU addr 0x%08X\n", __FUNCTION__, (u32)pPhyPtr);
+        CamOsPrintf("CamOs WARNING: PhysToMiu input a MIU addr 0x%08X\n", (u32)pPhyPtr);
         return NULL;
     }
 
@@ -4435,7 +4300,7 @@ void* CamOsPhyMemMap(void* pPhyPtr, u32 nSize, u8 bNonCache)
     pSgTable = kmalloc(sizeof(struct sg_table), GFP_KERNEL);
     if(!pSgTable)
     {
-        CAM_OS_WARN("kmalloc fail");
+        CamOsPrintf("%s: kmalloc fail\r\n", __FUNCTION__);
         return NULL;
     }
 
@@ -4443,7 +4308,7 @@ void* CamOsPhyMemMap(void* pPhyPtr, u32 nSize, u8 bNonCache)
 
     if(unlikely(nRet))
     {
-        CAM_OS_WARN("sg_alloc_table fail");
+        CamOsPrintf("%s: sg_alloc_table fail\r\n", __FUNCTION__);
         kfree(pSgTable);
         return NULL;
     }
@@ -4454,8 +4319,7 @@ void* CamOsPhyMemMap(void* pPhyPtr, u32 nSize, u8 bNonCache)
     }
     else
     {
-        CAM_OS_WARN("wrong addr");
-        CamOsPrintf("%s input MIU addr 0x%08X\n", __FUNCTION__, (u32)pPhyPtr);
+        CamOsPrintf("CamOs WARNING: PhysToMiu input a MIU addr 0x%08X\n", (u32)pPhyPtr);
     }
 
     sg_set_page(pSgTable->sgl, pfn_to_page(__phys_to_pfn(nCpuBusAddr)), PAGE_ALIGN(nSize), 0);
@@ -4469,7 +4333,7 @@ void* CamOsPhyMemMap(void* pPhyPtr, u32 nSize, u8 bNonCache)
 
     if(ppPages == NULL)
     {
-        CAM_OS_WARN("vmalloc fail");
+        CamOsPrintf("%s: vmalloc fail\r\n", __FUNCTION__);
         sg_free_table(pSgTable);
         kfree(pSgTable);
         return NULL;
@@ -4502,7 +4366,7 @@ void CamOsPhyMemUnMap(void* pVirtPtr, u32 nSize)
     nErr = munmap(pVirtPtr, nSize);
     if(0 != nErr)
     {
-        fprintf(stderr, "%s munmap failed!! <0x%08X> size<%d> err<%d> errno<%d, %s>\n",
+        fprintf(stderr, "%s munmap failed!! <0x%08X> size<%d> err<%d> errno<%d, %s> \r\n",
                 __FUNCTION__, (u32)pVirtPtr, nSize, nErr, errno, strerror(errno));
     }
 #elif defined(CAM_OS_LINUX_KERNEL)
@@ -4524,14 +4388,14 @@ CamOsRet_e CamOsMemCacheCreate(CamOsMemCache_t *ptMemCache, char *szName, u32 nS
         }
         else
         {
-            CAM_OS_WARN("no satisfactory mem pool");
+            CamOsPrintf("%s: Can't get satisfactory memory pool\n\r", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
     else
         eRet = CAM_OS_PARAM_ERR;
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     struct kmem_cache *ptKmemCache;
@@ -4565,7 +4429,7 @@ void CamOsMemCacheDestroy(CamOsMemCache_t *ptMemCache)
     if(ptHandle)
         memset(ptHandle, 0, sizeof(CamOsMemCacheRtk_t));
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
 #elif defined(CAM_OS_LINUX_KERNEL)
     CamOsMemCacheLK_t *ptHandle = (CamOsMemCacheLK_t *)ptMemCache;
 
@@ -4587,7 +4451,7 @@ void *CamOsMemCacheAlloc(CamOsMemCache_t *ptMemCache)
     else
         return NULL;
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     return NULL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     CamOsMemCacheLK_t *ptHandle = (CamOsMemCacheLK_t *)ptMemCache;
@@ -4604,7 +4468,7 @@ void CamOsMemCacheFree(CamOsMemCache_t *ptMemCache, void *pObjPtr)
 #ifdef CAM_OS_RTK
     MsReleaseMemory(pObjPtr);
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
 #elif defined(CAM_OS_LINUX_KERNEL)
     CamOsMemCacheLK_t *ptHandle = (CamOsMemCacheLK_t *)ptMemCache;
 
@@ -4618,7 +4482,7 @@ void CamOsMiuPipeFlush(void)
 #ifdef CAM_OS_RTK
     DrvChipFlushMiuPipe();
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
 #elif defined(CAM_OS_LINUX_KERNEL)
     Chip_Flush_MIU_Pipe();
 #endif
@@ -4708,7 +4572,7 @@ CamOsRet_e CamOsPropertyGet(const char *szKey, char *szValue, const char *szDefa
 u64 CamOsMathDivU64(u64 nDividend, u64 nDivisor, u64 *pRemainder)
 {
 #ifdef CAM_OS_RTK
-    return ss_div64_u64_rem(nDividend, nDivisor, pRemainder);
+    return div64_u64_rem(nDividend, nDivisor, pRemainder);
 #elif defined(CAM_OS_LINUX_USER)
     *pRemainder = nDividend % nDivisor;
     return nDividend / nDivisor;
@@ -4720,7 +4584,7 @@ u64 CamOsMathDivU64(u64 nDividend, u64 nDivisor, u64 *pRemainder)
 s64 CamOsMathDivS64(s64 nDividend, s64 nDivisor, s64 *pRemainder)
 {
 #ifdef CAM_OS_RTK
-    s64 nQuotient = ss_div64_s64(nDividend, nDivisor);
+    s64 nQuotient = div64_s64(nDividend, nDivisor);
     *pRemainder = nDividend - nDivisor * nQuotient;
     return nQuotient;
 #elif defined(CAM_OS_LINUX_USER)
@@ -4764,7 +4628,7 @@ void _CamOsTimerCallback(MsTimerId_e eTimerID, u32 nHandleAddr)
 {
     CamOsTimerRtk_t *ptHandle = (CamOsTimerRtk_t *)nHandleAddr;
 
-    //CamOsPrintf("%s: eTimerID = 0x%x\n", __FUNCTION__, eTimerID);
+    //CamOsPrintf("%s: eTimerID = 0x%x\r\n", __FUNCTION__, eTimerID);
 
     if(ptHandle)
     {
@@ -4791,7 +4655,7 @@ CamOsRet_e CamOsTimerInit(CamOsTimer_t *ptTimer)
         eRet = CAM_OS_PARAM_ERR;
 #elif defined(CAM_OS_LINUX_USER)
     // TODO: implement timer in linux user space.
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     CamOsTimerLK_t *ptHandle = (CamOsTimerLK_t *)ptTimer;
@@ -4816,7 +4680,7 @@ u32 CamOsTimerDelete(CamOsTimer_t *ptTimer)
     }
 #elif defined(CAM_OS_LINUX_USER)
     // TODO: implement timer in linux user space.
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     return 0;
 #elif defined(CAM_OS_LINUX_KERNEL)
     CamOsTimerLK_t *ptHandle = (CamOsTimerLK_t *)ptTimer;
@@ -4838,7 +4702,7 @@ CamOsRet_e CamOsTimerAdd(CamOsTimer_t *ptTimer, u32 nMsec, void *pDataPtr,
     {
         if(ptHandle->eTimerID != INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("init timer first");
+            CamOsPrintf("%s: Please init timer first!\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
 
@@ -4847,7 +4711,7 @@ CamOsRet_e CamOsTimerAdd(CamOsTimer_t *ptTimer, u32 nMsec, void *pDataPtr,
 
         if(CUS_OS_OK != MsStartCbTimerMs(&ptHandle->eTimerID, _CamOsTimerCallback, (u32)ptHandle, nMsec, 0))
         {
-            CAM_OS_WARN("start timer fail");
+            CamOsPrintf("%s: MsStartCbTimerMs fail!\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -4855,7 +4719,7 @@ CamOsRet_e CamOsTimerAdd(CamOsTimer_t *ptTimer, u32 nMsec, void *pDataPtr,
         eRet = CAM_OS_PARAM_ERR;
 #elif defined(CAM_OS_LINUX_USER)
     // TODO: implement timer in linux user space.
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     CamOsTimerLK_t *ptHandle = (CamOsTimerLK_t *)ptTimer;
@@ -4881,7 +4745,7 @@ CamOsRet_e CamOsTimerModify(CamOsTimer_t *ptTimer, u32 nMsec)
     {
         if(ptHandle->eTimerID == INIT_MAGIC_NUM)
         {
-            CAM_OS_WARN("add timer first");
+            CamOsPrintf("%s: Please add timer first!\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
 
@@ -4889,7 +4753,7 @@ CamOsRet_e CamOsTimerModify(CamOsTimer_t *ptTimer, u32 nMsec)
 
         if(CUS_OS_OK != MsStartCbTimerMs(&ptHandle->eTimerID, _CamOsTimerCallback, (u32)ptHandle, nMsec, 0))
         {
-            CAM_OS_WARN("start timer fail");
+            CamOsPrintf("%s: MsStartCbTimerMs fail!\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -4897,7 +4761,7 @@ CamOsRet_e CamOsTimerModify(CamOsTimer_t *ptTimer, u32 nMsec)
         eRet = CAM_OS_PARAM_ERR;
 #elif defined(CAM_OS_LINUX_USER)
     // TODO: implement timer in linux user space.
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
     eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_KERNEL)
     CamOsTimerLK_t *ptHandle = (CamOsTimerLK_t *)ptTimer;
@@ -4952,7 +4816,7 @@ void CamOsAtomicSet(CamOsAtomic_t *ptAtomic, s32 nValue)
 #endif
 }
 
-s32 CamOsAtomicAddReturn(CamOsAtomic_t *ptAtomic, s32 nValue)
+s32 CamOsAtomicAddReturn(s32 nValue, CamOsAtomic_t *ptAtomic)
 {
 #ifdef CAM_OS_RTK
     if(ptAtomic)
@@ -4973,7 +4837,7 @@ s32 CamOsAtomicAddReturn(CamOsAtomic_t *ptAtomic, s32 nValue)
     return 0;
 }
 
-s32 CamOsAtomicSubReturn(CamOsAtomic_t *ptAtomic, s32 nValue)
+s32 CamOsAtomicSubReturn(s32 nValue, CamOsAtomic_t *ptAtomic)
 {
 #ifdef CAM_OS_RTK
     if(ptAtomic)
@@ -4994,7 +4858,7 @@ s32 CamOsAtomicSubReturn(CamOsAtomic_t *ptAtomic, s32 nValue)
     return 0;
 }
 
-s32 CamOsAtomicSubAndTest(CamOsAtomic_t *ptAtomic, s32 nValue)
+s32 CamOsAtomicSubAndTest(s32 nValue, CamOsAtomic_t *ptAtomic)
 {
 #ifdef CAM_OS_RTK
     if(ptAtomic)
@@ -5099,7 +4963,7 @@ s32 CamOsAtomicDecAndTest(CamOsAtomic_t *ptAtomic)
     return 0;
 }
 
-s32 CamOsAtomicAddNegative(CamOsAtomic_t *ptAtomic, s32 nValue)
+s32 CamOsAtomicAddNegative(s32 nValue, CamOsAtomic_t *ptAtomic)
 {
 #ifdef CAM_OS_RTK
     if(ptAtomic)
@@ -5139,110 +5003,6 @@ s32 CamOsAtomicCompareAndSwap(CamOsAtomic_t *ptAtomic, s32 nOldValue, s32 nNewVa
     }
 #endif
     return 0;
-}
-
-s32 CamOsAtomicAndFetch(CamOsAtomic_t *ptAtomic, s32 nValue)
-{
-    if(ptAtomic)
-    {
-        return __sync_and_and_fetch(&ptAtomic->nCounter, nValue);
-    }
-    else
-    {
-        CAM_OS_WARN("null atomic handle");
-        return 0;
-    }
-}
-
-s32 CamOsAtomicFetchAnd(CamOsAtomic_t *ptAtomic, s32 nValue)
-{
-    if(ptAtomic)
-    {
-        return __sync_fetch_and_and(&ptAtomic->nCounter, nValue);
-    }
-    else
-    {
-        CAM_OS_WARN("null atomic handle");
-        return 0;
-    }
-}
-
-s32 CamOsAtomicNandFetch(CamOsAtomic_t *ptAtomic, s32 nValue)
-{
-    if(ptAtomic)
-    {
-        return __sync_nand_and_fetch(&ptAtomic->nCounter, nValue);
-    }
-    else
-    {
-        CAM_OS_WARN("null atomic handle");
-        return 0;
-    }
-}
-
-s32 CamOsAtomicFetchNand(CamOsAtomic_t *ptAtomic, s32 nValue)
-{
-    if(ptAtomic)
-    {
-        return __sync_fetch_and_nand(&ptAtomic->nCounter, nValue);
-    }
-    else
-    {
-        CAM_OS_WARN("null atomic handle");
-        return 0;
-    }
-}
-
-s32 CamOsAtomicOrFetch(CamOsAtomic_t *ptAtomic, s32 nValue)
-{
-    if(ptAtomic)
-    {
-        return __sync_or_and_fetch(&ptAtomic->nCounter, nValue);
-    }
-    else
-    {
-        CAM_OS_WARN("null atomic handle");
-        return 0;
-    }
-}
-
-s32 CamOsAtomicFetchOr(CamOsAtomic_t *ptAtomic, s32 nValue)
-{
-    if(ptAtomic)
-    {
-        return __sync_fetch_and_or(&ptAtomic->nCounter, nValue);
-    }
-    else
-    {
-        CAM_OS_WARN("null atomic handle");
-        return 0;
-    }
-}
-
-s32 CamOsAtomicXorFetch(CamOsAtomic_t *ptAtomic, s32 nValue)
-{
-    if(ptAtomic)
-    {
-        return __sync_xor_and_fetch(&ptAtomic->nCounter, nValue);
-    }
-    else
-    {
-        CAM_OS_WARN("null atomic handle");
-        return 0;
-    }
-}
-
-s32 CamOsAtomicFetchXor(CamOsAtomic_t *ptAtomic, s32 nValue)
-{
-    if(ptAtomic)
-    {
-        return __sync_fetch_and_xor(&ptAtomic->nCounter, nValue);
-    }
-    else
-    {
-        CAM_OS_WARN("null atomic handle");
-        return 0;
-    }
 }
 
 #if defined(CAM_OS_RTK) || defined(CAM_OS_LINUX_USER)
@@ -5348,7 +5108,7 @@ CamOsMemSize_e CamOsPhysMemSize(void)
     {
         if(0 > (nMemFd = open("/dev/mem", O_RDWR | O_SYNC)))
         {
-            CAM_OS_WARN("open /dev/mem fail");
+            CamOsPrintf("%s open /dev/mem failed!!\n", __FUNCTION__);
             break;
         }
 
@@ -5356,7 +5116,7 @@ CamOsMemSize_e CamOsPhysMemSize(void)
 
         if(map_addr == MAP_FAILED)
         {
-            CAM_OS_WARN("mmap fail");
+            CamOsPrintf("%s mmap failed!!\n", __FUNCTION__);
             break;
         }
         else
@@ -5389,7 +5149,7 @@ CamOsMemSize_e CamOsPhysMemSize(void)
     }
     else
     {
-        CAM_OS_WARN("ioremap fail");
+        printk(KERN_WARNING "%s ioremap fail\n", __FUNCTION__);
     }
 
     return eMemSize;
@@ -5412,7 +5172,7 @@ u32 CamOsChipId(void)
     {
         if(0 > (nMemFd = open("/dev/mem", O_RDWR | O_SYNC)))
         {
-            CAM_OS_WARN("open /dev/mem fail");
+            CamOsPrintf("%s open /dev/mem failed!!\n", __FUNCTION__);
             break;
         }
 
@@ -5420,7 +5180,7 @@ u32 CamOsChipId(void)
 
         if(map_addr == MAP_FAILED)
         {
-            CAM_OS_WARN("mmap fail");
+            CamOsPrintf("%s mmap failed!!\n", __FUNCTION__);
             break;
         }
         else
@@ -5453,7 +5213,7 @@ u32 CamOsChipId(void)
     }
     else
     {
-        CAM_OS_WARN("ioremap fail");
+        printk(KERN_WARNING "%s ioremap fail\n", __FUNCTION__);
     }
 
     return nId;
@@ -5471,7 +5231,7 @@ CamOsRet_e CamOsIrqRequest(u32 nIrq, CamOsIrqHandler pfnHandler, const char *szN
     uInitParam.intc.pDevId = pDevId;
     DrvInitInterrupt(&uInitParam, nIrq);
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
 #elif defined(CAM_OS_LINUX_KERNEL)
     s32 nResult = 0;
 
@@ -5480,8 +5240,7 @@ CamOsRet_e CamOsIrqRequest(u32 nIrq, CamOsIrqHandler pfnHandler, const char *szN
         CamOsIrqHandlerList[nIrq] = pfnHandler;
         if ((nResult = request_irq(nIrq, (irq_handler_t)CamOsIrqCommonHandler, IRQF_SHARED | IRQF_ONESHOT, szName, pDevId)))
         {
-            CAM_OS_WARN("request_irq fail");
-            CamOsPrintf("%s irq(%d) err(%d)\n", __FUNCTION__ , nIrq, nResult);
+            CamOsPrintf("%s request irq(%d) err(%d)\n", __FUNCTION__ , nIrq, nResult);
             eRet = CAM_OS_FAIL;
         }
     }
@@ -5498,7 +5257,7 @@ void CamOsIrqFree(u32 nIrq, void *pDevId)
 #ifdef CAM_OS_RTK
     return;
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
 #elif defined(CAM_OS_LINUX_KERNEL)
     free_irq(nIrq, pDevId);
 #endif
@@ -5509,7 +5268,7 @@ void CamOsIrqEnable(u32 nIrq)
 #ifdef CAM_OS_RTK
     DrvUnmaskInterrupt(nIrq);
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
 #elif defined(CAM_OS_LINUX_KERNEL)
     enable_irq(nIrq);
 #endif
@@ -5520,7 +5279,7 @@ void CamOsIrqDisable(u32 nIrq)
 #ifdef CAM_OS_RTK
     DrvMaskInterrupt(nIrq);
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
 #elif defined(CAM_OS_LINUX_KERNEL)
     disable_irq(nIrq);
 #endif
@@ -5533,7 +5292,7 @@ CamOsRet_e FORCE_INLINE CamOsInInterrupt(void)
     if(!RtkRunInIsrContext())
         eRet = CAM_OS_FAIL;
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
 #elif defined(CAM_OS_LINUX_KERNEL)
     if(!in_interrupt())
         eRet = CAM_OS_FAIL;
@@ -5546,7 +5305,7 @@ void FORCE_INLINE CamOsSmpMemoryBarrier(void)
 #ifdef CAM_OS_RTK
 
 #elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
+    CamOsPrintf("%s: This function is not supported in this platform\n\r", __FUNCTION__);
 #elif defined(CAM_OS_LINUX_KERNEL)
     smp_mb();
 #endif
@@ -5559,12 +5318,12 @@ char _szErrStrBuf[128];
 char *CamOsStrError(s32 nErrNo)
 {
 #ifdef CAM_OS_RTK
-    sprintf(_szErrStrBuf, "errno: %d", nErrNo);
+    sprintf(_szErrStrBuf, "errno is %d", nErrNo);
     return _szErrStrBuf;
 #elif defined(CAM_OS_LINUX_USER)
     return strerror(nErrNo);
 #elif defined(CAM_OS_LINUX_KERNEL)
-    sprintf(_szErrStrBuf, "errno: %d", nErrNo);
+    sprintf(_szErrStrBuf, "errno is %d", nErrNo);
     return _szErrStrBuf;
 #endif
 }
@@ -5572,10 +5331,10 @@ char *CamOsStrError(s32 nErrNo)
 void CamOsPanic(const char *szMessage)
 {
 #ifdef CAM_OS_RTK
-    CamOsPrintf("%s: %s\n", __FUNCTION__, szMessage);
+    CamOsPrintf("%s: %s\r\n", __FUNCTION__, szMessage);
     RtkExceptionRoutine(240, 0);    // SYSTEM_ASSERT = 240
 #elif defined(CAM_OS_LINUX_USER)
-    CamOsPrintf("%s: %s\n", __FUNCTION__, szMessage);
+    CamOsPrintf("%s: %s\r\n", __FUNCTION__, szMessage);
     abort();
 #elif defined(CAM_OS_LINUX_KERNEL)
     panic(szMessage);
@@ -5766,7 +5525,7 @@ void CamOsListSort(void *priv, struct CamOsListHead_t *head,
         {
             if(lev >= CAM_OS_ARRAY_SIZE(part) - 1)
             {
-                CAM_OS_WARN("list too long");
+                CamOsPrintf("list too long for efficiency\n");
                 lev--;
             }
             max_lev = lev;

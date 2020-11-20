@@ -3941,7 +3941,7 @@ MS_BOOL HAL_QUAD_Enable(MS_BOOL bEnable)
     if(_hal_SERFLASH.u8MID == MID_MXIC)
     {
         if(bEnable)
-            u8data =  SF_SR_QUAD;
+            u8data =  SF_SR_QUALD;
         else
             u8data =  0;
         bRet = HAL_FSP_WriteStatusReg(u8data);
@@ -4202,7 +4202,7 @@ MS_BOOL HAL_FSP_WriteProtect(MS_BOOL bEnable)
 
     u8Status = SF_SR_SRWD;
     if (gReadMode==E_QUAD_MODE)
-        u8Status |= SF_SR_QUAD;
+        u8Status |= SF_SR_QUALD;
     if (bEnable)
         u8Status |= SERFLASH_WRSR_BLK_PROTECT;
 

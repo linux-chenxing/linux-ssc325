@@ -549,7 +549,7 @@
             reg = <0x1F003400 0x600>;
             clocks = <&CLK_xtali_12m>;
             npwm = <11>;
-            pad-ctrl = <PAD_PWM0 PAD_PWM1 PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN>;
+            pad-ctrl = <PAD_PWM0 PAD_PWM1 PAD_UNKNOWN PAD_UNKNOWN PAD_SPI0_CZ PAD_SPI0_CK PAD_SPI0_DI PAD_SPI0_DO PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN>;
             status = "ok";
         };
 

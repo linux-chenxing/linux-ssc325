@@ -16,11 +16,3 @@ config RTCPWC_INNER
         depends on MS_RTC
         default y
         help
-
-config RTCPWC_INNER_EHHE
-    select RTC_CLASS
-        bool "Mstar RTCPWC driver Error Handle on Hw Exception"
-        depends on MS_RTC && RTCPWC_INNER
-        default n
-        help
-

@@ -545,8 +545,7 @@ int fat_fill_inode(struct inode *inode, struct msdos_dir_entry *de)
             error =  -EPERM;
         }
         else
-		    error = fat_calc_dir_size(inode);
-
+		error = fat_calc_dir_size(inode);
 		if (error < 0)
 			return error;
 		MSDOS_I(inode)->mmu_private = inode->i_size;

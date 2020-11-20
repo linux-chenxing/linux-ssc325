@@ -8,7 +8,7 @@ BRANCH_ID := $(shell git rev-parse --abbrev-ref HEAD 2> /dev/null | sed -e 's/\/
 LINUX_KERNEL_PATH ?= $(PWD)/../../../
 KL_API_INCLUDE ?= $(LINUX_KERNEL_PATH)/drivers/sstar/include
 
-CFLAGS := -Wall -Werror -Wno-sync-nand -g -O2 -ffunction-sections -funwind-tables -fstack-protector
+CFLAGS := -Wall -Werror -g -O2 -ffunction-sections -funwind-tables -fstack-protector
 CFLAGS += -fPIC -DPIC
 
 CFLAGS += -DTEST_THREAD_ID_DETECTION
@@ -34,8 +34,7 @@ LIB_HEADERS := \
     ./pub/cam_os_util_hash.h \
     ./pub/cam_os_util_bitmap.h \
     ./pub/cam_os_util_bug.h \
-    ./pub/cam_os_util_ioctl.h \
-    ./pub/cam_os_util_string.h
+    ./pub/cam_os_util_ioctl.h
 
 CORE_LIB_C_OBJS := $(patsubst %.c, %.c.so.o,  $(CORE_LIB_C_SRCS))
 

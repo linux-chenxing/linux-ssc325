@@ -158,7 +158,7 @@
 #define REG_SPI_WRAP_BIT_MASK   0xF
 #define REG_SPI_CKG_SPI                     0x70
 #define REG_SPI_USER_DUMMY_EN       0x10
-#define REG_SPI_DUMMY_CYC_SINGLE    0x07
+#define REG_SPI_DUMMY_CYC_SINGAL    0x07
 #define REG_SPI_DUMMY_CYC_DUAL      0x03
 #define REG_SPI_DUMMY_CYC_QUAD      0x01
 #define REG_SPI_MODE_SEL                    0x72

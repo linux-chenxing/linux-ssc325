@@ -743,7 +743,8 @@ void MHal_EMAC_Write_JULIAN_0100(void* hal, int bMIU_reset)
         val |= 0xF000;
     if (!pHal->phyRIU)
         val |= 0x0002;
-    val |= 0x0004;
+    if (PHY_INTERFACE_MODE_RMII != pHal->phy_mode)
+        val |= 0x0004;
     val = (val_h & 0xFFFF0000) | val;
     MHal_EMAC_WritReg32(hal, REG_EMAC_JULIAN_0100, val);
 }

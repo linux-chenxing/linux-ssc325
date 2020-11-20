@@ -1081,7 +1081,6 @@ static int f_audio_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 
 		} else {
 			struct f_audio_buf *playback_copy_buf = audio->playback_copy_buf;
-			usb_ep_disable(out_ep);
 			if (playback_copy_buf) {
 				list_add_tail(&playback_copy_buf->list,
 						&audio->playback_play_queue);

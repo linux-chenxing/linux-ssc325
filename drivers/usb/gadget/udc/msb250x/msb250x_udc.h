@@ -35,7 +35,7 @@
 #include <linux/kernel.h>
 #include <asm/io.h>
 #include <linux/usb/gadget.h>
-#include "usb/msb250x_udc_common.h"
+#include <msb250x/msb250x_udc_reg.h>
 /******************************************************************************
  * Constants
  ******************************************************************************/
@@ -44,23 +44,19 @@
 #define EP0_FIFO_SIZE   64
 #define EP_FIFO_SIZE    512
 
-#define ms_readb(a)             readb((void*)(a))
-#define ms_writeb(v, a)         writeb((v), (void*)(a))
+#define ms_readb(a)             readb((void *) a)
+#define ms_writeb(v, a)         writeb(v, (void *) a)
 
-#define ms_readw(a)             readw((void*)(a))
-#define ms_writew(v, a)         writew((v), (void*)(a))
+#define ms_readw(a)             readw((void *) a)
+#define ms_writew(v, a)         writew(v, (void *) a)
 
 #define ms_writesb(v, a, l)     ({ \
-                                    prefetch((void*)(v)); \
-                                    writesb((volatile void *)(a), (void *)(v), (l)); \
+                                    prefetch((void*) v); \
+                                    writesb((volatile void *) a, (void *) v, l); \
                                 })
 
-#define ms_readsb(v, a, l)      readsb((const volatile void*)(a), (void*)(v), (l))
-#if 1
-#define ms_writelw(v, a)        ms_writew((v & 0xffff), (a)); \
-                                ms_writew(((v >> 16) & 0xffff), ((volatile u32*)(a) + 1));
-#define ms_readlw(a)            (volatile u32)((ms_readw((a)) & 0xffff) | (ms_readw(((volatile u32*)(a) + 1)) << 16));
-#endif
+#define ms_readsb(v, a, l)      readsb((const volatile void *) a, (void*) v, l)
+
 /******************************************************************************
  * Variables
  ******************************************************************************/
@@ -85,6 +81,7 @@ struct msb250x_ep
     u8 setup_stage : 1;
     u8 shortPkt : 1;
     u8 zero : 1;
+    u8 incomplete_tx : 1;
 };
 
 struct msb250x_request
@@ -128,21 +125,19 @@ static inline struct msb250x_request *to_msb250x_req(struct usb_request *req)
 {
     return container_of(req, struct msb250x_request, req);
 }
-
-static inline void msb250x_set_ep_halt(struct msb250x_ep* ep, int value)
-{
-    ep->halted = value;
-}
-
 /* -----------------------------------------------------------*/
 
 int msb250x_udc_get_autoNAK_cfg(u8 ep_num);
 
 int msb250x_udc_release_autoNAK_cfg(u8 cfg);
 
-void msb250x_udc_enable_autoNAK(u8 ep_num, u8 cfg);
-void msb250x_udc_ok2rcv_for_packets(u8 cfg, u16 pkt_num);
-void msb250x_udc_allowAck(u8 cfg);
+void msb250x_udc_set_autoNAK_cfg(u8 ep_num, u8 cfg);
+
+void msb250x_udc_enable_autoNAK(u8 cfg);
+
+void msb250x_udc_disable_autoNAK_for_packets(u8 cfg, u16 pkt_num);
+
+void msb250x_udc_disable_autoNAK_for_packet(u8 cfg);
 
 void msb250x_request_nuke(struct msb250x_udc *udc,
                           struct msb250x_ep *ep, int status);

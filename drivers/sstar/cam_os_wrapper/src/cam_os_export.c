@@ -1,19 +1,15 @@
-/*
-* cam_os_export.c - Sigmastar
-*
-* Copyright (C) 2018 Sigmastar Technology Corp.
-*
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
-*
-* This software is licensed under the terms of the GNU General Public
-* License version 2, as published by the Free Software Foundation, and
-* may be copied, distributed, and modified under those terms.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
+/* Copyright (c) 2018-2019 Sigmastar Technology Corp.
+ All rights reserved.
+
+ Unless otherwise stipulated in writing, any and all information contained
+herein regardless in any format shall remain the sole proprietary of
+Sigmastar Technology Corp. and be kept in strict confidence
+(Sigmastar Confidential Information) by the recipient.
+Any unauthorized act including without limitation unauthorized disclosure,
+copying, use, reproduction, sale, distribution, modification, disassembling,
+reverse engineering and compiling of the contents of Sigmastar Confidential
+Information is unlawful and strictly prohibited. Sigmastar hereby reserves the
+rights to any and all damages, losses, costs and expenses resulting therefrom.
 */
 
 
@@ -42,7 +38,6 @@ EXPORT_SYMBOL(CamOsSetTimeOfDay);
 EXPORT_SYMBOL(CamOsGetMonotonicTime);
 EXPORT_SYMBOL(CamOsTimeDiff);
 EXPORT_SYMBOL(CamOsThreadCreate);
-EXPORT_SYMBOL(CamOsThreadChangePriority);
 EXPORT_SYMBOL(CamOsThreadSchedule);
 EXPORT_SYMBOL(CamOsThreadWakeUp);
 EXPORT_SYMBOL(CamOsThreadJoin);
@@ -89,7 +84,6 @@ EXPORT_SYMBOL(CamOsMemAlloc);
 EXPORT_SYMBOL(CamOsMemCalloc);
 EXPORT_SYMBOL(CamOsMemRealloc);
 EXPORT_SYMBOL(CamOsMemFlush);
-EXPORT_SYMBOL(CamOsMemInvalidate);
 EXPORT_SYMBOL(CamOsMemRelease);
 EXPORT_SYMBOL(CamOsDirectMemAlloc);
 EXPORT_SYMBOL(CamOsDirectMemRelease);
@@ -127,14 +121,6 @@ EXPORT_SYMBOL(CamOsAtomicIncAndTest);
 EXPORT_SYMBOL(CamOsAtomicDecAndTest);
 EXPORT_SYMBOL(CamOsAtomicAddNegative);
 EXPORT_SYMBOL(CamOsAtomicCompareAndSwap);
-EXPORT_SYMBOL(CamOsAtomicAndFetch);
-EXPORT_SYMBOL(CamOsAtomicFetchAnd);
-EXPORT_SYMBOL(CamOsAtomicNandFetch);
-EXPORT_SYMBOL(CamOsAtomicFetchNand);
-EXPORT_SYMBOL(CamOsAtomicOrFetch);
-EXPORT_SYMBOL(CamOsAtomicFetchOr);
-EXPORT_SYMBOL(CamOsAtomicXorFetch);
-EXPORT_SYMBOL(CamOsAtomicFetchXor);
 EXPORT_SYMBOL(CamOsIdrInit);
 EXPORT_SYMBOL(CamOsIdrDestroy);
 EXPORT_SYMBOL(CamOsIdrAlloc);

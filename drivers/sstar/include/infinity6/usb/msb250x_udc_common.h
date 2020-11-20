@@ -1,6 +1,14 @@
 #ifndef MSB250X_MEMORY_H
 #define MSB250X_MEMORY_H
 
+#define GET_REG_ADDR(x, y)                  ((x) + ((y) << 2))
+#define GET_BASE_ADDR_BY_BANK(x, y)         ((x) + ((y) << 1))
+
+#define RIU_BASE                            0xFD200000
+#define UTMI_BASE_ADDR                      GET_BASE_ADDR_BY_BANK(RIU_BASE, 0x42100)
+#define USBC_BASE_ADDR                      GET_BASE_ADDR_BY_BANK(RIU_BASE, 0x42300)
+#define OTG0_BASE_ADDR                      GET_BASE_ADDR_BY_BANK(RIU_BASE, 0x42500)
+
 #define MIU0_BASE_ADDR                      0x20000000
 
 #define MIU0_SIZE                           ((unsigned long) 0x10000000)
@@ -12,6 +20,16 @@
 #define USB_MIU_SEL1                        ((u8) 0xefU)
 #define USB_MIU_SEL2                        ((u8) 0xefU)
 #define USB_MIU_SEL3                        ((u8) 0xefU)
+
+#define BIT0    0x0001
+#define BIT1    0x0002
+#define BIT2    0x0004
+#define BIT3    0x0008
+#define BIT4    0x0010
+#define BIT5    0x0020
+#define BIT6    0x0040
+#define BIT7    0x0080
+#define BIT8    0x0100
 
 #define MSB250X_MAX_ENDPOINTS                   4
 #define MSB250X_USB_DMA_CHANNEL                 3

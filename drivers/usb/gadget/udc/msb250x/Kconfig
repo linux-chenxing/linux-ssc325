@@ -9,8 +9,9 @@ config USB_MSB250X
         default USB_GADGET
         select USB_GADGET_SELECTED
 
-config USB_MSB250X_BULK_OUT_WITHOUT_DMA
-        boolean "Bulk out without DMA for MSB250x udc"
+config USB_MSB250X_DMA
+        tristate "Use DMA for MSB250x USB"
+                default y if USB_GADGET_MSB250X
 
 config USB_MSB250X_DEBUG
         boolean "MSB250X udc debug messages"

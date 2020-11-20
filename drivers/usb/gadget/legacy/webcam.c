@@ -16,7 +16,6 @@
 #include <linux/usb/video.h>
 
 #include "u_uvc.h"
-#include "uvc_ait_xu.h"
 
 USB_GADGET_COMPOSITE_OPTIONS();
 
@@ -98,29 +97,10 @@ MODULE_PARM_DESC(uac_function_enable, "Audio Play Mode, 0: Disable UAC Function,
 					  "1: Speaker Only, 2: Microphone Only, 3: Speaker & Microphone");
 #endif
 #endif
-
-/* --------------------------------------------------------------------------
- * Customer Define
- */
-#ifdef USE_AIT_XU
-#define UVC_EU1_GUID UVC_AIT_EU1_GUID
-#define UVC_EU2_GUID UVC_CUS_EU2_GUID
-#else
-#define UVC_EU1_GUID UVC_AIT_EU1_GUID
-#define UVC_EU2_GUID UVC_CUS_EU2_GUID
-#endif
-// termail link:
-//   UVC_IT_ID -> UVC_PU_ID -> UVC_EU1_ID -> UVC_EU2_ID -> UVC_OT_ID;
-
-#define UVC_EU1_ID  (0x6) //for Isp use
-#define UVC_EU2_ID  (0x2) //for customer to use
-#define UVC_OT_ID   (0x3)
-#define UVC_PU_ID   (0x4)
-#define UVC_IT_ID   (0x1)
-
 /* --------------------------------------------------------------------------
  * Device descriptor
  */
+
 #define WEBCAM_VENDOR_ID		0x1d6b	/* Linux Foundation */
 #define WEBCAM_PRODUCT_ID		0x0102	/* Webcam A/V gadget */
 #define WEBCAM_DEVICE_BCD		0x0010	/* 0.10 */
@@ -196,7 +176,7 @@ static const struct uvc_camera_terminal_descriptor uvc_camera_terminal = {
 	.bLength		= UVC_DT_CAMERA_TERMINAL_SIZE(3),
 	.bDescriptorType	= USB_DT_CS_INTERFACE,
 	.bDescriptorSubType = UVC_VC_INPUT_TERMINAL,
-	.bTerminalID		= UVC_IT_ID,
+	.bTerminalID		= 1,
 	.wTerminalType		= cpu_to_le16(0x0201),
 	.bAssocTerminal		= 0,
 	.iTerminal		= 0,
@@ -209,44 +189,12 @@ static const struct uvc_camera_terminal_descriptor uvc_camera_terminal = {
 	.bmControls[2]		= 0,
 };
 
-DECLARE_UVC_EXTENSION_UNIT_DESCRIPTOR(1, 2);
-
-static const struct UVC_EXTENSION_UNIT_DESCRIPTOR(1,2) uvc_extension_unit1 = {
-	.bLength = UVC_DT_EXTENSION_UNIT_SIZE(1,2),
-	.bDescriptorType = USB_DT_CS_INTERFACE,
-	.bDescriptorSubType = UVC_VC_EXTENSION_UNIT,
-	.bUnitID = UVC_EU1_ID,
-	.guidExtensionCode = UVC_EU1_GUID,
-	.bNumControls = 0x0E,
-	.bNrInPins = 0x01,
-	.baSourceID[0] = UVC_PU_ID,
-	.bControlSize = 0x02,
-	.bmControls[0] = 0xFF,
-	.bmControls[1] = 0x6F,
-	.iExtension = 0x00,
-};
-
-static const struct UVC_EXTENSION_UNIT_DESCRIPTOR(1, 2) uvc_extension_unit2 = {
-	.bLength = UVC_DT_EXTENSION_UNIT_SIZE(1,2),
-	.bDescriptorType = USB_DT_CS_INTERFACE,
-	.bDescriptorSubType = UVC_VC_EXTENSION_UNIT,
-	.bUnitID = UVC_EU2_ID,
-    .guidExtensionCode = UVC_EU2_GUID,
-	.bNumControls = 0x06,
-	.bNrInPins = 0x01,
-	.baSourceID[0] = UVC_EU1_ID,
-	.bControlSize = 0x02,
-	.bmControls[0] = 0x3F,
-	.bmControls[1] = 0x00,
-	.iExtension = 0x00,
-};
-
 static const struct uvc_processing_unit_descriptor uvc_processing = {
 	.bLength		= UVC_DT_PROCESSING_UNIT_SIZE(2),
 	.bDescriptorType	= USB_DT_CS_INTERFACE,
 	.bDescriptorSubType = UVC_VC_PROCESSING_UNIT,
-	.bUnitID		= UVC_PU_ID,
-	.bSourceID		= UVC_IT_ID,
+	.bUnitID		= 2,
+	.bSourceID		= 1,
 	.wMaxMultiplier		= cpu_to_le16(16*1024),
 	.bControlSize		= 2,
 	.bmControls[0]		= 1,
@@ -261,10 +209,10 @@ static const struct uvc_output_terminal_descriptor uvc_output_terminal = {
 	.bLength		= UVC_DT_OUTPUT_TERMINAL_SIZE,
 	.bDescriptorType	= USB_DT_CS_INTERFACE,
 	.bDescriptorSubType = UVC_VC_OUTPUT_TERMINAL,
-	.bTerminalID		= UVC_OT_ID,
+	.bTerminalID		= 3,
 	.wTerminalType		= cpu_to_le16(0x0101),
 	.bAssocTerminal		= 0,
-	.bSourceID		= UVC_EU2_ID,
+	.bSourceID		= 2,
 	.iTerminal		= 0,
 };
 
@@ -958,8 +906,6 @@ static const struct uvc_descriptor_header * const uvc_fs_control_cls[] = {
 	(const struct uvc_descriptor_header *) &uvc_control_header,
 	(const struct uvc_descriptor_header *) &uvc_camera_terminal,
 	(const struct uvc_descriptor_header *) &uvc_processing,
-	(const struct uvc_descriptor_header *) &uvc_extension_unit1,
-	(const struct uvc_descriptor_header *) &uvc_extension_unit2,
 	(const struct uvc_descriptor_header *) &uvc_output_terminal,
 	NULL,
 };
@@ -968,8 +914,6 @@ static const struct uvc_descriptor_header * const uvc_ss_control_cls[] = {
 	(const struct uvc_descriptor_header *) &uvc_control_header,
 	(const struct uvc_descriptor_header *) &uvc_camera_terminal,
 	(const struct uvc_descriptor_header *) &uvc_processing,
-	(const struct uvc_descriptor_header *) &uvc_extension_unit1,
-	(const struct uvc_descriptor_header *) &uvc_extension_unit2,
 	(const struct uvc_descriptor_header *) &uvc_output_terminal,
 	NULL,
 };

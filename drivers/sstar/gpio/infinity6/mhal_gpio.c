@@ -17,14 +17,13 @@
 */
 #include <linux/kernel.h>
 #include <linux/irqdomain.h>
-#include <linux/irq.h>
+
 #include "mhal_gpio.h"
 #include "ms_platform.h"
 #include "gpio.h"
 #include "irqs.h"
 #include "padmux.h"
 #include "mhal_pinmux.h"
-#include <dt-bindings/interrupt-controller/arm-gic.h>
 
 //-------------------------------------------------------------------------------------------------
 //  Local Defines
@@ -557,8 +556,6 @@ static int _pmsleep_to_irq_table[] = {
         INT_PMSLEEP_SPI_DO,
         INT_PMSLEEP_SPI_WPZ,
         INT_PMSLEEP_SPI_HLD,
-        INT_PMSLEEP_LED0,
-        INT_PMSLEEP_LED1,
 };
 
 static int _gpi_to_irq_table[] = {
@@ -771,7 +768,7 @@ void MHal_Enable_GPIO_INT(U8 u8IndexGPIO)
 
 static int PMSLEEP_GPIO_To_Irq(U8 u8IndexGPIO)
 {
-    if ((u8IndexGPIO < PAD_PM_SD_CDZ) || (u8IndexGPIO > PAD_PM_LED1))
+    if ((u8IndexGPIO < PAD_PM_SD_CDZ) || (u8IndexGPIO > PAD_PM_SPI_HLD))
         return -1;
     else
     {
@@ -795,7 +792,9 @@ int MHal_GPIO_To_Irq(U8 u8IndexGPIO)
     struct irq_fwspec fwspec;
     int hwirq, virq = -1;
 
-    if ((hwirq = PMSLEEP_GPIO_To_Irq(u8IndexGPIO)) >= 0)
+
+    hwirq = PMSLEEP_GPIO_To_Irq(u8IndexGPIO);
+    if( hwirq >= 0)
     {
         //get virtual irq number for request_irq
         intr_node = of_find_compatible_node(NULL, NULL, "sstar,pm-intc");
@@ -808,7 +807,9 @@ int MHal_GPIO_To_Irq(U8 u8IndexGPIO)
         fwspec.fwnode = of_node_to_fwnode(intr_node);
         virq = irq_create_fwspec_mapping(&fwspec);
     }
-    else if ((hwirq = GPI_GPIO_To_Irq(u8IndexGPIO)) >= 0)
+
+    hwirq = GPI_GPIO_To_Irq(u8IndexGPIO);
+    if( hwirq >= 0)
     {
         //get virtual irq number for request_irq
         intr_node = of_find_compatible_node(NULL, NULL, "sstar,gpi-intc");
@@ -821,23 +822,10 @@ int MHal_GPIO_To_Irq(U8 u8IndexGPIO)
         fwspec.fwnode = of_node_to_fwnode(intr_node);
         virq = irq_create_fwspec_mapping(&fwspec);
     }
-    else if ((u8IndexGPIO >= PAD_SAR_GPIO0 && u8IndexGPIO <= PAD_SAR_GPIO3))
-    {
-        //get virtual irq number for request_irq
-        intr_node = of_find_compatible_node(NULL, NULL, "sstar,main-intc");
-        intr_domain = irq_find_host(intr_node);
-        if(!intr_domain)
-            return -ENXIO;
-
-        fwspec.param_count = 3;
-        fwspec.param[0] = GIC_SPI;
-        fwspec.param[1] = u8IndexGPIO - PAD_SAR_GPIO0 + INT_FIQ_SAR_GPIO_0;
-        fwspec.param[2] = IRQ_TYPE_NONE;
-        fwspec.fwnode = of_node_to_fwnode(intr_node);
-        virq = irq_create_fwspec_mapping(&fwspec);
-    }
 
     return virq;
+
+
 }
 
 void MHal_GPIO_Set_POLARITY(U8 u8IndexGPIO, U8 reverse)

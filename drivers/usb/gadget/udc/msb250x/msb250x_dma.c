@@ -37,12 +37,16 @@
 #include <asm/irq.h>
 
 #include <linux/jiffies.h>
-#include <msb250x/msb250x_udc_reg.h>
+
 #include <msb250x/msb250x_udc.h>
 #include <msb250x/msb250x_gadget.h>
 
-#define ENABLED_DMA_BYTES   512
-#if 0
+#ifdef CONFIG_USB_MSB250X_DEBUG
+#define DBG_MSG(x...) printk(KERN_INFO x)
+#else
+#define DBG_MSG(x...)
+#endif
+
 static inline void ms_writelw(uintptr_t val, u32 volatile* Reg)
 {
     ms_writew((u32)(val & 0xffff), (uintptr_t) Reg);
@@ -55,7 +59,6 @@ static inline u32 ms_readlw(u32 volatile* Reg)
 {
      return (volatile u32) ((ms_readw((uintptr_t) Reg)&0xffff)|(ms_readw((uintptr_t) (Reg+1))<<16));
 }
-#endif
 
 static inline s8 msb250x_dma_get_channel(void)
 {
@@ -132,26 +135,21 @@ int msb250x_dma_setup_control(struct usb_ep *_ep,
     u8 csr2 = 0;
 
     u16 control = 0;
+
     u32 count = 0;
+    u16 pkt_num = 0;
+
     u8 ep_num = 0;
+    u8 mult = 0;
 
     struct otg0_dma_ctrlrequest* dma_ctrl = (struct otg0_dma_ctrlrequest*) &control;
     struct otg0_ep_rxcsr_h* rxcsr_h = NULL;
     struct otg0_ep_rxcsr_l* rxcsr_l = NULL;
     struct otg0_ep_txcsr_h* txcsr_h = NULL;
 
-    //struct msb250x_ep *ep = to_msb250x_ep(_ep);
+    struct msb250x_ep *ep = to_msb250x_ep(_ep);
 
     count = req->req.length - req->req.actual;
-
-    if (usb_endpoint_xfer_isoc(_ep->desc))
-    {
-        count = min(((u32) (usb_endpoint_maxp_mult(_ep->desc) * _ep->maxpacket)), (u32)count);
-    }
-    else if (!usb_endpoint_xfer_bulk(_ep->desc))
-    {
-        count = min((u32)_ep->maxpacket, (u32)count);
-    }
 
     ep_num = usb_endpoint_num(_ep->desc);
 
@@ -211,20 +209,22 @@ int msb250x_dma_setup_control(struct usb_ep *_ep,
         {
             csr2 |= TXCSR2_MODE1;
         }
+
+        mult = usb_endpoint_maxp_mult(_ep->desc);
+        count = min(((u32) (mult * _ep->maxpacket)), ((u32) count));
     }
 
-    if (ENABLED_DMA_BYTES > count)
+    if (0 == count)
     {
-    #if 0
         if (usb_endpoint_dir_out(_ep->desc))
         {
             if (1 == rxcsr_l->bRxPktRdy)
             {
-                printk(KERN_DEBUG "<USB_WARN>[%d][DMA] bRxPktRdy/rxcount(%d/0x%04x) buf/actual/length(0x%p/0x%04x/0x%04x)\n",
+                printk(KERN_DEBUG "<USB>[%d][DMA] bRxPktRdy/rxcount(%d/0x%04x) buf/actual/length(0x%p/0x%04x/0x%04x)\n",
                        ep_num, rxcsr_l->bRxPktRdy, ms_readw(MSB250X_OTG0_EP_RXCOUNT_L_REG(ep_num)), req->req.buf, req->req.actual, req->req.length);
             }
         }
-    #endif
+
         return -1;
     }
 
@@ -235,29 +235,40 @@ int msb250x_dma_setup_control(struct usb_ep *_ep,
     }
 
     ms_writeb(csr2, ((usb_endpoint_dir_out(_ep->desc))? MSB250X_OTG0_EP_RXCSR2_REG(ep_num) : MSB250X_OTG0_EP_TXCSR2_REG(ep_num)));
-#if 0
+
     ms_writelw((uintptr_t) (req->req.dma + req->req.actual), (u32 volatile*) MSB250X_OTG0_DMA_ADDR(ch));
     ms_writelw((uintptr_t) count, (u32 volatile*) MSB250X_OTG0_DMA_COUNT(ch));
-#else
-    ms_writelw((req->req.dma + req->req.actual), MSB250X_OTG0_DMA_ADDR(ch));
-    ms_writelw(count, MSB250X_OTG0_DMA_COUNT(ch));
-#endif
     ms_writew(control, MSB250X_OTG0_DMA_CNTL(ch));
 
-#if 0
-    if (usb_endpoint_dir_out(ep->ep.desc) && usb_endpoint_xfer_isoc(_ep->desc))
-    if (usb_endpoint_dir_out(ep->ep.desc))
-    printk(KERN_DEBUG "<USB>[DMA][%d] %s[%d] mode/ctrl(0x%x/0x%04x) buff/count/actual/length(0x%p/0x%04x/0x%04x/0x%04x)\n",
+    if (usb_endpoint_is_bulk_out(_ep->desc))
+    {
+        if (1 == dma_ctrl->bDMAMode)
+        {
+            if (1 == ep->shortPkt)
+            {
+                udelay(125);
+                ep->shortPkt = 0;
+            }
+
+            pkt_num = (count + (ep->ep.maxpacket - 1)) / ep->ep.maxpacket;
+
+            msb250x_udc_disable_autoNAK_for_packets(ep->autoNAK_cfg, pkt_num);
+        }
+    }
+
+    if (usb_endpoint_xfer_int(ep->ep.desc) && usb_endpoint_dir_in(ep->ep.desc))
+    printk(KERN_DEBUG "<USB>[DMA][%d] %s[%d] mode/ctrl/pkt(0x%x/0x%04x/0x%x) buff/count/actual/length(0x%p/0x%04x/0x%04x/0x%04x)\n",
                       ep_num,
                       (usb_endpoint_dir_out(_ep->desc))? "RX" : "TX",
                       ch,
                       dma_ctrl->bDMAMode,
                       control,
+                      pkt_num,
                       req->req.buf,
                       count,
                       req->req.actual,
                       req->req.length);
-#endif
+
     return 0;
 }
 
@@ -297,9 +308,9 @@ void msb250x_dma_isr_handler(u8 ch,
     _ep = &ep->ep;
     msb250x_dma_release_channel(ch);
 
-    if (!_ep->desc)
+    if (NULL == _ep->desc)
     {
-        printk(KERN_ERR "<USB>[DMA][%d] %s had been disabled.\n", ch, _ep->name);
+        printk("<USB>[DMA][%d] EP had been disabled.\n", ep_num);
         return;
     }
 
@@ -345,6 +356,31 @@ void msb250x_dma_isr_handler(u8 ch,
                 }
             #endif
             }
+
+
+        #if defined(CONFIG_USB_DOUBLE_BUFFER)
+            csr1 = ms_readb(MSB250X_OTG0_EP_TXCSR1_REG(ep_num));
+
+            if (ep->fifo_size >= (2 * ep_maxpacket))
+            {
+                if (0 == txcsr_l->bFIFONotEmpty || 0 == txcsr_l->bTxPktRdy)
+                {
+                    ep->halted = 0;
+                }
+            }
+        #endif
+
+        #if 0
+            if (1 == dma_ctrl->bDMAMode && 0 == (bytesdone % ep_maxpacket))
+            {
+                ep->halted = 0;
+            }
+
+        #endif
+
+            is_last = ((req->req.actual + bytesdone) < req->req.length)? 0 : 1;
+            //is_last = (req->req.actual < req->req.length)? 0 : 1;
+
         }
         else
         {
@@ -360,16 +396,15 @@ void msb250x_dma_isr_handler(u8 ch,
             {
                 if (usb_endpoint_xfer_bulk(_ep->desc))
                 {
-                    if (1 == dma_ctrl->bDMAMode)
-                    {
-                        msb250x_udc_ok2rcv_for_packets(ep->autoNAK_cfg, 0);
-                    }
+                    msb250x_udc_enable_autoNAK(ep->autoNAK_cfg);
+                    //ms_writew((ms_readw(MSB250X_OTG0_DMA_MODE_CTL) | M_Mode1_P_NAK_Enable), MSB250X_OTG0_DMA_MODE_CTL);
 
                     while (0 == (ms_readb(MSB250X_OTG0_USB_CFG7_H) & 0x80)) //last done bit
                     {
-                        //printk(KERN_DEBUG "<USB>[DMA][%d] Last done bit.\n", ep_num);
+                        printk("<USB>[DMA][%d] Last done bit.\n", ep_num);
                     }
 
+                    //ep->shortPkt = 1;
                 }
 
                 if (0 == dma_ctrl->bDMAMode || 0 == rxcsr_h->bDMAReqMode)
@@ -379,22 +414,25 @@ void msb250x_dma_isr_handler(u8 ch,
                 }
             }
 
+            if (1 == rxcsr_l->bRxPktRdy)
+            {
+                ep->shortPkt = 1;
+            }
+
             msb250x_gadget_sync_request(ep->gadget, &req->req, req->req.actual, bytesdone);
+
+            is_last = (1 == rxcsr_l->bRxPktRdy)? 0 : 1;
+
         }
 
         req->req.actual += bytesdone;
-
-        if (req->req.actual == req->req.length || 0 < (bytesdone % ep->ep.maxpacket))
-        {
-            is_last = 1;
-        }
-#if 0
+#if 1
         //if (!usb_endpoint_xfer_int(ep->ep.desc) && !usb_endpoint_dir_in(ep->ep.desc))
-        if (usb_endpoint_dir_out(ep->ep.desc))
-        printk(KERN_DEBUG "<USB>[%s][DMA][%d] %s mode/%s/ctrl/bytesdone/bytesleft(0x%x/0x%x/0x%04x/0x%04x/0x%04x) buff/%s/actual/length(0x%p/0x%04x/0x%04x/0x%04x)\n",
-                          _ep->name,
-                          ch,
+        if (usb_endpoint_dir_in(ep->ep.desc))
+        printk(KERN_DEBUG "<USB>[DMA][%d] %s[%d] mode/%s/ctrl/bytesdone/bytesleft(0x%x/0x%x/0x%04x/0x%04x/0x%04x) buff/%s/actual/length(0x%p/0x%04x/0x%04x/0x%04x)\n",
+                          ep_num,
                           (usb_endpoint_dir_out(_ep->desc))? "RX" : "TX",
+                          ch,
                           (usb_endpoint_dir_out(_ep->desc))? "bRxPktRdy" : "bTxPktRdy",
                           dma_ctrl->bDMAMode,
                           (usb_endpoint_dir_out(_ep->desc))? rxcsr_l->bRxPktRdy : txcsr_l->bTxPktRdy,
@@ -413,10 +451,9 @@ void msb250x_dma_isr_handler(u8 ch,
         }
     }
 
-    msb250x_set_ep_halt(ep, 0);
-
     if (usb_endpoint_dir_out(ep->ep.desc) || !usb_endpoint_xfer_isoc(_ep->desc))
     {
+        ep->halted = 0;
         msb250x_request_continue(ep);
     }
 

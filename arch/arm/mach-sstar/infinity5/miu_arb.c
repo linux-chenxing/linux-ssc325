@@ -143,17 +143,17 @@ static struct miu_policy_tbl policy_rt =
     {
     // miu0
     {
-        {0x8021FF99, 0xA0AEA2BE, 0xAAA2AA82, 0x3020, 0xC306, 0xFDF9},
+        {0x0000FF99, 0xA0AEA2BE, 0xAAA2AAAA, 0x3020, 0xC106, 0xFDF9},
         {0x0000FFCC, 0xABAAA8A2, 0xA8AAAAAE, 0x0002, 0xC106, 0xEFFF},
         {0x00000000, 0xAAB80A2A, 0xAA8ABAEA, 0x01C8, 0xC006, 0xFBFF},
-        {0x10321001, 0xAAAAAAFF, 0xAAAAAA00, 0x0000, 0xC306, 0xFFF0},
+        {0x1032FF01, 0xAAAAAAFF, 0xAAAAAA00, 0x0000, 0xC306, 0xFFF0},
     },
     // miu1
     {
-        {0x8021FF99, 0xA0AEA2BE, 0xAAA2AA82, 0x3020, 0xC306, 0xFDF9},
+        {0x0000FF99, 0xA0AEA2BE, 0xAAA2AAAA, 0x3020, 0xC106, 0xFDF9},
         {0x0000FFCC, 0xABAAA8A2, 0xA8AAAAAE, 0x0002, 0xC106, 0xEFFF},
         {0x00000000, 0xAAB80A2A, 0xAA8ABAEA, 0x01C8, 0xC006, 0xFBFF},
-        {0x10321001, 0xAAAAAAFF, 0xAAAAAA00, 0x0000, 0xC306, 0xFFF0},
+        {0x1032FF01, 0xAAAAAAFF, 0xAAAAAA00, 0x0000, 0xC306, 0xFFF0},
     },
     }
 };
@@ -171,13 +171,12 @@ static struct miu_policy_tbl policy_cur;
 static void _set_priority(unsigned char miu, int client, char pri)
 {
     int base;
-    int g, c, ofst;
+    int g, ofst;
     struct miu_reg_val *val;
 
     // update reg
     g = client / MIU_GRP_CLIENT_NUM;
-    c = client % MIU_GRP_CLIENT_NUM;
-    ofst = c << 1;
+    ofst = client << 1;
     val = &(policy_cur.val[miu][g]);
     val->priority = (val->priority & ~(0x3 << ofst)) | (pri << ofst);
 
@@ -189,7 +188,7 @@ static void _set_priority(unsigned char miu, int client, char pri)
 static void _set_burst(unsigned char miu, int client, char burst)
 {
     int base;
-    int g, c, ofst, i = 0, idx = 0;
+    int g, ofst, i = 0, idx = 0;
     struct miu_reg_val *val;
 
     do {
@@ -203,17 +202,16 @@ static void _set_burst(unsigned char miu, int client, char burst)
 
     // update reg
     g = client / MIU_GRP_CLIENT_NUM;
-    c = client % MIU_GRP_CLIENT_NUM;
-    ofst = c << 1;
+    ofst = client << 1;
     val = &(policy_cur.val[miu][g]);
     if (idx == MIU_ARB_BURST_NOLIM)
     {
         val->burst = (val->burst & ~(0x3 << ofst));
-        val->nolimit |= (1 << c);
+        val->nolimit |= (1 << client);
     }
     else {
         val->burst = (val->burst & ~(0x3 << ofst)) | (idx << ofst);
-        val->nolimit &= ~(1 << c);
+        val->nolimit &= ~(1 << client);
     }
 
     base = (miu == 0) ? BASE_REG_MIU_ARB_E_PA : BASE_REG_MIU1_ARB_E_PA;
@@ -225,19 +223,18 @@ static void _set_burst(unsigned char miu, int client, char burst)
 static void _set_promote(unsigned char miu, int client, char promote)
 {
     int base;
-    int g, c;
+    int g;
     struct miu_reg_val *val;
 
     // update reg
     g = client / MIU_GRP_CLIENT_NUM;
-    c = client % MIU_GRP_CLIENT_NUM;
     val = &(policy_cur.val[miu][g]);
     if (promote)
     {
-        val->promote |= (1 << c);
+        val->promote |= (1 << client);
     }
     else {
-        val->promote &= ~(1 << c);
+        val->promote &= ~(1 << client);
     }
 
     base = (miu == 0) ? BASE_REG_MIU_ARB_E_PA : BASE_REG_MIU1_ARB_E_PA;
@@ -280,7 +277,7 @@ static void _set_flowctrl(unsigned char miu, int grp, struct arb_flowctrl *fctrl
             // only ID0 enabled, set ID1 as ID0
             MIU_ARB_SET_CNT_ID1(fctrl->cnt1_id, MIU_ARB_GET_CNT_ID0(fctrl->cnt1_id));
         }
-        val->flowctrl = (val->flowctrl & ~(0xFFFF0000)) | (fctrl->cnt1_id << 16) | (fctrl->cnt1_period << 24);
+        val->flowctrl = (val->flowctrl & ~(0xFFFF)) | (fctrl->cnt1_id << 16) | (fctrl->cnt1_period << 24);
     }
 
     // update reg
@@ -343,60 +340,54 @@ static bool _flowctrl_enable(unsigned char miu, short client, bool enable, char 
 
     if (enable)
     {
-        do {
-            // enabled group flow control cnt0 has the same period
-            if (MIU_ARB_GET_CNT_EN(f->cnt0_enable) && (f->cnt0_period == period))
-            {
-                if (!MIU_ARB_GET_CNT_ID0_EN(f->cnt0_enable))
-                {
-                    //id0 not used
-                    MIU_ARB_SET_CNT_ID0_EN(f->cnt0_enable, 1);
-                    MIU_ARB_SET_CNT_ID0(f->cnt0_id, i);
-                    break;
-                }
-                else if (!MIU_ARB_GET_CNT_ID1_EN(f->cnt0_enable))
-                {
-                    //id1 not used
-                    MIU_ARB_SET_CNT_ID1_EN(f->cnt0_enable, 1);
-                    MIU_ARB_SET_CNT_ID1(f->cnt0_id, i);
-                    break;
-                }
-            }
-            // enabled group flow control cnt1 has the same period
-            if (MIU_ARB_GET_CNT_EN(f->cnt1_enable) && (f->cnt1_period == period))
-            {
-                if (!MIU_ARB_GET_CNT_ID0_EN(f->cnt1_enable))
-                {
-                    //id0 not used
-                    MIU_ARB_SET_CNT_ID0_EN(f->cnt1_enable, 1);
-                    MIU_ARB_SET_CNT_ID0(f->cnt1_id, i);
-                    break;
-                }
-                else if (!MIU_ARB_GET_CNT_ID1_EN(f->cnt1_enable))
-                {
-                    //id1 not used
-                    MIU_ARB_SET_CNT_ID1_EN(f->cnt1_enable, 1);
-                    MIU_ARB_SET_CNT_ID1(f->cnt1_id, i);
-                    break;
-                }
-            }
-            if (!MIU_ARB_GET_CNT_EN(f->cnt0_enable))
+        // enabled group flow control cnt0 has the same period
+        if (MIU_ARB_GET_CNT_EN(f->cnt0_enable) && (f->cnt0_period == period))
+        {
+            if (!MIU_ARB_GET_CNT_ID0_EN(f->cnt0_enable))
             {
                 MIU_ARB_SET_CNT_ID0_EN(f->cnt0_enable, 1);
-                f->cnt0_period = period;
                 MIU_ARB_SET_CNT_ID0(f->cnt0_id, i);
-                break;
+                return 0;
             }
-            if (!MIU_ARB_GET_CNT_EN(f->cnt1_enable))
+            else if (!MIU_ARB_GET_CNT_ID1_EN(f->cnt0_enable))
+            {
+                MIU_ARB_SET_CNT_ID1_EN(f->cnt0_enable, 1);
+                MIU_ARB_SET_CNT_ID1(f->cnt0_id, i);
+                return 0;
+            }
+        }
+        // enabled group flow control cnt1 has the same period
+        if (MIU_ARB_GET_CNT_EN(f->cnt1_enable) && (f->cnt1_period == period))
+        {
+            if (!MIU_ARB_GET_CNT_ID0_EN(f->cnt1_enable))
             {
                 MIU_ARB_SET_CNT_ID0_EN(f->cnt1_enable, 1);
-                f->cnt1_period = period;
                 MIU_ARB_SET_CNT_ID0(f->cnt1_id, i);
-                break;
+                return 0;
             }
-            return 1; // not free one, failed
-
-        } while(1);
+            else if (!MIU_ARB_GET_CNT_ID1_EN(f->cnt1_enable))
+            {
+                MIU_ARB_SET_CNT_ID1_EN(f->cnt1_enable, 1);
+                MIU_ARB_SET_CNT_ID1(f->cnt1_id, i);
+                return 0;
+            }
+        }
+        if (!MIU_ARB_GET_CNT_EN(f->cnt0_enable))
+        {
+            MIU_ARB_SET_CNT_ID0_EN(f->cnt0_enable, 1);
+            f->cnt0_period = period;
+            MIU_ARB_SET_CNT_ID0(f->cnt0_id, i);
+            return 0;
+        }
+        if (!MIU_ARB_GET_CNT_EN(f->cnt1_enable))
+        {
+            MIU_ARB_SET_CNT_ID0_EN(f->cnt1_enable, 1);
+            f->cnt1_period = period;
+            MIU_ARB_SET_CNT_ID0(f->cnt1_id, i);
+            return 0;
+        }
+        printk(KERN_ERR "No available flow control cnt\n");
+        return 1; // failed
     }
     else
     {
@@ -416,11 +407,6 @@ static bool _flowctrl_enable(unsigned char miu, short client, bool enable, char 
         else if (MIU_ARB_GET_CNT_ID1_EN(f->cnt1_enable) && (MIU_ARB_GET_CNT_ID1(f->cnt1_id) == i))
         {
             MIU_ARB_SET_CNT_ID1_EN(f->cnt1_enable, 0);
-        }
-        else
-        {
-            //nothing changed
-            return 0;
         }
     }
     _set_flowctrl(miu, g, f);

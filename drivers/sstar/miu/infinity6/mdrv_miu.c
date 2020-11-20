@@ -130,12 +130,7 @@ static irqreturn_t MDrv_MIU_Protect_interrupt(s32 irq, void *dev_id)
     memset(&pInfo, 0, sizeof(pInfo));
 
     MDrv_MIU_GetProtectInfo(u8MiuSel, &pInfo);
-
-    if(pInfo.bHit)
-        BUG();
-    else
-        printk (KERN_EMERG "in miu hit interrupt, but bHit not match\n");
-
+    BUG();
     return IRQ_HANDLED;
 }
 #else

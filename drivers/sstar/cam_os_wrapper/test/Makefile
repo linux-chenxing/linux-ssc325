@@ -8,7 +8,7 @@ KERNEL = $(PWD)/../../../../
 CC  = $(CROSS_COMPILE)gcc
 APP = cam_os_wrapper_test
 EXTRA_CFLAGS := -I$(KERNEL)/drivers/sstar/include/
-USER_CFLAGS := -Wall -Werror -Wno-sync-nand -g -O2 -ffunction-sections -funwind-tables -fstack-protector -I../pub/ -I$(KERNEL)/drivers/sstar/include/
+USER_CFLAGS := -Wall -Werror -g -O2 -ffunction-sections -funwind-tables -fstack-protector -I../pub/ -I$(KERNEL)/drivers/sstar/include/
 USER_LDFLAGS := -L$(PWD)/../.build/lib -lcam_os_wrapper
 
 all:

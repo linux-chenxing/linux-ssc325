@@ -1,7 +1,7 @@
 /*------------------------- usb_gadget_ops ----------------------------------*/
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
-#include <msb250x/msb250x_udc_reg.h>
+
 #include <msb250x/msb250x_udc.h>
 
 void msb250x_gadget_sync_request(struct usb_gadget* gadget, struct usb_request* req, int offset, int size)

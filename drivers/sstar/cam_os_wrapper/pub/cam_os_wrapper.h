@@ -1,21 +1,16 @@
-/*
-* cam_os_wrapper.h - Sigmastar
-*
-* Copyright (C) 2018 Sigmastar Technology Corp.
-*
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
-*
-* This software is licensed under the terms of the GNU General Public
-* License version 2, as published by the Free Software Foundation, and
-* may be copied, distributed, and modified under those terms.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-*/
+/* Copyright (c) 2018-2019 Sigmastar Technology Corp.
+ All rights reserved.
 
+ Unless otherwise stipulated in writing, any and all information contained
+herein regardless in any format shall remain the sole proprietary of
+Sigmastar Technology Corp. and be kept in strict confidence
+(Sigmastar Confidential Information) by the recipient.
+Any unauthorized act including without limitation unauthorized disclosure,
+copying, use, reproduction, sale, distribution, modification, disassembling,
+reverse engineering and compiling of the contents of Sigmastar Confidential
+Information is unlawful and strictly prohibited. Sigmastar hereby reserves the
+rights to any and all damages, losses, costs and expenses resulting therefrom.
+*/
 
 ///////////////////////////////////////////////////////////////////////////////
 /// @file      cam_os_wrapper.h
@@ -28,7 +23,7 @@
 #ifndef __CAM_OS_WRAPPER_H__
 #define __CAM_OS_WRAPPER_H__
 
-#define CAM_OS_WRAPPER_VERSION "v1.0.21"
+#define CAM_OS_WRAPPER_VERSION "v1.0.14"
 
 #if defined(__aarch64__)
 #define CAM_OS_BITS_PER_LONG 64
@@ -336,12 +331,12 @@ s64 CamOsTimeDiff(CamOsTimespec_t *ptStart, CamOsTimespec_t *ptEnd, CamOsTimeDif
 //                     thread priority, stack size and thread name. Thread
 //                     priority range from 1(lowest) to 99(highest), use OS
 //                     default priority if set 0.
-//      ------------------------------------------------------------------------
-//      |nPriority|   1 ~ 49  |     50    |  51 ~ 70  |  71 ~ 94  |   95 ~ 99  |
-//      ------------------------------------------------------------------------
-//      |  Linux  |SCHED_OTHER|SCHED_OTHER|SCHED_OTHER|  SCHED_RR |  SCHED_RR  |
-//      |         | NICE 19~1 |   NICE 0  |NICE -1~-20|RTPRIO 1~94|RTPRIO 95~99|
-//      ------------------------------------------------------------------------
+//       ----------------------------------------------------------------------
+//       |  nPriority |    1 ~ 49   |      50     |   51 ~ 70   |   71 ~ 99   |
+//       ----------------------------------------------------------------------
+//       |    Linux   | SCHED_OTHER | SCHED_OTHER | SCHED_OTHER |   SCHED_RR  |
+//       |            |  NICE 19~1  |    NICE 0   | NICE -1~-20 | RTPRIO 1~99 |
+//       ----------------------------------------------------------------------
 //      [in]  pfnStartRoutine(): The new thread starts execution by invoking it.
 //      [in]  pArg: It is passed as the sole argument of pfnStartRoutine().
 // Return:
@@ -352,6 +347,9 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
                              void *(*pfnStartRoutine)(void *),
                              void *pArg);
 
+// [FIX ME]:sched_setscheduler seems not to work after pthread run in Linux
+//          kernel and user space
+#if 0
 //=============================================================================
 // Description:
 //      Change priority of a thread created by CamOsThreadCreate.
@@ -362,6 +360,7 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
 //      CAM_OS_OK is returned if successful; otherwise, returns CamOsRet_e.
 //=============================================================================
 CamOsRet_e CamOsThreadChangePriority(CamOsThread pThread, u32 nPriority);
+#endif
 
 //=============================================================================
 // Description:
@@ -864,7 +863,7 @@ void* CamOsMemRealloc(void* pPtr, u32 nSize);
 
 //=============================================================================
 // Description:
-//      Flush data in cache
+//      Clean and invalidate cache
 // Parameters:
 //      [in]  pPtr: Virtual start address
 //      [in]  nSize: Size of the memory block, in bytes.
@@ -872,17 +871,6 @@ void* CamOsMemRealloc(void* pPtr, u32 nSize);
 //      N/A
 //=============================================================================
 void CamOsMemFlush(void* pPtr, u32 nSize);
-
-//=============================================================================
-// Description:
-//      Invalidate data in cache
-// Parameters:
-//      [in]  pPtr: Virtual start address
-//      [in]  nSize: Size of the memory block, in bytes.
-// Return:
-//      N/A
-//=============================================================================
-void CamOsMemInvalidate(void* pPtr, u32 nSize);
 
 //=============================================================================
 // Description:
@@ -1218,34 +1206,34 @@ void CamOsAtomicSet(CamOsAtomic_t *ptAtomic, s32 nValue);
 // Description:
 //      Add to the atomic variable and return value.
 // Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
 //      [in]  nValue: Integer value to add.
+//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
 // Return:
 //      The value of ptAtomic.
 //=============================================================================
-s32 CamOsAtomicAddReturn(CamOsAtomic_t *ptAtomic, s32 nValue);
+s32 CamOsAtomicAddReturn(s32 nValue, CamOsAtomic_t *ptAtomic);
 
 //=============================================================================
 // Description:
 //      Subtract the atomic variable and return value.
 // Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
 //      [in]  nValue: Integer value to subtract.
+//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
 // Return:
 //      The value of ptAtomic.
 //=============================================================================
-s32 CamOsAtomicSubReturn(CamOsAtomic_t *ptAtomic, s32 nValue);
+s32 CamOsAtomicSubReturn(s32 nValue, CamOsAtomic_t *ptAtomic);
 
 //=============================================================================
 // Description:
 //      Subtract value from variable and test result.
 // Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
 //      [in]  nValue: Integer value to subtract.
+//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
 // Return:
 //      Returns true if the result is zero, or false for all other cases.
 //=============================================================================
-s32 CamOsAtomicSubAndTest(CamOsAtomic_t *ptAtomic, s32 nValue);
+s32 CamOsAtomicSubAndTest(s32 nValue, CamOsAtomic_t *ptAtomic);
 
 //=============================================================================
 // Description:
@@ -1291,13 +1279,13 @@ s32 CamOsAtomicDecAndTest(CamOsAtomic_t *ptAtomic);
 // Description:
 //      Add to the atomic variable and test if negative.
 // Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
 //      [in]  nValue: Integer value to subtract.
+//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
 // Return:
 //      Returns true if the result is negative, or false when result is greater
 //      than or equal to zero.
 //=============================================================================
-s32 CamOsAtomicAddNegative(CamOsAtomic_t *ptAtomic, s32 nValue);
+s32 CamOsAtomicAddNegative(s32 nValue, CamOsAtomic_t *ptAtomic);
 
 //=============================================================================
 // Description:
@@ -1312,101 +1300,6 @@ s32 CamOsAtomicAddNegative(CamOsAtomic_t *ptAtomic, s32 nValue);
 //      Returns true if the val is changed into new value
 //=============================================================================
 s32 CamOsAtomicCompareAndSwap(CamOsAtomic_t *ptAtomic, s32 nOldValue, s32 nNewValue);
-
-//=============================================================================
-// Description:
-//      AND operation with the atomic variable and return the new value.
-// Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
-//      [in]  nValue: Integer value to AND.
-// Return:
-//      The value of ptAtomic.
-//=============================================================================
-s32 CamOsAtomicAndFetch(CamOsAtomic_t *ptAtomic, s32 nValue);
-
-//=============================================================================
-// Description:
-//      AND operation with the atomic variable and returns the value that had
-//      previously been in memory.
-// Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
-//      [in]  nValue: Integer value to AND.
-// Return:
-//      The value of ptAtomic.
-//=============================================================================
-s32 CamOsAtomicFetchAnd(CamOsAtomic_t *ptAtomic, s32 nValue);
-
-//=============================================================================
-// Description:
-//      NAND operation with the atomic variable and return the new value.
-//      GCC 4.4 and later implement NAND as "~(ptAtomic & nValue)" instead of
-//      "~ptAtomic & nValue".
-// Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
-//      [in]  nValue: Integer value to NAND.
-// Return:
-//      The value of ptAtomic.
-//=============================================================================
-s32 CamOsAtomicNandFetch(CamOsAtomic_t *ptAtomic, s32 nValue);
-
-//=============================================================================
-// Description:
-//      NAND operation with the atomic variable and returns the value that had
-//      previously been in memory. GCC 4.4 and later implement NAND as
-//      "~(ptAtomic & nValue)" instead of "~ptAtomic & nValue".
-// Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
-//      [in]  nValue: Integer value to NAND.
-// Return:
-//      The value of ptAtomic.
-//=============================================================================
-s32 CamOsAtomicFetchNand(CamOsAtomic_t *ptAtomic, s32 nValue);
-
-//=============================================================================
-// Description:
-//      OR operation with the atomic variable and return the new value.
-// Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
-//      [in]  nValue: Integer value to OR.
-// Return:
-//      The value of ptAtomic.
-//=============================================================================
-s32 CamOsAtomicOrFetch(CamOsAtomic_t *ptAtomic, s32 nValue);
-
-//=============================================================================
-// Description:
-//      OR operation with the atomic variable and returns the value that had
-//      previously been in memory.
-// Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
-//      [in]  nValue: Integer value to OR.
-// Return:
-//      The value of ptAtomic.
-//=============================================================================
-s32 CamOsAtomicFetchOr(CamOsAtomic_t *ptAtomic, s32 nValue);
-
-//=============================================================================
-// Description:
-//      XOR operation with the atomic variable and return the new value.
-// Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
-//      [in]  nValue: Integer value to XOR.
-// Return:
-//      The value of ptAtomic.
-//=============================================================================
-s32 CamOsAtomicXorFetch(CamOsAtomic_t *ptAtomic, s32 nValue);
-
-//=============================================================================
-// Description:
-//      XOR operation with the atomic variable and returns the value that had
-//      previously been in memory.
-// Parameters:
-//      [in]  ptAtomic: Pointer of type CamOsAtomic_t.
-//      [in]  nValue: Integer value to XOR.
-// Return:
-//      The value of ptAtomic.
-//=============================================================================
-s32 CamOsAtomicFetchXor(CamOsAtomic_t *ptAtomic, s32 nValue);
 
 //=============================================================================
 // Description:

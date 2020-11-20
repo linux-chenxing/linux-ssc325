@@ -1,19 +1,15 @@
-/*
-* cam_os_util_list.h - Sigmastar
-*
-* Copyright (C) 2018 Sigmastar Technology Corp.
-*
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
-*
-* This software is licensed under the terms of the GNU General Public
-* License version 2, as published by the Free Software Foundation, and
-* may be copied, distributed, and modified under those terms.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
+/* Copyright (c) 2018-2019 Sigmastar Technology Corp.
+ All rights reserved.
+
+ Unless otherwise stipulated in writing, any and all information contained
+herein regardless in any format shall remain the sole proprietary of
+Sigmastar Technology Corp. and be kept in strict confidence
+(Sigmastar Confidential Information) by the recipient.
+Any unauthorized act including without limitation unauthorized disclosure,
+copying, use, reproduction, sale, distribution, modification, disassembling,
+reverse engineering and compiling of the contents of Sigmastar Confidential
+Information is unlawful and strictly prohibited. Sigmastar hereby reserves the
+rights to any and all damages, losses, costs and expenses resulting therefrom.
 */
 
 
@@ -77,25 +73,25 @@ struct CamOsListHead_t
         pList->pPrev = pList;
     }
 
-    static inline void _CAM_OS_LIST_ADD(struct CamOsListHead_t *pNew,
+    static inline void _CAM_OS_LIST_ADD(struct CamOsListHead_t *new,
                                 struct CamOsListHead_t *pPrev,
                                 struct CamOsListHead_t *pNext)
     {
-        pNext->pPrev = pNew;
-        pNew->pNext = pNext;
-        pNew->pPrev = pPrev;
-        pPrev->pNext = pNew;
+        pNext->pPrev = new;
+        new->pNext = pNext;
+        new->pPrev = pPrev;
+        pPrev->pNext = new;
     }
 
-    static inline void CAM_OS_LIST_ADD(struct CamOsListHead_t *pNew, struct CamOsListHead_t *head)
+    static inline void CAM_OS_LIST_ADD(struct CamOsListHead_t *new, struct CamOsListHead_t *head)
     {
-        _CAM_OS_LIST_ADD(pNew, head, head->pNext);
+        _CAM_OS_LIST_ADD(new, head, head->pNext);
     }
 
 
-    static inline void CAM_OS_LIST_ADD_TAIL(struct CamOsListHead_t *pNew, struct CamOsListHead_t *head)
+    static inline void CAM_OS_LIST_ADD_TAIL(struct CamOsListHead_t *new, struct CamOsListHead_t *head)
     {
-        _CAM_OS_LIST_ADD(pNew, head->pPrev, head);
+        _CAM_OS_LIST_ADD(new, head->pPrev, head);
     }
 
     static inline void _CAM_OS_LIST_DEL(struct CamOsListHead_t * pPrev, struct CamOsListHead_t * pNext)
@@ -113,8 +109,8 @@ struct CamOsListHead_t
     static inline void CAM_OS_LIST_DEL(struct CamOsListHead_t *pEntry)
     {
         _CAM_OS_LIST_DEL(pEntry->pPrev, pEntry->pNext);
-        pEntry->pNext = (struct CamOsListHead_t *)CAM_OS_LIST_POISON1;
-        pEntry->pPrev = (struct CamOsListHead_t *)CAM_OS_LIST_POISON2;
+        pEntry->pNext = CAM_OS_LIST_POISON1;
+        pEntry->pPrev = CAM_OS_LIST_POISON2;
     }
 
     static inline void CAM_OS_LIST_DEL_INIT(struct CamOsListHead_t *entry)
@@ -184,8 +180,8 @@ static FORCE_INLINE void _CAM_OS_WRITE_ONCE_SIZE(volatile void *p, void *res, in
 
 #define CAM_OS_WRITE_ONCE(x, val) \
 ({							\
-	union { struct CamOsHListNode_t * __val; char __c[1]; } __u =	\
-		{ .__val = (struct CamOsHListNode_t *) (val) }; \
+	union { typeof(x) __val; char __c[1]; } __u =	\
+		{ .__val = (typeof(x)) (val) }; \
 	_CAM_OS_WRITE_ONCE_SIZE(&(x), __u.__c, sizeof(x));	\
 	__u.__val;					\
 })

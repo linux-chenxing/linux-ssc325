@@ -79,10 +79,6 @@
 #include <linux/phy.h>
 
 #include "gpio.h"
-#ifdef CONFIG_MS_PADMUX
-#include "mdrv_padmux.h"
-#include "mdrv_puse.h"
-#endif
 
 #ifdef CONFIG_MS_GPIO
 extern void MDrv_GPIO_Set_Low(U8 u8IndexGPIO);
@@ -364,8 +360,6 @@ int rx_packet_cnt = 0;
 
 static struct timespec rx_time_last = { 0 };
 static int rx_duration_max = 0;
-
-static int _phyReset = 0;
 
 //-------------------------------------------------------------------------------------------------
 //  Data structure
@@ -665,15 +659,7 @@ inline static int skb_queue_remove(skb_queue* skb_q, struct sk_buff** pskb, dma_
     {
         if (pskb_info->skb)
         {
-            if (0xFFFFFFFF == (int)pskb_info->skb)
-            {
-                void* p = BUS2VIRT(pskb_info->skb_phys);
-                kfree(p);
-            }
-            else
-            {
-                dev_kfree_skb_any(pskb_info->skb);
-            }
+            dev_kfree_skb_any(pskb_info->skb);
             pskb_info->skb = NULL;
             // hemac->skb_tx_free++;
         }
@@ -1825,10 +1811,8 @@ static int MDev_EMAC_tx(struct sk_buff *skb, struct net_device *dev)
     }
     if (skb->len > EMAC_MTU)
     {
-        // EMAC_ERR("Something wrong (mtu, tx_len) = (%d, %d)\n", dev->mtu, skb->len);
-        // ret = NETDEV_TX_BUSY;
-        dev_kfree_skb_any(skb);
-        dev->stats.tx_dropped++;
+        EMAC_ERR("Something wrong (mtu, tx_len) = (%d, %d)\n", dev->mtu, skb->len);
+        ret = NETDEV_TX_BUSY;
         goto out_unlock;
     }
 #if defined(PACKET_DUMP)
@@ -1873,20 +1857,13 @@ static int MDev_EMAC_tx(struct sk_buff *skb, struct net_device *dev)
     {
         int i;
         int nr_frags = skb_shinfo(skb)->nr_frags;
+        char* start = &(hemac->pTxBuf[hemac->TxBufIdx * EMAC_MTU]);
+        char* p = start;
         int len;
 
         // dma_unmap_single(NULL, VIRT2PA(start), EMAC_MTU, DMA_TO_DEVICE);
         if (nr_frags)
         {
-            char* start = kmalloc(EMAC_MTU, GFP_ATOMIC);
-            char* p = start;
-
-            if (!start)
-            {
-                ret = NETDEV_TX_BUSY;
-                goto out_unlock;
-            }
-
             memcpy(p, skb->data, skb_headlen(skb));
             p += skb_headlen(skb);
             len = skb_headlen(skb);
@@ -1915,9 +1892,14 @@ static int MDev_EMAC_tx(struct sk_buff *skb, struct net_device *dev)
 */
             if (EMAC_SG_BUF_CACHE)
                 Chip_Flush_Cache_Range((size_t)start, skb->len);
+            hemac->TxBufIdx++;
+            if (hemac->TxBufIdx >= MHal_EMAC_TXQ_Size(hemac->hal))
+            {
+                hemac->TxBufIdx = 0;
+            }
             skb_addr = VIRT2BUS(start);
             spin_lock_irqsave(&hemac->mutexTXQ, flags);
-            skb_queue_insert(&(hemac->skb_queue_tx), (struct sk_buff*)0xFFFFFFFF, (dma_addr_t)skb_addr, skb->len, 1);
+            skb_queue_insert(&(hemac->skb_queue_tx), NULL, (dma_addr_t)skb_addr, skb->len, 1);
             spin_unlock_irqrestore(&hemac->mutexTXQ, flags);
             // Chip_Flush_Cache_Range((size_t)start, skb->len);
             dev_kfree_skb_any(skb);
@@ -1941,9 +1923,8 @@ static int MDev_EMAC_tx(struct sk_buff *skb, struct net_device *dev)
             spin_unlock_irqrestore(&hemac->mutexTXQ, flags);
             Chip_Flush_Cache_Range((size_t)skb->data, skb->len);
         }
-	if (nr_frags >= hemac->maxSG)
-	    hemac->maxSG = nr_frags + 1;
     }
+
 #else // #if #if EMAC_SG
 
 #if DYNAMIC_INT_TX_TIMER
@@ -2267,7 +2248,7 @@ static int MDev_EMAC_rx(struct net_device *dev, int budget)
             desc->addr = VIRT2BUS(clean_skb->data) | EMAC_DESC_DONE;
         desc->addr = CLR_BITS(desc->addr, EMAC_DESC_DONE);
 #endif
-        dma_map_single(NULL, clean_skb->data, EMAC_PACKET_SIZE_MAX, DMA_FROM_DEVICE);
+        dma_map_single(NULL, clean_skb->data, clean_skb->len, DMA_FROM_DEVICE);
         Chip_Flush_MIU_Pipe();
 
         rxinfo->idx++;
@@ -2620,7 +2601,7 @@ static int MDev_EMAC_napi_poll(struct napi_struct *napi, int budget)
 
     if (work_done)
     {
-        // budget_rmn -= work_done;
+        budget_rmn -= work_done;
         // goto rx_poll_again;
     }
 #if DYNAMIC_INT_RX
@@ -2646,8 +2627,7 @@ static int MDev_EMAC_napi_poll(struct napi_struct *napi, int budget)
             {
 #endif // #if REDUCE_CPU_FOR_RBNA
                 // printk("[%s][%d] packet for delay number (elapse, current, packet) = (%d, %d, %d)\n", __FUNCTION__, __LINE__, (int)elapse, (int)hemac->rx_stats_packet, (int)packets);
-                // MHal_EMAC_RX_ParamSet(hemac->hal, packets/200 + 2, 0xFFFFFFFF);
-                MHal_EMAC_RX_ParamSet(hemac->hal, packets/200 + 1, 0xFFFFFFFF);
+                MHal_EMAC_RX_ParamSet(hemac->hal, packets/200 + 2, 0xFFFFFFFF);
 #if REDUCE_CPU_FOR_RBNA
             }
             spin_unlock_irqrestore(&hemac->mutexIntRX, flags);
@@ -2659,12 +2639,8 @@ static int MDev_EMAC_napi_poll(struct napi_struct *napi, int budget)
     }
 #endif
 
-/*
     if (work_done == budget_rmn)
         return budget;
-*/
-
-    napi_gro_flush(napi, false);
 
 #if 1
     /* If budget not fully consumed, exit the polling mode */
@@ -2889,13 +2865,11 @@ static void* MDev_EMAC_VarInit(struct emac_handle *hemac)
     int pausePktSize = 0;
 #endif // #if EMAC_FLOW_CONTROL_RX
 
-/*
 #if EMAC_SG
     int txBufSize = MHal_EMAC_TXQ_Size(hemac->hal) * EMAC_MTU;
 #else
     int txBufSize = 0;
 #endif
-*/
 
     // TXD init
     txd_len = MHal_EMAC_TXD_Cfg(hemac->hal, hemac->txd_num);
@@ -2908,7 +2882,6 @@ static void* MDev_EMAC_VarInit(struct emac_handle *hemac)
         printk("[%s][%d] alloc memory fail %d\n", __FUNCTION__, __LINE__, RX_DESC_QUEUE_SIZE + txd_len);
         return NULL;
     }
-/*
 #if (EMAC_SG && EMAC_SG_BUF_CACHE)
     if (NULL == (hemac->pTxBuf = kmalloc(txBufSize, GFP_KERNEL)))
     {
@@ -2917,7 +2890,6 @@ static void* MDev_EMAC_VarInit(struct emac_handle *hemac)
         return NULL;
     }
 #endif
-*/
     if (txd_len)
     {
         MHal_EMAC_TXD_Buf(hemac->hal, p, VIRT2BUS(p), txd_len);
@@ -2937,12 +2909,9 @@ static void* MDev_EMAC_VarInit(struct emac_handle *hemac)
 #endif // #if EMAC_FLOW_CONTROL_RX
 
 #if EMAC_SG
-/*
     if (NULL == hemac->pTxBuf)
         hemac->pTxBuf = (txBufSize) ? (char*)p : NULL;
     hemac->TxBufIdx = 0;
-*/
-    hemac->maxSG = 0;
 #endif // #if EMAC_SG
 
     memset(hemac->sa, 0, sizeof(hemac->sa));
@@ -3083,7 +3052,7 @@ static int emac_phy_connect(struct net_device* netdev)
     }
 #endif
 #if 0
-    printk("[%s][%d] phy_mode = %d\n", __FUNCTION__, __LINE__, hemac->phy_mode);
+    printk("[%s][%d] phy_mode = %d\n", __FUNCTION__, __LINE__, phy_mode);
     printk("[%s][%d] of_phy_connect (netdev, np, emac_phy_link_adjust) = (0x%08x, 0x%08x, 0x%08x)\n",
         __FUNCTION__, __LINE__,
         (int)netdev, (int)np, (int)emac_phy_link_adjust);
@@ -3469,9 +3438,6 @@ static ssize_t dlist_info_show(struct device *dev, struct device_attribute *attr
 	hemac->txInt = txInt_ct;
     }
     str += scnprintf(str, end - str, "%s=%d\n", "MHal_EMAC_TXQ_Mode", MHal_EMAC_TXQ_Mode(hemac->hal));
-#if EMAC_SG
-    str += scnprintf(str, end - str, "%s=%d\n", "maxSG", hemac->maxSG);
-#endif // #if #if EMAC_SG
     return (str - buf);
 }
 DEVICE_ATTR(dlist_info, 0644, dlist_info_show, dlist_info_store);
@@ -3742,32 +3708,11 @@ static ssize_t turndrv_store(struct device *dev, struct device_attribute *attr,c
                 MHal_EMAC_read_phy(hemac->hal, 0, 0x142, &val);
                 tmp = ((val >> 8) & 0x1f);
                 
-#if 0
                 if (tmp & 0x10)
                 {
                     param = -param;
                 }
                 tmp = ((tmp + param) & 0x1f) << 8;
-#else
-                if (tmp & 0x10)
-                {
-                    tmp = tmp & 0xf;
-                    tmp ++;
-                    tmp = -tmp;
-                }
-                tmp += param;
-                if (tmp > 15)
-                    tmp = 15;
-                if (tmp < -16)
-                    tmp = -16;
-                if (tmp < 0)
-                {
-                    tmp = -tmp;
-                    tmp --;
-                    tmp = tmp | 0x10;
-                }
-                tmp = tmp << 8;
-#endif
                 val = (val & ~0x1f00) | tmp;
                 MHal_EMAC_write_phy(hemac->hal, 0, 0x142, val);
             }
@@ -4513,25 +4458,6 @@ static int MDev_EMAC_init(struct platform_device *pdev)
     MHal_EMAC_PadLed(hemac->hal, hemac->pad_led_reg, hemac->pad_led_msk, hemac->pad_led_val);
     MHal_EMAC_PhyMode(hemac->hal, hemac->phy_mode);
 
-    if (0 == _phyReset)
-    {
-        #ifdef CONFIG_MS_PADMUX
-        if (mdrv_padmux_active())
-        {
-            int gpio_no;
-            if (PAD_UNKNOWN != (gpio_no = mdrv_padmux_getpad(MDRV_PUSE_EMAC0_PHY_RESET)))
-            {
-                MDrv_GPIO_Set_High(gpio_no);
-            }
-            if (PAD_UNKNOWN != (gpio_no = mdrv_padmux_getpad(MDRV_PUSE_EMAC1_PHY_RESET)))
-            {
-                MDrv_GPIO_Set_High(gpio_no);
-            }
-        }
-        #endif
-        _phyReset = 1;
-    }
-
 #if TX_THROUGHPUT_TEST
     printk("==========TX_THROUGHPUT_TEST===============");
     pseudo_packet = alloc_skb(EMAC_PACKET_SIZE_MAX, GFP_ATOMIC);
@@ -4704,11 +4630,10 @@ static void MDev_EMAC_dts(struct net_device* netdev)
     // printk("[%s][%d] pad (reg, msk, val) = (0x%08x 0x%08x 0x%08x)\n", __FUNCTION__, __LINE__, hemac->pad_reg, hemac->pad_msk, hemac->pad_val);
 
     {
-        // struct device_node* np = NULL;
+        struct device_node* np = NULL;
         int phy_mode;
 
         hemac->phy_mode = PHY_INTERFACE_MODE_RMII;
-#if 0
         np = of_parse_phandle(netdev->dev.of_node, "phy-handle", 0);
         if (!np && of_phy_is_fixed_link(netdev->dev.of_node))
             if (!of_phy_register_fixed_link(netdev->dev.of_node))
@@ -4728,23 +4653,6 @@ static void MDev_EMAC_dts(struct net_device* netdev)
                 hemac->phy_mode = phy_mode;
             }
         }
-#else
-        if (0 > (phy_mode = of_get_phy_mode(netdev->dev.of_node)))
-        {
-            struct device_node* np = NULL;
-            np = of_parse_phandle(netdev->dev.of_node, "phy-handle", 0);
-            if ((np) && (0 <= (phy_mode = of_get_phy_mode(np))))
-            {
-                hemac->phy_mode = phy_mode;
-            }
-	    if (np)
-	        of_node_put(np);
-        }
-        else
-        {
-            hemac->phy_mode = phy_mode;
-        }
-#endif
     }
     hemac->name = netdev->dev.of_node->name;
 }
@@ -4892,13 +4800,11 @@ static void MDev_EMAC_exit(struct platform_device *pdev)
         MDev_EMAC_RX_Desc_Free(hemac);
         MDev_EMAC_MemFree(hemac);
 #if (EMAC_SG && EMAC_SG_BUF_CACHE)
-/*
         if (hemac->pTxBuf)
         {
             kfree(hemac->pTxBuf);
             hemac->pTxBuf = NULL;
         }
-*/
 #endif
 	MHal_EMAC_Free(hemac->hal);
         unregister_netdev(emac_dev);

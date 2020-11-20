@@ -30,10 +30,7 @@
 #include "ms_msys.h"
 #include "reg_rtcpwc.h"
 
-#define DTS_DEFAULT_DATE            "default_date"
-
 #define RTC_DEBUG  0
-#define RTC_CHECK_STATUS_DELAY_TIME_MS  2
 
 #define ISO_S0						0x00
 #define ISO_S1						0x01
@@ -41,8 +38,6 @@
 #define ISO_S3						0x07
 #define ISO_S4						0x05
 #define ISO_S5						0x01
-
-#define RTC_PASSWORD 0xBABE
  
 #define ISO_ACK_RETRY_TIME			20
 
@@ -58,12 +53,12 @@ struct ms_rtc_info {
     struct platform_device *pdev;
     struct rtc_device *rtc_dev;
     void __iomem *rtc_base;
-    u32 default_base;
 };
 
 int auto_wakeup_delay_seconds = 0;
 //static AUTL_DATETIME        m_ShadowTime = {0};
-static char _bInit = 0;
+//static U64            m_ulRtcInSeconds = 0;
+static int            m_ulBaseTimeInSeconds = 0;
 
 static ssize_t auto_wakeup_timer_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
 {
@@ -169,7 +164,7 @@ The function verify the RTC status
 The function to enable ISO cell 
 @return It reports the status of the operation.
 */
-bool ms_rtc_ISOCTL_EX(struct device *dev)
+void ms_rtc_ISOCTL(struct device *dev)
 {
     U8 ubCheck = ISO_ACK_RETRY_TIME;
     struct ms_rtc_info *info = dev_get_drvdata(dev);
@@ -180,286 +175,87 @@ bool ms_rtc_ISOCTL_EX(struct device *dev)
     // but in our test, set to 3ms will still causes incorrect data read.
     // And the sequence should be finished within 1 sec.
 
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
-    writew(reg & ISO_S0, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
+    writew(ISO_S0, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
     while((reg ) && (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        mdelay(1);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
 
-    if(ubCheck == 0)
-        return FALSE;
-
     ubCheck = ISO_ACK_RETRY_TIME;
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
-    writew(reg | ISO_S1, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
+    writew(ISO_S1, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
     while((reg != RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT)&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        mdelay(1);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
 
-    if(ubCheck == 0)
-        return FALSE;
-
     ubCheck = ISO_ACK_RETRY_TIME;
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
-    writew(reg | ISO_S2, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
+    writew(ISO_S2, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
     while((reg )&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        mdelay(1);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
 
-    if(ubCheck == 0)
-        return FALSE;
-
     ubCheck = ISO_ACK_RETRY_TIME;
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
-    writew(reg | ISO_S3, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
+    writew(ISO_S3, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
     while((reg != RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT)&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        mdelay(1);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
 
-    if(ubCheck == 0)
-        return FALSE;
-
     ubCheck = ISO_ACK_RETRY_TIME;
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
-    writew(reg & ISO_S4, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
+    writew(ISO_S4, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
     while((reg )&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        mdelay(1);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
 
-    if(ubCheck == 0)
-        return FALSE;
-
     ubCheck = ISO_ACK_RETRY_TIME;
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
-    writew(reg & ISO_S5, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
+    writew(ISO_S5, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
     while((reg != RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT )&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        mdelay(1);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
 
-    if(ubCheck == 0)
-        return FALSE;
-
     ubCheck = ISO_ACK_RETRY_TIME;
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
-    writew(reg & ISO_S0, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
+    writew(ISO_S0, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
     while((reg )&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        mdelay(1);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
 
-    if(ubCheck == 0)
-        return FALSE;
-
-    udelay(2);
-    return TRUE;
+    // It need to be set 1ms delay on the end of ISO control flow. If not,
+    // get base time or read count number will occur to get wrong values.
+    //udelay(2);
+    mdelay(1);
 }
-
-void ms_rtc_ISOCTL(struct device *dev)
-{
-    while(!ms_rtc_ISOCTL_EX(dev))
-    {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
-    }
-}
-
-//------------------------------------------------------------------------------
-//  Function    : ms_RTC_GetSW0
-//  Description :
-//------------------------------------------------------------------------------
-/** @brief This function is used for getting RTC SW0.
-
-This function is used for getting RTC SW0.
-@param[out] The value of RTC SW0(magic number).
-@return It reports the status of the operation.
-*/
-u32 ms_rtc_GetSW0(struct device *dev)
-{
-    struct ms_rtc_info *info = dev_get_drvdata(dev);
-    u16 BaseH = 0, BaseL = 0;
-    u32 ulBaseTime = 0;
-    u16 reg = 0;
-    // I.   read SW0
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew( reg | RTCPWC_DIG2RTC_SW0_RD, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    ms_rtc_ISOCTL(dev);
-    // read base time
-    BaseH = readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_H);
-    BaseL = readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_L);
-    RTC_DBG("SW0 BaseH %x \n", BaseH);
-    RTC_DBG("SW0 BaseL %x \n", BaseL);
-    ulBaseTime = BaseH << 16;
-    ulBaseTime |= BaseL;
-    //reset read bit of base time
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg & ~RTCPWC_DIG2RTC_SW0_RD, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    return ulBaseTime;
-}
-
-void ms_rtc_SetSW0(struct device *dev, u32 val)
-{
-    struct ms_rtc_info *info = dev_get_drvdata(dev);
-    u16 reg = 0;
-    //Set sw bit
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg | RTCPWC_DIG2RTC_SW0_WR, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    // Set sw password
-    writew(val, info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L);
-    RTC_DBG("Set RTC SetSW0=%x\r\n", readw(info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L));
-    //Trigger ISO
-    ms_rtc_ISOCTL(dev);
-    //reset control bits
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg & ~RTCPWC_DIG2RTC_SW0_WR, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-}
-
-#ifdef CONFIG_RTCPWC_INNER_EHHE
-u32 ms_rtc_GetSW1(struct device *dev)
-{
-    struct ms_rtc_info *info = dev_get_drvdata(dev);
-    u16 BaseH = 0, BaseL = 0;
-    u32 ulBaseTime = 0;
-    u16 reg = 0;
-    // I.   read SW1
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew( reg | RTCPWC_DIG2RTC_SW1_RD, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    ms_rtc_ISOCTL(dev);
-    // read base time
-    BaseH = readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_H);
-    BaseL = readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_L);
-    ulBaseTime = BaseH << 16;
-    ulBaseTime |= BaseL;
-    //reset read bit of base time
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg & ~RTCPWC_DIG2RTC_SW1_RD, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    return ulBaseTime;
-}
-
-void ms_rtc_SetSW1(struct device *dev, u32 val)
-{
-    struct ms_rtc_info *info = dev_get_drvdata(dev);
-    u16 reg = 0;
-    //Set sw bit
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg | RTCPWC_DIG2RTC_SW1_WR, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    // Set sw password
-    writew(val, info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L);
-    RTC_DBG("Set RTC SetSW1=%x\r\n", readw(info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L));
-    //Trigger ISO
-    ms_rtc_ISOCTL(dev);
-    //reset control bits
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg & ~RTCPWC_DIG2RTC_SW1_WR, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-}
-#endif
-
-//------------------------------------------------------------------------------
-//  Function    : ms_RTC_SetBaseTime
-//  Description :
-//------------------------------------------------------------------------------
-/** @brief This function is used for getting RTC BaseTime.
-
-This function is used for getting RTC BaseTime.
-@param[out] The value of RTC BaseTime.
-@return It reports the status of the operation.
-*/
-void ms_rtc_SetBaseTime(struct device *dev, unsigned long   seconds)
-{
-    struct ms_rtc_info *info = dev_get_drvdata(dev);
-    u16 reg;
-
-    //Set Base time bit
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg | RTCPWC_DIG2RTC_BASE_WR_BIT, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-
-    // Set RTC Base Time
-    writew(seconds, info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L);
-    writew((seconds) >> 16, info->rtc_base + RTCPWC_DIG2RTC_WRDATA_H);
-    RTC_DBG("Set RTC Base Time=%x\r\n", readw(info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L));
-    RTC_DBG("Set RTC Base Time=%x\r\n", readw(info->rtc_base + RTCPWC_DIG2RTC_WRDATA_H));
-
-    //Trigger ISO
-    ms_rtc_ISOCTL(dev);
-
-    //Set counter RST bit
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg | RTCPWC_DIG2RTC_CNT_RST_WR, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-
-    //Trigger ISO
-    ms_rtc_ISOCTL(dev);
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg & ~RTCPWC_DIG2RTC_CNT_RST_WR, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-
-    //reset control bits
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_SET);
-    writew(reg & ~RTCPWC_DIG2RTC_SET_BIT, info->rtc_base + RTCPWC_DIG2RTC_SET);
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg & ~RTCPWC_DIG2RTC_BASE_WR_BIT, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-}
-
-#ifdef CONFIG_RTCPWC_INNER_EHHE
-u32 _ms_rtc_GetBaseTime(struct device *dev)
-{
-    struct ms_rtc_info *info = dev_get_drvdata(dev);
-    u16 BaseH = 0, BaseL = 0;
-    u32 ulBaseTime = 0;
-    u16 reg;
-
-    //reset read bit
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
-    writew(reg & ~RTCPWC_DIG2RTC_CNT_RD_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
-
-    // Set read bit of base time
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg | RTCPWC_DIG2RTC_BASE_RD, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    ms_rtc_ISOCTL(dev);
-    // read base time
-    BaseH = readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_H);
-    BaseL = readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_L);
-    RTC_DBG("BaseH %x \n", BaseH);
-    RTC_DBG("BaseL %x \n", BaseL);
-    ulBaseTime = BaseH << 16;
-    ulBaseTime |= BaseL;
-    //reset read bit of base time
-    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-    writew(reg & ~RTCPWC_DIG2RTC_BASE_RD, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-
-    return ulBaseTime;
-}
-#endif
 
 //------------------------------------------------------------------------------
 //  Function    : ms_RTC_GetBaseTime
@@ -474,50 +270,25 @@ This function is used for getting RTC BaseTime.
 u32 ms_rtc_GetBaseTime(struct device *dev)
 {
     struct ms_rtc_info *info = dev_get_drvdata(dev);
+    u16 BaseH = 0, BaseL = 0;
     u32 ulBaseTime = 0;
-    u32 password = 0;
-    password = ms_rtc_GetSW0(dev);
+    u16 reg;
 
-#ifdef CONFIG_RTCPWC_INNER_EHHE
-    if ((password == RTC_PASSWORD) && (ms_rtc_GetSW1(dev) == (ulBaseTime = _ms_rtc_GetBaseTime(dev))))
-#else
-    if(password == RTC_PASSWORD)
-#endif
-    {
-#ifndef CONFIG_RTCPWC_INNER_EHHE
-        u16 reg;
-        u16 BaseH = 0, BaseL = 0;
+    //reset read bit
+    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+    writew(reg | RTCPWC_DIG2RTC_BASE_RD, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+    ms_rtc_ISOCTL(dev);
+    // read base time
+    BaseH = readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_H);
+    BaseL = readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_L);
+    RTC_DBG("BaseH %x \n", BaseH);
+    RTC_DBG("BaseL %x \n", BaseL);
+    ulBaseTime = BaseH << 16;
+    ulBaseTime |= BaseL;
+    //reset read bit of base time
+    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR); 
+    writew(reg & ~RTCPWC_DIG2RTC_BASE_RD, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
 
-        //reset read bit
-        reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
-        writew(reg & ~RTCPWC_DIG2RTC_CNT_RD_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
-
-        // Set read bit of base time
-        reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-        writew(reg | RTCPWC_DIG2RTC_BASE_RD, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-        ms_rtc_ISOCTL(dev);
-        // read base time
-        BaseH = readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_H);
-        BaseL = readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_L);
-        RTC_DBG("BaseH %x \n", BaseH);
-        RTC_DBG("BaseL %x \n", BaseL);
-        ulBaseTime = BaseH << 16;
-        ulBaseTime |= BaseL;
-        //reset read bit of base time
-        reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-        writew(reg & ~RTCPWC_DIG2RTC_BASE_RD, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
-#endif
-    }
-    else
-    {
-        RTC_ERR("Please set rtc timer (hwclock -w) \n");
-        ms_rtc_SetBaseTime(dev, info->default_base);
-        ms_rtc_SetSW0(dev, RTC_PASSWORD);
-        ulBaseTime = info->default_base;
-#ifdef CONFIG_RTCPWC_INNER_EHHE
-        ms_rtc_SetSW1(dev, info->default_base);
-#endif // #ifdef CONFIG_RTCPWC_INNER_EHHE
-    }
     return ulBaseTime;
 }
 
@@ -540,64 +311,67 @@ static int ms_rtc_read_time(struct device *dev, struct rtc_time *tm)
     u32 chk_times = 5;
     u64 ullSeconds = 0;
     u16 counterH = 0, counterL = 0;
-    int m_ulBaseTimeInSeconds = 0;
 
-    if (0 == _bInit)
-        return 0;
-
-    m_ulBaseTimeInSeconds = ms_rtc_GetBaseTime(dev);
-
+//    if (ms_rtc_IsValid(dev) == FALSE)
+//    {
+//        RTC_ERR("RTC INVALID\r\n");
+//        return -ENODEV;
+//    }
+ 
+    // Read RTC Base
+//    if (m_ulBaseTimeInSeconds == 0) 
+    {
+        m_ulBaseTimeInSeconds = ms_rtc_GetBaseTime(dev);
+//        RTC_ERR("RTC read base time = 0x%x\r\n", m_ulBaseTimeInSeconds);
+    }
     RTC_DBG("m_ulBaseTimeInSeconds= 0x%x\r\n", m_ulBaseTimeInSeconds);
 
-    if(RTC_PASSWORD == ms_rtc_GetSW0(dev))
+    // Read RTC Counter
+    do 
     {
-        // Read RTC Counter
+        //Set read bit of RTC counter
+        reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+        writew(reg | RTCPWC_DIG2RTC_CNT_RD_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+
+        //Trigger ISO
+        ms_rtc_ISOCTL(dev);
+        chk_times = 5;
+
+        //Latch RTC counter and	Check valid bit of RTC counter
         do
         {
-            //Set read bit of RTC counter
-            reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
-            writew(reg | RTCPWC_DIG2RTC_CNT_RD_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+            writew(RTCPWC_DIG2RTC_CNT_RD_TRIG_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD_TRIG);
+            //Note : The first to retrieve RTC counter will failed without below delay
+            mdelay(5);
+        }while((readw(info->rtc_base + RTCPWC_RTC2DIG_CNT_UPDATING) & RTCPWC_RTC2DIG_CNT_UPDATING_BIT) && (chk_times--));
 
-            //Trigger ISO
-            ms_rtc_ISOCTL(dev);
-            chk_times = 5;
-
-            //Latch RTC counter and Check valid bit of RTC counter
-            do
-            {
-                reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD_TRIG);
-                writew(reg | RTCPWC_DIG2RTC_CNT_RD_TRIG_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD_TRIG);
-                //Note : The first to retrieve RTC counter will failed without below delay
-                mdelay(5);
-            }while((readw(info->rtc_base + RTCPWC_RTC2DIG_CNT_UPDATING) & RTCPWC_RTC2DIG_CNT_UPDATING_BIT) && (chk_times--));
-
-            if(chk_times == 0)
-            {
-                RTC_ERR("Check valid bit of RTC counter failed!\n");
-                //Reset read bit of RTC counter
-                reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
-                writew(reg & ~RTCPWC_DIG2RTC_CNT_RD_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
-                return 0;
-            }
-
-            //read RTC counter
-            {
-                counterH = readw(info->rtc_base + RTCPWC_REG_RTC2DIG_RDDATA_CNT_H);
-                counterL = readw(info->rtc_base + RTCPWC_REG_RTC2DIG_RDDATA_CNT_L);
-                run_sec =  counterH << 16;
-                run_sec |= counterL;
-                RTC_DBG("CounterL = 0x%x\r\n", counterL);
-                RTC_DBG("CounterH = 0x%x\r\n", counterH);
-            }
+        if(chk_times == 0)
+        {
+            RTC_ERR("Check valid bit of RTC counter failed!\n");
             //Reset read bit of RTC counter
             reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
             writew(reg & ~RTCPWC_DIG2RTC_CNT_RD_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
-        } while(0);
-    }
+            return 0;
+        }
+
+    	//read RTC counter
+    	{
+            counterH = readw(info->rtc_base + RTCPWC_REG_RTC2DIG_RDDATA_CNT_H);
+            counterL = readw(info->rtc_base + RTCPWC_REG_RTC2DIG_RDDATA_CNT_L);
+            //_RTC_PRINT("CounterH = 0x%x, CounterL = 0x%x\r\n",CounterH,CounterL);
+            run_sec =  counterH << 16;
+            run_sec |= counterL;
+            RTC_DBG("CounterL = 0x%x\r\n", counterL);
+            RTC_DBG("CounterH = 0x%x\r\n", counterH);
+        }
+
+        //Reset read bit of RTC counter
+        reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+        writew(reg & ~RTCPWC_DIG2RTC_CNT_RD_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+    } while(0);
     RTC_DBG("run_sec = 0x%x\r\n", run_sec);
     RTC_DBG("m_ulBaseTimeInSeconds = 0x%x\r\n", m_ulBaseTimeInSeconds);
     ullSeconds = m_ulBaseTimeInSeconds + run_sec;
-
     //_RTC_PRINT("Base = 0x%x, counter = 0x%x, ullSeconds = 0x%x\n",m_ulBaseTimeInSeconds,run_sec,ullSeconds);
 
     if (ullSeconds > 0xFFFFFFFF) {
@@ -614,21 +388,59 @@ static int ms_rtc_read_time(struct device *dev, struct rtc_time *tm)
 
 static int ms_rtc_set_time(struct device *dev, struct rtc_time *tm)
 {
+    struct ms_rtc_info *info = dev_get_drvdata(dev);
     unsigned long  seconds;
-
-    if (0 == _bInit)
-        return 0;
+    U16 reg;
+    U8 chk_times = 5;
 
     RTC_DBG("ms_rtc_set_time[%d,%d,%d,%d,%d,%d]\n",
         tm->tm_year,tm->tm_mon,tm->tm_mday,tm->tm_hour,tm->tm_min,tm->tm_sec);
 
     rtc_tm_to_time(tm, &seconds);
     RTC_DBG("RTC Set Time: Base=%ld\r\n", seconds);
-    ms_rtc_SetBaseTime(dev, seconds);
-    ms_rtc_SetSW0(dev, RTC_PASSWORD);
-#ifdef CONFIG_RTCPWC_INNER_EHHE
-    ms_rtc_SetSW1(dev, seconds);
-#endif // #ifdef CONFIG_RTCPWC_INNER_EHHE
+ 
+    //Set Base time bit
+    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+    writew(reg | RTCPWC_DIG2RTC_BASE_WR_BIT, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+
+    // Set RTC Base Time
+    writew(seconds, info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L);
+    writew((seconds) >> 16, info->rtc_base + RTCPWC_DIG2RTC_WRDATA_H);
+    RTC_DBG("Set RTC Base Time=%x\r\n", readw(info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L));
+    RTC_DBG("Set RTC Base Time=%x\r\n", readw(info->rtc_base + RTCPWC_DIG2RTC_WRDATA_H));
+
+    //Trigger ISO
+    ms_rtc_ISOCTL(dev);
+
+    //Set counter RST bit
+    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RST_WR);
+    writew(reg | RTCPWC_DIG2RTC_CNT_RST_WR_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RST_WR);
+
+    //Trigger ISO
+    ms_rtc_ISOCTL(dev);
+    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RST_WR);
+    writew(reg & ~RTCPWC_DIG2RTC_CNT_RST_WR_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RST_WR);
+
+    //Set Valid bit
+//    OUTREGMSK8(info->rtc_base + RTCPWC_DIG2RTC_SET, RTCPWC_DIG2RTC_SET_BIT, RTCPWC_DIG2RTC_SET_BIT);
+
+    while (chk_times--) 
+    {
+//        if (ms_rtc_IsValid(dev))
+//        {
+        	//reset control bits
+            writew(~RTCPWC_DIG2RTC_SET_BIT, info->rtc_base + RTCPWC_DIG2RTC_SET);
+            reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+            writew(reg & ~RTCPWC_DIG2RTC_BASE_WR_BIT, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+            return 0;
+//        }
+        mdelay(1);
+    }
+    //reset control bits
+    writew(~RTCPWC_DIG2RTC_SET_BIT, info->rtc_base + RTCPWC_DIG2RTC_SET);
+    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+    writew(reg & ~RTCPWC_DIG2RTC_BASE_WR_BIT, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+
     return 0;
 }
 
@@ -700,11 +512,11 @@ static int ms_rtcpwc_probe(struct platform_device *pdev)
         return -ENOMEM;
     RTC_DBG("RTC initial\n");
     res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-    if (!res)
+	if (!res)
     {
-        RTC_ERR("[%s]: failed to get IORESOURCE_MEM\n", __func__);
-        return -ENODEV;
-    }
+		RTC_ERR("[%s]: failed to get IORESOURCE_MEM\n", __func__);
+		return -ENODEV;
+	}
     info->rtc_base = devm_ioremap_resource(&pdev->dev, res);
 
     if (IS_ERR(info->rtc_base))
@@ -752,20 +564,7 @@ static int ms_rtcpwc_probe(struct platform_device *pdev)
     rtc_dev = device_create(msys_get_sysfs_class(), NULL, dev, NULL, "ms_rtcwc");
 
     device_create_file(rtc_dev, &dev_attr_auto_wakeup_timer);
-    {
-        int num = 0;
-        struct rtc_time tm = { 0 };
 
-        info->default_base = 0; // 1970/1/1 00:00:00
-        if (0 < (num = of_property_count_elems_of_size(pdev->dev.of_node, DTS_DEFAULT_DATE, sizeof(int))))
-        {
-            if (!of_property_read_u32_array(pdev->dev.of_node, DTS_DEFAULT_DATE, (u32*)&tm, num))
-            {
-                rtc_tm_to_time(&tm, (unsigned long*)&info->default_base);
-            }
-        }
-    }
-    _bInit = 1;
     return ret;
 }
 

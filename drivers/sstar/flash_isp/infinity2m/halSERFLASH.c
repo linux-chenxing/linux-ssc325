@@ -32,7 +32,6 @@
 #include "drvDeviceInfo.h"
 #include "regSERFLASH.h"
 #include "halSERFLASH.h"
-#include "registers.h"
 
 
 
@@ -68,11 +67,9 @@
     //#define CONFIG_FSP_WRITE_RIUOP       1
     //#define CONFIG_FSP_WRITE_RIUOP_BRUST 1
     #define CONFIG_FSP_WRITE_BDMA         1
+
 #endif
 
-#if defined(CONFIG_FSP_READ_BDMA) && CONFIG_FSP_READ_BDMA == 1
-#include "hal_bdma.h"
-#endif
 
 #define READ_BYTE(_reg)             (*(volatile MS_U8*)(_reg))
 #define READ_WORD(_reg)             (*(volatile MS_U16*)(_reg))
@@ -120,8 +117,6 @@
 
 //// PM_SLEEP CMD.
 //#define PM_READ(addr)                      READ_WORD(_hal_isp.u32PMBaseAddr+ ((addr)<<2))
-#define PM_READ(addr)                      READ_WORD(BASE_REG_PMSLEEP_ADDR+ ((addr)<<2))
-
 //#define PM_WRITE(addr, val)                WRITE_WORD(_hal_isp.u32PMBaseAddr+ ((addr)<<2), (val))
 //#define PM_WRITE_MASK(addr, val, mask)     WRITE_WORD_MASK(_hal_isp.u32PMBaseAddr+ ((addr)<<2), (val), (mask))
 
@@ -194,15 +189,12 @@ MS_U32 pu8BDMA_phys = 0;
 MS_U32 pu8BDMA_virt = 0;
 MS_U32 pu8BDMA_bus = 0;
 MS_U32 BASE_FLASH_OFFSET = 0;
-#define BDMA_ALIGN (32)
-#define BDMA_SIZE_WARNING (128*1024+BDMA_ALIGN) //print message for unresonable size
 
-//E_QUAD_MODE;//E_FAST_MODE;
-const static SPI_READ_MODE gReadMode = E_QUAD_MODE;
-static MS_U32 u32BdmaSize = 64 * 1024 + BDMA_ALIGN;//default size
-static MSYS_DMEM_INFO mem_info;
 
+SPI_READ_MODE gReadMode = E_FAST_MODE;
 MS_BOOL gQuadSupport = 0; //extern on MTD
+
+
 
 //-------------------------------------------------------------------------------------------------
 //  Local Variables
@@ -291,7 +283,7 @@ MS_BOOL HAL_FSP_ReadREMS4(MS_U8 * pu8Data, MS_U32 u32Size);
 
 void HAL_FSP_Entry(void);
 void HAL_FSP_Exit(void);
-void _HAL_BDMA_INIT(U32 u32DataSize);
+void _HAL_BDMA_INIT(void);
 
 //-------------------------------------------------------------------------------------------------
 //  Debug Functions
@@ -1095,7 +1087,8 @@ void HAL_SERFLASH_Init(void)
     QSPI_WRITE_MASK(REG_SPI_CS_TIME, SFSH_CS_SETUP_TWO , SFSH_CS_SETUP_MASK);
     QSPI_WRITE_MASK(REG_SPI_CS_TIME, SFSH_CS_HOLD_TWO , SFSH_CS_HOLD_MASK);
 
-    _HAL_BDMA_INIT(u32BdmaSize);
+    if(pu8BDMA_virt == 0)
+        _HAL_BDMA_INIT();
 #endif
 }
 
@@ -1129,35 +1122,7 @@ void HAL_SERFLASH_SetGPIO(MS_BOOL bSwitch)
 extern hal_SERFLASH_t _hal_SERFLASH_table[];
 extern ST_WRITE_PROTECT _pstWriteProtectTable_MX25L6445E[];
 extern ST_WRITE_PROTECT _pstWriteProtectTable_MX25L12845E[];
-MS_U32 PAL_SPI_GetClk(void)
-{
-    MS_U16 reg;
-    MS_U32 u32Clk = 0;
-    reg = (PM_READ(0x20) >> 10) & 0xF;
-    printk("reg = %X\r\n", reg);
-    switch(reg)
-    {
-        case 1:
-            u32Clk = 27;
-            break;
-        case 4:
-            u32Clk = 54;
-            break;
-        case 5:
-            u32Clk = 72;
-            break;
-        case 6:
-            u32Clk = 86;
-            break;
-        case 7:
-            u32Clk = 108;
-            break;
-        default:
-            u32Clk = 0;
-            break;
-    }
-    return u32Clk;
-}
+
 MS_BOOL HAL_SERFLASH_DetectType(void)
 {
     #define READ_ID_SIZE    3
@@ -1166,6 +1131,7 @@ MS_BOOL HAL_SERFLASH_DetectType(void)
     MS_U8   u8FlashId[READ_ID_SIZE];
     MS_U8   u8FlashREMS4[READ_REMS4_SIZE];
     MS_U32  u32Index;
+   //MS_U8   u8Status0, u8Status1;
 
     memset(&_hal_SERFLASH, 0, sizeof(_hal_SERFLASH));
 
@@ -1246,14 +1212,6 @@ MS_BOOL HAL_SERFLASH_DetectType(void)
             }
         }
 
-        if(gReadMode == E_QUAD_MODE && _hal_SERFLASH.u8MID == MID_MXIC)
-        {
-            if(PAL_SPI_GetClk() > 54)
-            {
-                printk("MX supports QUAD mode only when CLK <= 54MHz\n");
-                BUG();
-            }
-        }
         // If the Board uses a unknown flash type, force setting a secure flash type for booting. //FLASH_IC_MX25L6405D
         if( bDetect != TRUE )
         {
@@ -1295,10 +1253,10 @@ MS_BOOL HAL_SERFLASH_DetectType(void)
 //        gReadMode = E_DUAL_D_MODE;
 //    else
 //        gReadMode = _hal_SERFLASH.u16SPIMaxClk[1];
-// don't overwrite default setting
-//    gReadMode = E_FAST_MODE;
+    gReadMode = E_FAST_MODE;
 
     HAL_SERFLASH_SetCKG(_hal_SERFLASH.u16SPIMaxClk[0]);
+
 
     switch ( gReadMode )
     {
@@ -1321,7 +1279,9 @@ MS_BOOL HAL_SERFLASH_DetectType(void)
     default:
         break;
     }
+
 #endif
+
 
     return bDetect;
 
@@ -1918,76 +1878,6 @@ HAL_SERFLASH_Write_return:
     return bRet;
 }
 
-MS_BOOL HAL_SERFLASH_ReadRedirect(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
-{
-    if(!BASE_FLASH_OFFSET)
-    {
-        BASE_FLASH_OFFSET = (MS_U32)ioremap(MS_SPI_ADDR, 0x2000000);
-        //printk("[SER flash]MS_SPI_ADDR=(0x%08X)\n",(int)BASE_FLASH_OFFSET);
-    }
-    if(BASE_FLASH_OFFSET)
-    {
-        MS_U32 u32ReadSize = 0;
-        if (u32Addr < 0x1000000)
-        {
-            if (_u8RegEAR) // switch back to bottom 16MB
-                HAL_FSP_WriteExtAddrReg(0);
-            u32ReadSize = u32Size > (0x1000000 - u32Addr) ? (0x1000000 - u32Addr) : u32Size;
-            memcpy((void *)pu8Data, (const void *)(BASE_FLASH_OFFSET+u32Addr), u32ReadSize);
-            u32Size = u32Size - u32ReadSize;
-        }
-        if (u32Size)
-        {
-            MS_U8 u8EAR = 0;
-
-            u32Addr += u32ReadSize;
-            u8EAR = u32Addr >> 24;
-            if (u8EAR)
-                HAL_FSP_WriteExtAddrReg(u8EAR);
-            memcpy((void *)pu8Data+u32ReadSize,(const void *)(BASE_FLASH_OFFSET+(u32Addr&0xFFFFFF)), u32Size);
-        }
-    }
-    return TRUE;
-}
-
-#ifdef CONFIG_FSP_READ_BDMA
-MS_BOOL HAL_SERFLASH_ReadBdma(MS_U32 u32Offset, MS_U32 u32Size, MS_U8 *pu8Data)
-{
-    MS_BOOL Ret = FALSE;
-    MS_U32 u32AlignedOffset = (u32Offset) & (~0xF);
-    MS_U32 u32AlignedSize;
-    MS_U32 u32Delta;
-
-    u32Delta = u32Offset - u32AlignedOffset;
-    u32AlignedSize = ((u32Size + u32Delta) + 0xF) & (~0xF);
-    {
-        HalBdmaParam_t  tBdmaParam;
-        const u8 u8DmaCh = HAL_BDMA_CH0;
-        _HAL_BDMA_INIT(u32AlignedSize);
-        tBdmaParam.ePathSel     = HAL_BDMA_SPI_TO_MIU0;//(pstDmaCfg->phyaddr < ARM_MIU1_BASE_ADDR) ? (HAL_BDMA_MEM_TO_MIU0) : (HAL_BDMA_MEM_TO_MIU1);
-        tBdmaParam.bIntMode     = 0; //0: polling mode
-        tBdmaParam.eDstAddrMode = HAL_BDMA_ADDR_INC;
-        tBdmaParam.u32TxCount   = u32AlignedSize;//(u32Size + 0xF) & (~0xF);
-        tBdmaParam.pSrcAddr     = (void*)u32AlignedOffset;//u32Offset;
-        tBdmaParam.pDstAddr     = (void*)pu8BDMA_bus;
-        tBdmaParam.pfTxCbFunc   = NULL;//msys_bdma_done;
-        tBdmaParam.u32Pattern   = 0;
-        HalBdma_Initialize(u8DmaCh);
-        //DEBUG_SER_FLASH(E_SERFLASH_DBGLV_INFO, printk("%s(0x%08X, %d, %p)b\n", __FUNCTION__, (int)u32Addr, (int)u32Size, pu8Data));
-        if (HAL_BDMA_PROC_DONE != HalBdma_Transfer(u8DmaCh, &tBdmaParam)) {
-            //DEBUG_SER_FLASH(E_SERFLASH_DBGLV_INFO, printk("err\n"));
-            return FALSE;
-        }
-        Chip_Flush_MIU_Pipe();
-        Chip_Inv_Cache_Range(pu8BDMA_virt, u32AlignedSize);//u32Size);
-        //memcpy(pu8Data, (void*)pu8BDMA_virt, u32Size);
-        memcpy(pu8Data, (void*)pu8BDMA_virt + u32Delta, u32Size);
-        Ret = TRUE;
-    }
-    return TRUE;
-}
-#endif
-
 MS_BOOL HAL_SERFLASH_Read(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
 {
     MS_BOOL Ret = FALSE;
@@ -2014,45 +1904,40 @@ MS_BOOL HAL_SERFLASH_Read(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
     HAL_SERFLASH_SelectReadMode(gReadMode);
 
     #ifdef CONFIG_FSP_READ_DIRERECT
-    if(!BASE_FLASH_OFFSET)
-    {
-        BASE_FLASH_OFFSET = (MS_U32)ioremap(MS_SPI_ADDR, 0x2000000);
-        //printk("[SER flash]MS_SPI_ADDR=(0x%08X)\n",(int)BASE_FLASH_OFFSET);
-    }
-    if(BASE_FLASH_OFFSET)
-    {
-        MS_U32 u32ReadSize = 0;
-        if (u32Addr < 0x1000000)
+        if(!BASE_FLASH_OFFSET)
         {
-            if (_u8RegEAR) // switch back to bottom 16MB
-                HAL_FSP_WriteExtAddrReg(0);
-            u32ReadSize = u32Size > (0x1000000 - u32Addr) ? (0x1000000 - u32Addr) : u32Size;
-            memcpy((void *)pu8Data, (const void *)(BASE_FLASH_OFFSET+u32Addr), u32ReadSize);
-            u32Size = u32Size - u32ReadSize;
+            BASE_FLASH_OFFSET = (MS_U32)ioremap(MS_SPI_ADDR, 0x2000000);
+            //printk("[SER flash]MS_SPI_ADDR=(0x%08X)\n",(int)BASE_FLASH_OFFSET);
         }
-        if (u32Size)
+        if(BASE_FLASH_OFFSET)
         {
-            MS_U8 u8EAR = 0;
+            MS_U32 u32ReadSize = 0;
+            if (u32Addr < 0x1000000)
+            {
+                if (_u8RegEAR) // switch back to bottom 16MB
+                    HAL_FSP_WriteExtAddrReg(0);
+                u32ReadSize = u32Size > (0x1000000 - u32Addr) ? (0x1000000 - u32Addr) : u32Size;
+                memcpy((void *)pu8Data, (const void *)(BASE_FLASH_OFFSET+u32Addr), u32ReadSize);
+                u32Size = u32Size - u32ReadSize;
+            }
+            if (u32Size)
+            {
+                MS_U8 u8EAR = 0;
 
-            u32Addr += u32ReadSize;
-            u8EAR = u32Addr >> 24;
-            if (u8EAR)
-                HAL_FSP_WriteExtAddrReg(u8EAR);
-            memcpy((void *)pu8Data+u32ReadSize,(const void *)(BASE_FLASH_OFFSET+(u32Addr&0xFFFFFF)), u32Size);
+                u32Addr += u32ReadSize;
+                u8EAR = u32Addr >> 24;
+                if (u8EAR)
+                    HAL_FSP_WriteExtAddrReg(u8EAR);
+                memcpy((void *)pu8Data+u32ReadSize,(const void *)(BASE_FLASH_OFFSET+(u32Addr&0xFFFFFF)), u32Size);
+            }
         }
-    }
-    Ret = TRUE;
-#elif defined(CONFIG_FSP_READ_RIUOP)
-    Ret = HAL_FSP_Read(u32Addr, u32Size, pu8Data);
-#elif defined(CONFIG_FSP_READ_BDMA)
-    Ret = HAL_SERFLASH_ReadBdma(u32Addr, u32Size, pu8Data);
-#else
-#error "FPS READ"
-#endif
-    if(gReadMode > E_FAST_MODE && gReadMode != E_RIUISP_MODE)
-    {
-        HAL_SERFLASH_SelectReadMode(E_FAST_MODE);
-    }
+        Ret = TRUE;
+    #elif defined(CONFIG_FSP_READ_RIUOP)
+        Ret = HAL_FSP_Read(u32Addr, u32Size, pu8Data);
+    #else
+        #error "FPS READ"
+    #endif
+
 #endif
     MS_SERFLASH_RELEASE_MUTEX(_s32SERFLASH_Mutex);
     return Ret;
@@ -4055,19 +3940,11 @@ MS_BOOL HAL_QUAD_Enable(MS_BOOL bEnable)
     DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("[FSP] %s %d\n", __FUNCTION__, bEnable));
     if(_hal_SERFLASH.u8MID == MID_MXIC)
     {
-        bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR, 1, &u8data);
         if(bEnable)
-        {
-            if((u8data & SF_SR_QUAD) == 0) {
-                u8data |= SF_SR_QUAD;
-                bRet = HAL_FSP_WriteStatusReg(u8data);
-            }
-        } else {
-            if((u8data & SF_SR_QUAD) != 0) {
-                u8data &= ~SF_SR_QUAD;
-                bRet = HAL_FSP_WriteStatusReg(u8data);
-            }
-        }
+            u8data =  SF_SR_QUALD;
+        else
+            u8data =  0;
+        bRet = HAL_FSP_WriteStatusReg(u8data);
     }
     else if(_hal_SERFLASH.u8MID == MID_GD)
     {
@@ -4323,25 +4200,9 @@ MS_BOOL HAL_FSP_WriteProtect(MS_BOOL bEnable)
     MS_U8 u8Status;
     DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("%s(%d)\n", __FUNCTION__, bEnable));
 
-    bRet = HAL_FSP_ReadStatusReg(&u8Status);
-    if(bRet == FALSE)
-        return bRet;
-
-    u8Status |= SF_SR_SRWD;//checked on WB/GD/MX
-//quad mode should be handled in read/write
-#if 0 //device dependent
+    u8Status = SF_SR_SRWD;
     if (gReadMode==E_QUAD_MODE)
-        u8Status |= SF_SR_QUAD;
-#endif
-    //clear BP bits
-    if(_hal_SERFLASH.u8MID == MID_GD)
-    {
-        u8Status &= ~BITS(6:2,0x1F);
-    }
-    else {//check on WB/MX
-        u8Status &= ~BITS(5:2,0xF);
-    }
-
+        u8Status |= SF_SR_QUALD;
     if (bEnable)
         u8Status |= SERFLASH_WRSR_BLK_PROTECT;
 
@@ -4655,26 +4516,11 @@ MS_BOOL HAL_FSP_WriteExtAddrReg(MS_U8 u8ExtAddrReg)
 
 
 
-void _HAL_BDMA_INIT(U32 u32DataSize)
+void _HAL_BDMA_INIT(void)
 {
-    u32DataSize += BDMA_ALIGN;
-    if(pu8BDMA_virt != 0 && u32BdmaSize < u32DataSize)
-    {
-        int err;
-        err = msys_release_dmem(&mem_info);
-        if(u32DataSize >= BDMA_SIZE_WARNING)
-        {
-            pr_err("\n\n --->from %ld to %d\n\n", u32BdmaSize, u32DataSize);
-        }
-        if(0 != err)
-        {
-            printk("[Ser flash] Unable to free BDMA mem bus=0x%08X (err:%d)\n", (unsigned int)pu8BDMA_bus, err);
-        }
-        pu8BDMA_virt = 0;
-    }
-    if(pu8BDMA_virt != 0)
-        return;
-    mem_info.length = u32DataSize;
+    MSYS_DMEM_INFO mem_info;
+
+    mem_info.length = 0x100;
     strcpy(mem_info.name, "BDMA_FSP_WBUFF");
 
     if(!msys_request_dmem(&mem_info) )
@@ -4682,8 +4528,7 @@ void _HAL_BDMA_INIT(U32 u32DataSize)
         pu8BDMA_phys =  mem_info.phys;
         pu8BDMA_virt = mem_info.kvirt;
         pu8BDMA_bus = pu8BDMA_phys&0x1FFFFFFF;
-        u32BdmaSize = mem_info.length;
-        printk("[Ser flash] phys=0x%08x, virt=0x%08x, bus=0x%08x len:0x%lX\n", (unsigned int)pu8BDMA_phys, (unsigned int)pu8BDMA_virt, (unsigned int)pu8BDMA_bus, u32BdmaSize);
+        printk("[Ser flash] phys=0x%08x, virt=0x%08x, bus=0x%08x\n", (unsigned int)pu8BDMA_phys, (unsigned int)pu8BDMA_virt, (unsigned int)pu8BDMA_bus);
     }
     else
     {
@@ -4820,7 +4665,8 @@ static MS_BOOL _HAL_PP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u3
         HAL_FSP_WriteExtAddrReg(u8EAR);
     }
 
-    _HAL_BDMA_INIT(u32Len);
+    if(pu8BDMA_virt == 0)
+        _HAL_BDMA_INIT();
     if(pu8BDMA_virt == 0)
     {
         DEBUG_SER_FLASH(E_SERFLASH_DBGLV_ERR, printk("%s, remap BDMA buffer failed)\n", __FUNCTION__));
