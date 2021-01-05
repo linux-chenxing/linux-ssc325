@@ -1,9 +1,8 @@
 /*
 * mhal_miu.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/printk.h>
@@ -201,16 +200,6 @@ const eMIUClientID clientTbl[MIU_MAX_DEVICE][MIU_MAX_TBL_CLIENT] =
         MIU_CLIENT_GP5,
         MIU_CLIENT_GP6,
         MIU_CLIENT_GP7
-    },
-    {
-        MIU_CLIENT_GP0,
-        MIU_CLIENT_GP1,
-        MIU_CLIENT_GP2,
-        MIU_CLIENT_GP3,
-        MIU_CLIENT_GP4,
-        MIU_CLIENT_GP5,
-        MIU_CLIENT_GP6,
-        MIU_CLIENT_GP7
     }
 };
 
@@ -238,8 +227,8 @@ extern ptrdiff_t mstar_pm_base;
 static ptrdiff_t m_u32MiuMapBase;
 #endif
 
-static MS_BOOL IDEnables[MIU_MAX_DEVICE][MIU_MAX_PROTECT_BLOCK][MIU_MAX_PROTECT_ID] = {{{0},{0},{0},{0}}, {{0},{0},{0},{0}}}; //ID enable for protect block 0~3
-static MS_U16 IDList[MIU_MAX_DEVICE][MIU_MAX_PROTECT_ID] = {{0}, {0}}; //IDList for protection
+static MS_BOOL IDEnables[MIU_MAX_DEVICE][MIU_MAX_PROTECT_BLOCK][MIU_MAX_PROTECT_ID] = {{{0},{0},{0},{0}}}; //ID enable for protect block 0~3
+static MS_U16 IDList[MIU_MAX_DEVICE][MIU_MAX_PROTECT_ID] = {{0}}; //IDList for protection
 
 //-------------------------------------------------------------------------------------------------
 //  MTLB HAL internal function
@@ -265,7 +254,7 @@ static MS_S16 HAL_MIU_GetClientIndex(MS_U8 u8MiuSel, eMIUClientID eClientID)
     MS_U8 idx = 0;
 
     if (MIU_MAX_DEVICE <= u8MiuSel) {
-        MIU_HAL_ERR("Wrong MIU device:%u\n", u8MiuSel);
+        MIU_HAL_ERR("%s not support MIU%u!\n", __FUNCTION__, u8MiuSel );
         return (-1);
     }
 
@@ -295,7 +284,7 @@ static MS_U16 HAL_MIU_Read2Byte(MS_U32 u32RegProtectId)
 static MS_BOOL HAL_MIU_WriteByte(MS_U32 u32RegProtectId, MS_U8 u8Val)
 {
     if (!u32RegProtectId) {
-        MIU_HAL_ERR("%s reg error!\n", __FUNCTION__);
+        MIU_HAL_ERR("%s reg err\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -310,7 +299,7 @@ static MS_BOOL HAL_MIU_WriteByte(MS_U32 u32RegProtectId, MS_U8 u8Val)
 static MS_BOOL HAL_MIU_Write2Byte(MS_U32 u32RegProtectId, MS_U16 u16Val)
 {
     if (!u32RegProtectId) {
-        MIU_HAL_ERR("%s reg error!\n", __FUNCTION__);
+        MIU_HAL_ERR("%s reg err\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -504,15 +493,31 @@ MS_BOOL HAL_MIU_GetHitProtectInfo(MS_U8 u8MiuSel, MIU_PortectInfo *pInfo)
         u32EndAddr = (pInfo->uAddress + MIU_PROTECT_ADDRESS_UNIT - 1);
 
         HAL_MIU_ClientIdToName((MS_U8)(GET_HIT_CLIENT(u16Ret)), clientName);
-        printk("MIU%u Block:%u Client:%s ID:%u-%u Hitted_Address(MIU):0x%x<->0x%x\n",
-               u8MiuSel, pInfo->u8Block, clientName,
-               pInfo->u8Group, pInfo->u8ClientID,
-               pInfo->uAddress, u32EndAddr);
+
+        if (pInfo->u8Block == 6 || pInfo->u8Block == 7)
+        {
+            printk(KERN_EMERG "MIU%u %s Out of Range Client:%s ID:%u-%u Hitted_Addr:0x%x<->0x%x (Valid Range: 0x00000000 ~ 0x%08X)\n",
+                   u8MiuSel, (pInfo->u8Block == 6)? "Read" : "Write", clientName,
+                   pInfo->u8Group, pInfo->u8ClientID,
+                   pInfo->uAddress, u32EndAddr, HAL_MIU_ProtectDramSize());
+        }
+        else
+        {
+            printk(KERN_EMERG "MIU%u Block:%u Client:%s ID:%u-%u Hitted_Addr:0x%x<->0x%x\n",
+                   u8MiuSel, pInfo->u8Block, clientName,
+                   pInfo->u8Group, pInfo->u8ClientID,
+                   pInfo->uAddress, u32EndAddr);
+        }
 
         // Clear log
         HAL_MIU_Write2BytesMask(u32RegBase + REG_MIU_PROTECT_STATUS, REG_MIU_PROTECT_LOG_CLR, TRUE);
         HAL_MIU_Write2BytesMask(u32RegBase + REG_MIU_PROTECT_STATUS, REG_MIU_PROTECT_LOG_CLR, FALSE);
 
+        // FIXME: Workaround for the unknown VEN_R request addr over DRAM size
+        if (MIU_CLIENT_VEN_R == GET_HIT_CLIENT(u16Ret))
+        {
+            pInfo->bHit = FALSE;
+        }
     }
 
     return TRUE;
@@ -580,18 +585,18 @@ MS_BOOL HAL_MIU_Protect(    MS_U8   u8Blockx,
     // Parameter check
     if (u8Blockx >= E_MIU_BLOCK_NUM)
     {
-        MIU_HAL_ERR("Err: Out of the number of protect device\n");
+        MIU_HAL_ERR("Err: Blk Num out of range\n");
         return FALSE;
     }
     else if (((u32Start & ((1 << MIU_PAGE_SHIFT) -1)) != 0) ||
              ((u32End & ((1 << MIU_PAGE_SHIFT) -1)) != 0))
     {
-        MIU_HAL_ERR("Err: Protected address should be aligned to 8KB\n");
+        MIU_HAL_ERR("Err: Protected addr not 8KB aligned\n");
         return FALSE;
     }
     else if (u32Start >= u32End)
     {
-        MIU_HAL_ERR("Err: Start address is equal to or more than end address\n");
+        MIU_HAL_ERR("Err: Invalid end addr\n");
         return FALSE;
     }
 
@@ -867,7 +872,7 @@ unsigned int HAL_MIU_ProtectDramSize(void)
     u8Val = (u8Val >> 4) & 0xF;
 
     if (0 == u8Val) {
-        MIU_HAL_ERR("MIU protect DRAM size is undefined. Using 0x40000000 as default\n");
+        MIU_HAL_ERR("MIU protect size undefined. Using 0x40000000\n");
         return 0x40000000;
     }
     return (0x1 << (20 + u8Val));
@@ -879,7 +884,7 @@ int HAL_MIU_ClientIdToName(MS_U16 clientId, char *clientName)
 
     if (!clientName) {
         iRet = -1;
-        MIU_HAL_ERR("do nothing, input wrong clientName\n");
+        MIU_HAL_ERR("Wrong clientName\n");
         return iRet;
     }
 
@@ -936,7 +941,7 @@ int HAL_MIU_ClientIdToName(MS_U16 clientId, char *clientName)
             break;
         // group 1
         case MIU_CLIENT_CMDQ0_R:
-            strcpy(clientName, "MIU_CLIENT_SDIO30_RW");
+            strcpy(clientName, "CMDQ0_R");
             break;
         case MIU_CLIENT_ISP_DMA_W:
             strcpy(clientName, "ISP_DMA_W");
@@ -985,59 +990,59 @@ int HAL_MIU_ClientIdToName(MS_U16 clientId, char *clientName)
             break;
         // group 2
         case MIU_CLIENT_CMDQ1_R:
-            strcpy(clientName, "DUMMY_G2C0");
+            strcpy(clientName, "CMDQ1_R");
             break;
         case MIU_CLIENT_CMDQ2_R:
-            strcpy(clientName, "SC_ROT_R");
-            break;
-        case MIU_CLIENT_DUMMY_G2C2:
-            strcpy(clientName, "SC_AIP_W");
-            break;
-        case MIU_CLIENT_ISP_DMAG_RW:
-            strcpy(clientName, "SC0_FRAME_W");
-            break;
-        case MIU_CLIENT_GOP1_R:
-            strcpy(clientName, "SC0_SNAPSHOT_W");
-            break;
-        case MIU_CLIENT_GOP2_R:
-            strcpy(clientName, "SC1_FRAME_W");
-            break;
-        case MIU_CLIENT_USB20_H_RW:
-            strcpy(clientName, "GOP0_R");
-            break;
-        case MIU_CLIENT_DUMMY_G2C7:
-            strcpy(clientName, "3DNR1_R");
-            break;
-        case MIU_CLIENT_MIIC1_RW:
-            strcpy(clientName, "3DNR1_W");
-            break;
-        case MIU_CLIENT_3DNR0_W:
             strcpy(clientName, "CMDQ2_R");
             break;
-        case MIU_CLIENT_3DNR0_R:
-            strcpy(clientName, "BDMA_RW");
+        case MIU_CLIENT_DUMMY_G2C2:
+            strcpy(clientName, "DUMMY_G2C2");
             break;
-        case MIU_CLIENT_DUMMY_G2CB:
-            strcpy(clientName, "AESDMA_RW");
+        case MIU_CLIENT_ISP_DMAG_RW:
+            strcpy(clientName, "ISP_DMAG_RW");
             break;
-        case MIU_CLIENT_DUMMY_G2CC:
-            strcpy(clientName, "USB20_RW");
+        case MIU_CLIENT_GOP1_R:
+            strcpy(clientName, "GOP1_R");
             break;
-        case MIU_CLIENT_DUMMY_G2CD:
+        case MIU_CLIENT_GOP2_R:
+            strcpy(clientName, "GOP2_R");
+            break;
+        case MIU_CLIENT_USB20_H_RW:
             strcpy(clientName, "USB20_H_RW");
             break;
-        case MIU_CLIENT_DUMMY_G2CE:
+        case MIU_CLIENT_DUMMY_G2C7:
+            strcpy(clientName, "DUMMY_G2C7");
+            break;
+        case MIU_CLIENT_MIIC1_RW:
             strcpy(clientName, "MIIC1_RW");
             break;
+        case MIU_CLIENT_3DNR0_W:
+            strcpy(clientName, "3DNR0_W");
+            break;
+        case MIU_CLIENT_3DNR0_R:
+            strcpy(clientName, "3DNR0_R");
+            break;
+        case MIU_CLIENT_DUMMY_G2CB:
+            strcpy(clientName, "DUMMY_G2CB");
+            break;
+        case MIU_CLIENT_DUMMY_G2CC:
+            strcpy(clientName, "DUMMY_G2CC");
+            break;
+        case MIU_CLIENT_DUMMY_G2CD:
+            strcpy(clientName, "DUMMY_G2CD");
+            break;
+        case MIU_CLIENT_DUMMY_G2CE:
+            strcpy(clientName, "DUMMY_G2CE");
+            break;
         case MIU_CLIENT_DUMMY_G2CF:
-            strcpy(clientName, "URDMA_RW");
+            strcpy(clientName, "DUMMY_G2CF");
             break;
         // DIAMOND
         case MIU_CLIENT_MIPS_RW:
             strcpy(clientName, "CPU_RW");
             break;
         default:
-            MIU_HAL_ERR("Input wrong clientId [%d]\n", clientId);
+            MIU_HAL_ERR("Wrong clientId %d\n", clientId);
             iRet = -1;
             break;
     }

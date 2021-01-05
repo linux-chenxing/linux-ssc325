@@ -1,9 +1,8 @@
 /*
 * ms_iic.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _DRV_IIC_H_
@@ -28,6 +27,12 @@
 #define MDRV_MAJOR_IIC                  0x8a
 #define MDRV_MINOR_IIC                  0x00
 #define HWI2C_PORTM                   4 //maximum support ports
+
+#define I2C_CUST_M_NOSTOP     BIT1        /* customized use of i2c_msg.flags
+                                             no stop after sending data: S Addr Wr [A] Data [A] Data [A] ... [A] Data [A]
+                                           */
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // Define & data type
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,6 +53,9 @@
     MSIF_HWI2C_BUILDNUM,                /* 00 ~ 99                                          */  \
     MSIF_HWI2C_CHANGELIST,              /* CL#                                              */  \
     MSIF_OS
+
+//
+typedef void* (*ms_i2c_feature_fp)(u16, u16, void*, u32);
 
 /// debug level
 typedef enum _HWI2C_DbgLv
@@ -157,6 +165,12 @@ typedef enum _HWI2C_DMA_MIUCH
     E_HWI2C_DMA_MIU_MAX,
 }HWI2C_DMA_MIUCH;
 
+typedef enum _HWI2C_DMA_HW_FEATURE
+{
+	E_HWI2C_FEATURE_NWRITE = 0,
+	E_HWI2C_FEATURE_MAX,
+}HWI2C_DMA_HW_FEATURE;
+
 /// I2C master pin config
 typedef struct _HWI2C_PinCfg
 {
@@ -222,7 +236,7 @@ extern I2C_DMA HWI2C_DMA[HWI2C_PORTM];
 ////////////////////////////////////////////////////////////////////////////////
 // Extern Function
 ////////////////////////////////////////////////////////////////////////////////
-void MDrv_HW_IIC_Init(void *base,void *chipbase,int i2cgroup,void *clkbase, int i2cpadmux);
+void MDrv_HW_IIC_Init(void *base,void *chipbase,int i2cgroup,void *clkbase, int i2cpadmux, int i2cspeed, int i2c_enDma);
 BOOL MDrv_HWI2C_Init(HWI2C_UnitCfg *psCfg);
 BOOL MDrv_HWI2C_WriteBytes(U16 u16SlaveCfg, U32 uAddrCnt, U8 *pRegAddr, U32 uSize, U8 *pData);
 BOOL MDrv_HWI2C_ReadBytes(U16 u16SlaveCfg, U32 uAddrCnt, U8 *pRegAddr, U32 uSize, U8 *pData);

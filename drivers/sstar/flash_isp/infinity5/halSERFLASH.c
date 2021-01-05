@@ -1,9 +1,8 @@
 /*
 * halSERFLASH.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/string.h>
@@ -3928,7 +3927,7 @@ MS_BOOL HAL_QUAD_Enable(MS_BOOL bEnable)
     if(_hal_SERFLASH.u8MID == MID_MXIC)
     {
         if(bEnable)
-            u8data =  SF_SR_QUALD;
+            u8data =  SF_SR_QUAD;
         else
             u8data =  0;
         bRet = HAL_FSP_WriteStatusReg(u8data);
@@ -4189,7 +4188,7 @@ MS_BOOL HAL_FSP_WriteProtect(MS_BOOL bEnable)
 
     u8Status = SF_SR_SRWD;
     if (gReadMode==E_QUAD_MODE)
-        u8Status |= SF_SR_QUALD;
+        u8Status |= SF_SR_QUAD;
     if (bEnable)
         u8Status |= SERFLASH_WRSR_BLK_PROTECT;
 

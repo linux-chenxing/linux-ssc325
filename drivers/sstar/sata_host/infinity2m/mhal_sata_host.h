@@ -1,9 +1,8 @@
 /*
-* mhal_sata_host.h - Sigmastar
+* mhal_sata_host.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,17 +11,20 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
 #ifndef _MHAL_SATA_HOST_H_
 #define _MHAL_SATA_HOST_H_
 
+#define SSTAR_SATA_DTS_NAME "sstar,sata"
+
 #define SSTAR_RIU_BASE      0xFD000000
 
 #define REG_PM_SLEEP_BASE   0x000E00
-#define REG_CLKGEN_BASE     0x103800
+#define REG_PM_TOP_BASE      0x001E00
+#define REG_CLKGEN_BASE      0x103800
 
 #ifndef BIT	//for Linux_kernel type, BIT redefined in <linux/bitops.h>
     #define BIT(_bit_)                  (1 << (_bit_))
@@ -32,8 +34,11 @@
 #define REG_PD_XTAL_HV             (REG_PM_SLEEP_BASE + (0x3D<<1))
 #define SATA_HV_CRYSTAL_CLK_MASK   BMASK(5:0)
 
+#define REG_CHIP_INFORM_SHADOW     (REG_PM_TOP_BASE + (0x67<<1))
 
 #define REG_CKG_SATA_FCLK          (REG_CLKGEN_BASE + (0x46<<1))
+#define REG_CKG_SATA_PM            (REG_CLKGEN_BASE + (0x6C<<1))
+#define REG_CKG_SATA_AXI           (REG_CLKGEN_BASE + (0x6E<<1))
 #define CKG_SATA_FCLK_PHY_GATED    BIT(0)
 #define CKG_SATA_FCLK_PHY_INVERT   BIT(1)
 #define CKG_SATA_FCLK_PHY_MASK     BMASK(3:2)
@@ -49,13 +54,34 @@
 #define SATA_GHC_0_PHY      0x152600
 #define SATA_GHC_0_PHY_ANA  0x152700
 
-#define REG_SATA_PHY_SYNTH_SLD     (SATA_GHC_0_PHY_ANA + (0x44<<1))
+#define REG_SATA_PHYD_REG_0A         (SATA_GHC_0_PHY + (0x0A<<1))
+#define REG_SATA_PHYD_REG_0B         (SATA_GHC_0_PHY + (0x0B<<1))
+#define REG_SATA_PHYD_REG_0E         (SATA_GHC_0_PHY + (0x0E<<1))
+#define REG_SATA_PHYD_REG_26         (SATA_GHC_0_PHY + (0x26<<1))
+#define REG_SATA_PHYD_REG_2A         (SATA_GHC_0_PHY + (0x2A<<1))
+#define REG_SATA_PHYD_REG_3C         (SATA_GHC_0_PHY + (0x3C<<1))
+#define REG_SATA_PHYD_REG_3E         (SATA_GHC_0_PHY + (0x3E<<1))
+#define REG_SATA_PHYD_REG_40         (SATA_GHC_0_PHY + (0x40<<1))
+#define REG_SATA_PHYD_REG_46         (SATA_GHC_0_PHY + (0x46<<1))
+#define REG_SATA_PHYD_REG_50         (SATA_GHC_0_PHY + (0x50<<1))
+#define REG_SATA_PHYD_REG_61         (SATA_GHC_0_PHY + (0x61<<1))
+#define REG_SATA_PHYD_REG_64         (SATA_GHC_0_PHY + (0x64<<1))
+
+
+#define REG_SATA_PHY_CLK_PMALIVE_SEL (SATA_GHC_0_PHY_ANA + (0x04<<1))
+#define REG_SATA_PHY_REG_20          (SATA_GHC_0_PHY_ANA + (0x20<<1))
+#define REG_SATA_PHY_REG_30          (SATA_GHC_0_PHY_ANA + (0x30<<1))
+#define REG_SATA_PHY_REG_33          (SATA_GHC_0_PHY_ANA + (0x33<<1))
+#define REG_SATA_PHY_REG_3E          (SATA_GHC_0_PHY_ANA + (0x3E<<1))
+#define REG_SATA_PHY_SYNTH_SLD       (SATA_GHC_0_PHY_ANA + (0x44<<1))
+#define REG_SATA_PHY_TXPLL_DET_SW    (SATA_GHC_0_PHY_ANA + (0x60<<1))
+#define REG_SATA_PHY_REG_70          (SATA_GHC_0_PHY_ANA + (0x70<<1))
 
 // Bank 0x1A28 is x32 riu(32bit)
 #define SATA_GHC_0_ADDRESS_START (SSTAR_RIU_BASE + (0x1A2800 << 1))
 #define SATA_GHC_0_ADDRESS_END   (SSTAR_RIU_BASE + (0x1A283F << 1))
-#define SATA_GHC_0_P0_ADDRESS_START (SSTAR_RIU_BASE + (0x1A2840 << 1))
-#define SATA_GHC_0_P0_ADDRESS_END   (SSTAR_RIU_BASE + (0x1A287F << 1))
+#define SATA_GHC_0_P0_ADDRESS_START (SSTAR_RIU_BASE + (0x1A2880 << 1))
+#define SATA_GHC_0_P0_ADDRESS_END   (SSTAR_RIU_BASE + (0x1A28BF << 1))
 #define SATA_MISC_0_ADDRESS_START  (SSTAR_RIU_BASE + (0x152500 << 1))
 #define SATA_MISC_0_ADDRESS_END    (SSTAR_RIU_BASE + (0x1525FE << 1))
 

@@ -1,9 +1,8 @@
 /*
 * drvDeviceInfo.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _DRV_DEVICE_INFO_H_
@@ -39,6 +38,8 @@
 #define FLASH_IC_ST25P80_A       0x0300UL      // 1M    ST
 #define FLASH_IC_ST25P16_A       0x0301UL      // 2M
 #define FLASH_IC_STM25P32        0x0302UL      // 4M
+#define FLASH_IC_ST25Q128        0x0303UL      // unknow , history problem , maybe brand typo .
+
 //ATMEL
 #define FLASH_IC_AT26DF081A      0x0400UL      // 1M    ATMEL
 #define FLASH_IC_AT26DF161       0x0401UL      // 2M
@@ -63,7 +64,7 @@
 #define FLASH_IC_MX25L8006E      0x050EUL      // 1M    MXIC
 #define FLASH_IC_MX25L3255D      0x0512UL      // 4M for secure option
 #define FLASH_IC_MX25L25645G     0x0513UL      // 32M
-#define FLASH_IC_MX25L5123G       0x5014UL      //64M
+#define FLASH_IC_MX25L5123G       0x5014UL      //64M / MX25L51245G
 
 // NX
 #define FLASH_IC_NX25P80         0x0600UL      // 1M    NX
@@ -82,6 +83,7 @@
 #define FLASH_IC_W25Q128         0x0709UL      // 16M
 #define FLASH_IC_W25Q32BV        0x070AUL      // 4M
 #define FLASH_IC_W25X40          0x070BUL      // 512K    WINB
+#define FLASH_IC_W25Q256JV       0x070CUL      // 32M
 
 //SPANSION
 #define FLASH_IC_S25FL008A       0x0800UL      // 1M    SPANSION
@@ -107,6 +109,7 @@
 #define FLASH_IC_EN25Q64         0x090BUL      // 4M
 #define FLASH_IC_EN25B64B        0x090CUL      // 4M
 #define FLASH_IC_EN25Q128        0x090DUL      // 16M
+#define FLASH_IC_EN25QH128       0x090FUL      // 16M
 #define FLASH_IC_EN25P16         0x090EUL      // 2M
 #define FLASH_IC_EN25F40         0x090AUL      // 512k
 #define FLASH_IC_EN25QH16        0x090BUL      // 2M
@@ -134,8 +137,15 @@
 
 //ZB
 #define FLASH_IC_ZB25Q64        0x1002UL       // 8M
-#define FLASH_IC_ZB25Q128       0x1003UL       // 16M
+#define FLASH_IC_ZB25VQ128       0x1003UL       // 16M
 
+#define FLASH_IC_25Q128AS       0x1100UL       // 25q128as
+
+#define FLASH_IC_XM25QH128A     0x1200UL
+#define FLASH_IC_XM25QH256B     0x1201UL
+
+//XTX
+#define FLASH_IC_XT25F128B      0x1300UL
 
 // Flash Manufacture ID
 #define MID_MXIC                0xC2UL
@@ -150,6 +160,10 @@
 #define MID_MICRON              0x20UL
 #define MID_NUMONYX             0x20UL
 #define MID_AM                  0x37UL
+#define MID_25Q                 0x68UL
+#define MID_ZB                  0x5EUL
+#define MID_XMC                 0x20UL
+#define MID_XTX                 0x0BUL
 
 // Flash Storage Size
 #define SIZE_1KB                0x400UL

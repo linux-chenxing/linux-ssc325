@@ -1,9 +1,8 @@
 /*
 * mdrv_miu.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/printk.h>
@@ -29,6 +28,7 @@
 #include "mdrv_miu.h"
 #include "mhal_miu.h"
 #include "regMIU.h"
+#include "ms_platform.h"
 #include <asm/io.h>
 #include "irqs.h"
 #include <linux/of.h>
@@ -130,7 +130,8 @@ static irqreturn_t MDrv_MIU_Protect_interrupt(s32 irq, void *dev_id)
     memset(&pInfo, 0 , sizeof(pInfo));
 
     MDrv_MIU_GetProtectInfo(u8MiuSel, &pInfo);
-    BUG();
+    if (pInfo.bHit)
+        BUG();
     return IRQ_HANDLED;
 }
 #else
@@ -205,7 +206,7 @@ MS_BOOL MDrv_MIU_Protect(   MS_U8   u8Blockx,
         dev_node = of_find_compatible_node(NULL, NULL, "sstar,miu");
         if (!dev_node)
         {
-            printk("[MIU Protecrt] of_find_compatible_node Fail\r\n");
+            printk("[MIU Protecrt] find node Fail\r\n");
             Result = FALSE;
             goto MDrv_MIU_Protect_Exit;
         }
@@ -214,7 +215,7 @@ MS_BOOL MDrv_MIU_Protect(   MS_U8   u8Blockx,
 
         if(0 != (rc = request_irq(iIrqNum, MDrv_MIU_Protect_interrupt, IRQF_TRIGGER_HIGH, "MIU_Protect", NULL)))
         {
-            printk("[MIU Protecrt] request_irq [%d] Fail, ErrCode: %d\r\n", iIrqNum, rc);
+            printk("[MIU Protecrt] request_irq [%d] Fail, Err:%d\r\n", iIrqNum, rc);
             Result = FALSE;
             goto MDrv_MIU_Protect_Exit;
         }
@@ -258,6 +259,19 @@ MS_BOOL MDrv_MIU_Slits(MS_U8 u8Blockx, MS_PHY u64SlitsStart, MS_PHY u64SlitsEnd,
     return Result;
 }
 
+int MDrv_MIU_Enable_Goup1_Smaller_Group2(unsigned char u8Enable)
+{
+    unsigned long flags;
+    int ret = 0 ;
+
+    spin_lock_irqsave(&miu_lock, flags);
+    ret = HAL_MIU_Enable_Goup1_Smaller_Group2(u8Enable);
+    spin_unlock_irqrestore(&miu_lock, flags);
+
+    return ret;
+}
+EXPORT_SYMBOL(MDrv_MIU_Enable_Goup1_Smaller_Group2);
+
 #ifdef CONFIG_MSTAR_MMAHEAP
 EXPORT_SYMBOL(MDrv_MIU_Init);
 EXPORT_SYMBOL(u8_MiuWhiteListNum);
@@ -274,22 +288,55 @@ static int mmu_isr_init=0;
 MDrv_MMU_Callback MDrv_MMU_Notify=NULL;
 #endif
 
-int MDrv_MMU_SetRegion(unsigned short u16Region)
+int MDrv_MMU_SetRegion(unsigned short u16Region, unsigned short u16ReplaceRegion)
 {
     unsigned long flags;
     int ret;
 
-    spin_lock_irqsave(&mmu_lock, flags);
-    ret = HAL_MMU_SetRegion(u16Region);
-    spin_unlock_irqrestore(&mmu_lock, flags);
+    if(u16Region ==u16ReplaceRegion)
+    {
+        spin_lock_irqsave(&mmu_lock, flags);
+        ret = HAL_MMU_SetRegion(u16Region);
+        spin_unlock_irqrestore(&mmu_lock, flags);
+    }
+    else
+    {
+#ifndef CONFIG_FPGA
+        if(Chip_Get_Revision() == 0x1)
+        {
+            printk("[%s] not support , chipId = %d \n", __FUNCTION__, Chip_Get_Revision() );
+            return -1;
+        }
+#endif
+        spin_lock_irqsave(&mmu_lock, flags);
+        ret = HAL_MMU_SetRegionReplaceable(u16Region,u16ReplaceRegion);
+        spin_unlock_irqrestore(&mmu_lock, flags);
+    }
 
     return ret;
+}
+
+int MDrv_MMU_SetPageSize(unsigned char u8PgSz256En)
+{
+    if(0 != u8PgSz256En)
+    {
+        printk("[%s] not support u8PgSz256En = %d \n", __FUNCTION__, u8PgSz256En);
+        return -1 ;
+    }
+
+    return 0;
 }
 
 int MDrv_MMU_Map(unsigned short u16PhyAddrEntry, unsigned short u16VirtAddrEntry)
 {
     unsigned long flags;
     int ret;
+
+    if (u16VirtAddrEntry == MMU_INVALID_ENTRY_VAL)
+    {
+        printk("[%s] Virtual address entry is invalid(0x%X)\n", __FUNCTION__, u16VirtAddrEntry);
+        return -1;
+    }
 
     spin_lock_irqsave(&mmu_lock, flags);
     ret = HAL_MMU_Map(u16PhyAddrEntry, u16VirtAddrEntry);
@@ -327,6 +374,14 @@ int MDrv_MMU_AddClientId(unsigned short u16ClientId)
     unsigned long flags;
     int ret;
 
+#ifndef CONFIG_FPGA
+    if(Chip_Get_Revision() == 0x2)
+    {
+        printk("[%s] not support , chipId = %d \n", __FUNCTION__, Chip_Get_Revision() );
+        return -1;
+    }
+#endif
+
     spin_lock_irqsave(&mmu_lock, flags);
     ret = HAL_MMU_AddClientId(u16ClientId);
     spin_unlock_irqrestore(&mmu_lock, flags);
@@ -338,6 +393,14 @@ int MDrv_MMU_RemoveClientId(unsigned short u16ClientId)
 {
     unsigned long flags;
     int ret;
+
+#ifndef CONFIG_FPGA
+    if(Chip_Get_Revision() == 0x2)
+    {
+        printk("[%s] not support , chipId = %d \n", __FUNCTION__, Chip_Get_Revision() );
+        return -1;
+    }
+#endif
 
     spin_lock_irqsave(&mmu_lock, flags);
     ret = HAL_MMU_RemoveClientId(u16ClientId);
@@ -353,6 +416,7 @@ static irqreturn_t MDrv_MMU_interrupt(s32 irq, void *dev_id)
     unsigned int status;
     unsigned short u16PhyAddrEntry, u16ClientId;
     unsigned char u8IsWriteCmd;
+    char name[32]={0};
 
     spin_lock_irqsave(&mmu_lock, flags);
     status = HAL_MMU_Status(&u16PhyAddrEntry, &u16ClientId, &u8IsWriteCmd);
@@ -363,10 +427,12 @@ static irqreturn_t MDrv_MMU_interrupt(s32 irq, void *dev_id)
     }
     else
     {
-        printk("[%s] Status=0x%x, PhyAddrEntry=0x%x, ClientId=0x%x, IsWrite=%d\n", __FUNCTION__,
+        HAL_MIU_ClientIdToName(u16ClientId , name );
+        printk("[%s] Status=0x%x, PhyAddrEntry=0x%x, ClientId=0x%x, name =%s , IsWrite=%d\n", __FUNCTION__,
                                                                                    status,
                                                                                    u16PhyAddrEntry,
                                                                                    u16ClientId,
+                                                                                   name,
                                                                                    u8IsWriteCmd);
     }
 
@@ -400,14 +466,14 @@ int MDrv_MMU_Enable(unsigned char u8Enable)
         dev_node = of_find_compatible_node(NULL, NULL, "sstar,mmu");
         if (!dev_node)
         {
-            printk("[MMU] of_find_compatible_node Fail\r\n");
+            printk("[MMU] find node Fail\r\n");
         }
 
         iIrqNum = irq_of_parse_and_map(dev_node, 0);
 
         if(0 != (rc = request_irq(iIrqNum, MDrv_MMU_interrupt, IRQF_TRIGGER_HIGH, "MMU", NULL)))
         {
-            printk("[MMU] request_irq [%d] Fail, ErrCode: %d\r\n", iIrqNum, rc);
+            printk("[MMU] request_irq [%d] Fail, Err:%d\r\n", iIrqNum, rc);
         }
         mmu_isr_init = 1;
     }
@@ -447,6 +513,7 @@ unsigned int MDrv_MMU_Status(unsigned short *u16PhyAddrEntry, unsigned short *u1
 #endif
 
 EXPORT_SYMBOL(MDrv_MMU_SetRegion);
+EXPORT_SYMBOL(MDrv_MMU_SetPageSize);
 EXPORT_SYMBOL(MDrv_MMU_Map);
 EXPORT_SYMBOL(MDrv_MMU_MapQuery);
 EXPORT_SYMBOL(MDrv_MMU_UnMap);
@@ -507,7 +574,7 @@ static int __init mstar_miu_drv_init_module(void)
     ret = platform_driver_register(&Sstar_miu_driver);
 
     if (ret) {
-        printk("Register Sstar MIU Platform Driver Failed!");
+        printk("Register MIU Driver Fail");
     }
     return ret;
 }

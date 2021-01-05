@@ -1,9 +1,8 @@
 /*
 * halSERFLASH.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/string.h>
@@ -32,6 +31,7 @@
 #include "drvDeviceInfo.h"
 #include "regSERFLASH.h"
 #include "halSERFLASH.h"
+#include "registers.h"
 
 
 
@@ -60,16 +60,18 @@
 
 //Select FSP read function
     //#define CONFIG_FSP_READ_RIUOP      1
-    //#define CONFIG_FSP_READ_BDMA       1
-    #define CONFIG_FSP_READ_DIRERECT    1
+    #define CONFIG_FSP_READ_BDMA       1
+    //#define CONFIG_FSP_READ_DIRERECT    1
 
 //Select FSP write function
     //#define CONFIG_FSP_WRITE_RIUOP       1
     //#define CONFIG_FSP_WRITE_RIUOP_BRUST 1
     #define CONFIG_FSP_WRITE_BDMA         1
-
 #endif
 
+#if defined(CONFIG_FSP_READ_BDMA) && CONFIG_FSP_READ_BDMA == 1
+#include "hal_bdma.h"
+#endif
 
 #define READ_BYTE(_reg)             (*(volatile MS_U8*)(_reg))
 #define READ_WORD(_reg)             (*(volatile MS_U16*)(_reg))
@@ -117,6 +119,8 @@
 
 //// PM_SLEEP CMD.
 //#define PM_READ(addr)                      READ_WORD(_hal_isp.u32PMBaseAddr+ ((addr)<<2))
+#define PM_READ(addr)                      READ_WORD(BASE_REG_PMSLEEP_ADDR+ ((addr)<<2))
+
 //#define PM_WRITE(addr, val)                WRITE_WORD(_hal_isp.u32PMBaseAddr+ ((addr)<<2), (val))
 //#define PM_WRITE_MASK(addr, val, mask)     WRITE_WORD_MASK(_hal_isp.u32PMBaseAddr+ ((addr)<<2), (val), (mask))
 
@@ -190,11 +194,15 @@ MS_U32 pu8BDMA_virt = 0;
 MS_U32 pu8BDMA_bus = 0;
 MS_U32 BASE_FLASH_OFFSET = 0;
 
+#define BDMA_ALIGN (32)
+#define BDMA_SIZE_WARNING (128*1024+BDMA_ALIGN) //print message for unresonable size
 
-SPI_READ_MODE gReadMode = E_FAST_MODE;
+//E_QUAD_MODE;//E_FAST_MODE;
+const static SPI_READ_MODE gReadMode = E_QUAD_MODE;
+static MS_U32 u32BdmaSize = 64 * 1024 + BDMA_ALIGN;//default size
+static MSYS_DMEM_INFO mem_info;
+
 MS_BOOL gQuadSupport = 0; //extern on MTD
-
-
 
 //-------------------------------------------------------------------------------------------------
 //  Local Variables
@@ -283,7 +291,7 @@ MS_BOOL HAL_FSP_ReadREMS4(MS_U8 * pu8Data, MS_U32 u32Size);
 
 void HAL_FSP_Entry(void);
 void HAL_FSP_Exit(void);
-void _HAL_BDMA_INIT(void);
+void _HAL_BDMA_INIT(U32 u32DataSize);
 
 //-------------------------------------------------------------------------------------------------
 //  Debug Functions
@@ -338,7 +346,7 @@ void HAL_SERFLASH_SelectReadMode(SPI_READ_MODE eReadMode)
         QSPI_WRITE_MASK(REG_ISP_SPI_MODE, SFSH_CHIP_2XREAD_ENABLE, SFSH_CHIP_FAST_MASK);
     break;
     case E_QUAD_MODE:  //1-1-4 mode (SPI COMMAND is 0x6B)
-	    QSPI_WRITE_MASK(REG_ISP_SPI_MODE, SFSH_CHIP_4XREAD_ENABLE , SFSH_CHIP_FAST_MASK);
+        QSPI_WRITE_MASK(REG_ISP_SPI_MODE, SFSH_CHIP_4XREAD_ENABLE , SFSH_CHIP_FAST_MASK);
     break;
 
     case E_RIUISP_MODE:
@@ -361,11 +369,11 @@ static void _HAL_SPI_Rest(void)
     ISP_WRITE_MASK(REG_ISP_CHIP_RST, SFSH_CHIP_RESET, SFSH_CHIP_RESET_MASK);
     ISP_WRITE_MASK(REG_ISP_CHIP_RST, SFSH_CHIP_NOTRESET, SFSH_CHIP_RESET_MASK);
 
-	// Call the callback function to switch back the chip selection.
-	if(McuChipSelectCB != NULL )
-	{
-		   (*McuChipSelectCB)();
-	}
+    // Call the callback function to switch back the chip selection.
+    if(McuChipSelectCB != NULL )
+    {
+           (*McuChipSelectCB)();
+    }
     #endif
 }
 
@@ -421,8 +429,8 @@ static void _HAL_ISP_4XMode(MS_BOOL bEnable)
     {
         QSPI_WRITE_MASK(REG_ISP_SPI_MODE,SFSH_CHIP_4XREAD_ENABLE,SFSH_CHIP_FAST_MASK);
         printk("[SerFlash]TODO: correct Quad mode GPIO\n");
-	    //PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_HOLD_NOT_GPIO, PM_SPI_HOLD_GPIO_MASK);
-	    //PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_WP_NOT_GPIO, PM_SPI_WP_GPIO_MASK);
+        //PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_HOLD_NOT_GPIO, PM_SPI_HOLD_GPIO_MASK);
+        //PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_WP_NOT_GPIO, PM_SPI_WP_GPIO_MASK);
     }
     else        // off 4Xmode
     {
@@ -679,10 +687,10 @@ static MS_BOOL _HAL_SERFLASH_RIURead(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8D
 
             *(pu8Data + u32I)  = (MS_U8)ISP_READ(REG_ISP_SPI_RDATA);//SPI_READ_DATA();
     }
-	//--- Flush OCP memory --------
+    //--- Flush OCP memory --------
    // MsOS_FlushMemory();
 
-	bRet = TRUE;
+    bRet = TRUE;
 
 HAL_SERFLASH_Read_return:
 
@@ -824,7 +832,7 @@ MS_BOOL HAL_SERFLASH_SetCKG(SPI_DrvCKG eCkgSpi)
 //    // NON-PM Doman
 //    CLK_WRITE_MASK(REG_CLK0_CKG_SPI,CLK0_CLK_SWITCH_OFF,CLK0_CLK_SWITCH_MASK);      // run @ 12M
 //
-//	switch (eCkgSpi)
+//  switch (eCkgSpi)
 //    {
 //        case E_SPI_XTALI:
 //            CLK_WRITE_MASK(REG_CLK0_CKG_SPI,_hal_ckg_spi_nonpm[0],CLK0_CKG_SPI_MASK); // set ckg_spi
@@ -844,7 +852,7 @@ MS_BOOL HAL_SERFLASH_SetCKG(SPI_DrvCKG eCkgSpi)
 //
 //        default:
 //            CLK_WRITE_MASK(REG_CLK0_CKG_SPI,_hal_ckg_spi_nonpm[1],CLK0_CKG_SPI_MASK); // set ckg_spi
-//			break;
+//          break;
 //    }
 //
 //
@@ -892,7 +900,7 @@ MS_BOOL HAL_SERFLASH_SetCKG(SPI_DrvCKG eCkgSpi)
 ////////////////////////////////////////////////////////////////////////////////
 void HAL_SERFLASH_ClkDiv(SPI_DrvClkDiv eClkDivSpi)
 {
-	switch (eClkDivSpi)
+    switch (eClkDivSpi)
     {
         case E_SPI_DIV2:
             ISP_WRITE(REG_ISP_SPI_CLKDIV,ISP_SPI_CLKDIV2);
@@ -904,21 +912,21 @@ void HAL_SERFLASH_ClkDiv(SPI_DrvClkDiv eClkDivSpi)
             ISP_WRITE(REG_ISP_SPI_CLKDIV,ISP_SPI_CLKDIV8);
             break;
         case E_SPI_DIV16:
-			ISP_WRITE(REG_ISP_SPI_CLKDIV,ISP_SPI_CLKDIV16);
+            ISP_WRITE(REG_ISP_SPI_CLKDIV,ISP_SPI_CLKDIV16);
             break;
-		case E_SPI_DIV32:
-			ISP_WRITE(REG_ISP_SPI_CLKDIV,ISP_SPI_CLKDIV32);
+        case E_SPI_DIV32:
+            ISP_WRITE(REG_ISP_SPI_CLKDIV,ISP_SPI_CLKDIV32);
             break;
         case E_SPI_DIV64:
-			ISP_WRITE(REG_ISP_SPI_CLKDIV,ISP_SPI_CLKDIV64);
+            ISP_WRITE(REG_ISP_SPI_CLKDIV,ISP_SPI_CLKDIV64);
             break;
-	    case E_SPI_DIV128:
-		    ISP_WRITE(REG_ISP_SPI_CLKDIV,ISP_SPI_CLKDIV128);
-			break;
-		case E_SPI_ClkDiv_NOT_SUPPORT:
+        case E_SPI_DIV128:
+            ISP_WRITE(REG_ISP_SPI_CLKDIV,ISP_SPI_CLKDIV128);
+            break;
+        case E_SPI_ClkDiv_NOT_SUPPORT:
        default:
-			DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("%s()\n", __FUNCTION__));
-			break;
+            DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("%s()\n", __FUNCTION__));
+            break;
     }
 }
 
@@ -953,7 +961,7 @@ MS_BOOL HAL_SERFLASH_Set2XREAD(MS_BOOL b2XMode)
 {
     DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("%s()\n", __FUNCTION__));
 
-	if(!bDetect)
+    if(!bDetect)
     {
         HAL_SERFLASH_DetectType();
     }
@@ -1070,7 +1078,7 @@ void HAL_SERFLASH_Init(void)
     /* output clk=mcu_clk/SPI_DIV */
     //set mcu_clk to 110Mhz
     //WRITE_WORD_MASK(GET_REG_ADDR(BASE_REG_CHIPTOP_ADDR, 0x22),BITS(11:10, 2),BMASK(11:10)); // set ckg_spi
-	HAL_SERFLASH_ClkDiv(E_SPI_DIV8);
+    HAL_SERFLASH_ClkDiv(E_SPI_DIV8);
 #endif
 
     ISP_WRITE(REG_ISP_DEV_SEL, 0x0); //mark for A3
@@ -1087,8 +1095,7 @@ void HAL_SERFLASH_Init(void)
     QSPI_WRITE_MASK(REG_SPI_CS_TIME, SFSH_CS_SETUP_TWO , SFSH_CS_SETUP_MASK);
     QSPI_WRITE_MASK(REG_SPI_CS_TIME, SFSH_CS_HOLD_TWO , SFSH_CS_HOLD_MASK);
 
-    if(pu8BDMA_virt == 0)
-        _HAL_BDMA_INIT();
+    _HAL_BDMA_INIT(u32BdmaSize);
 #endif
 }
 
@@ -1097,32 +1104,60 @@ void HAL_SERFLASH_SetGPIO(MS_BOOL bSwitch)
     DEBUG_SER_FLASH(E_SERFLASH_DBGLV_NOTICE, printk("%s() Chicago TODO\n", __FUNCTION__));
 
 
-//	MS_U32 u32PmGPIObase = _hal_isp.u32PMBaseAddr + 0x200;
+//  MS_U32 u32PmGPIObase = _hal_isp.u32PMBaseAddr + 0x200;
 //
-//	if(bSwitch)// The PAD of the SPI set as GPIO IN.
-//	{
-//		PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_IS_GPIO, PM_SPI_GPIO_MASK);
-//	 PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_HOLD_IS_GPIO, PM_SPI_HOLD_GPIO_MASK);
-//		WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPICZ_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPICZ_OEN)<<2))|(BIT(0))));
-//		WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPICK_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPICK_OEN)<<2))|(BIT(0))));
-//		WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPIDI_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPIDI_OEN)<<2))|(BIT(0))));
-//		WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPIDO_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPIDO_OEN)<<2))|(BIT(0))));
-//	}
-//	else
-//	{
-//		PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_NOT_GPIO, PM_SPI_GPIO_MASK);
+//  if(bSwitch)// The PAD of the SPI set as GPIO IN.
+//  {
+//      PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_IS_GPIO, PM_SPI_GPIO_MASK);
+//   PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_HOLD_IS_GPIO, PM_SPI_HOLD_GPIO_MASK);
+//      WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPICZ_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPICZ_OEN)<<2))|(BIT(0))));
+//      WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPICK_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPICK_OEN)<<2))|(BIT(0))));
+//      WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPIDI_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPIDI_OEN)<<2))|(BIT(0))));
+//      WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPIDO_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPIDO_OEN)<<2))|(BIT(0))));
+//  }
+//  else
+//  {
+//      PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_NOT_GPIO, PM_SPI_GPIO_MASK);
 //        PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_HOLD_NOT_GPIO, PM_SPI_HOLD_GPIO_MASK);
-//		WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPICZ_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPICZ_OEN)<<2))|(BIT(0))));
-//		WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPICK_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPICK_OEN)<<2))|(BIT(0))));
-//		WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPIDI_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPIDI_OEN)<<2))|(BIT(0))));
-//		WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPIDO_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPIDO_OEN)<<2))|(BIT(0))));
-//	}
+//      WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPICZ_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPICZ_OEN)<<2))|(BIT(0))));
+//      WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPICK_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPICK_OEN)<<2))|(BIT(0))));
+//      WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPIDI_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPIDI_OEN)<<2))|(BIT(0))));
+//      WRITE_BYTE( u32PmGPIObase + ((REG_PM_GPIO_SPIDO_OEN)<<2), (READ_BYTE(u32PmGPIObase + ((REG_PM_GPIO_SPIDO_OEN)<<2))|(BIT(0))));
+//  }
 
 }
 extern hal_SERFLASH_t _hal_SERFLASH_table[];
 extern ST_WRITE_PROTECT _pstWriteProtectTable_MX25L6445E[];
 extern ST_WRITE_PROTECT _pstWriteProtectTable_MX25L12845E[];
-
+MS_U32 PAL_SPI_GetClk(void)
+{
+    MS_U16 reg;
+    MS_U32 u32Clk = 0;
+    reg = (PM_READ(0x20) >> 10) & 0xF;
+    printk("reg = %X\r\n", reg);
+    switch(reg)
+    {
+        case 1:
+            u32Clk = 27;
+            break;
+        case 4:
+            u32Clk = 54;
+            break;
+        case 5:
+            u32Clk = 72;
+            break;
+        case 6:
+            u32Clk = 86;
+            break;
+        case 7:
+            u32Clk = 108;
+            break;
+        default:
+            u32Clk = 0;
+            break;
+    }
+    return u32Clk;
+}
 MS_BOOL HAL_SERFLASH_DetectType(void)
 {
     #define READ_ID_SIZE    3
@@ -1131,7 +1166,6 @@ MS_BOOL HAL_SERFLASH_DetectType(void)
     MS_U8   u8FlashId[READ_ID_SIZE];
     MS_U8   u8FlashREMS4[READ_REMS4_SIZE];
     MS_U32  u32Index;
-   //MS_U8   u8Status0, u8Status1;
 
     memset(&_hal_SERFLASH, 0, sizeof(_hal_SERFLASH));
 
@@ -1212,6 +1246,14 @@ MS_BOOL HAL_SERFLASH_DetectType(void)
             }
         }
 
+        if(gReadMode == E_QUAD_MODE && _hal_SERFLASH.u8MID == MID_MXIC)
+        {
+            if(PAL_SPI_GetClk() > 54)
+            {
+                printk("MX supports QUAD mode only when CLK <= 54MHz\n");
+                BUG();
+            }
+        }
         // If the Board uses a unknown flash type, force setting a secure flash type for booting. //FLASH_IC_MX25L6405D
         if( bDetect != TRUE )
         {
@@ -1253,10 +1295,10 @@ MS_BOOL HAL_SERFLASH_DetectType(void)
 //        gReadMode = E_DUAL_D_MODE;
 //    else
 //        gReadMode = _hal_SERFLASH.u16SPIMaxClk[1];
-    gReadMode = E_FAST_MODE;
+// don't overwrite default setting
+//    gReadMode = E_FAST_MODE;
 
     HAL_SERFLASH_SetCKG(_hal_SERFLASH.u16SPIMaxClk[0]);
-
 
     switch ( gReadMode )
     {
@@ -1281,7 +1323,6 @@ MS_BOOL HAL_SERFLASH_DetectType(void)
     }
 
 #endif
-
 
     return bDetect;
 
@@ -1437,6 +1478,14 @@ MS_BOOL HAL_SERFLASH_BlockToAddress(MS_U32 u32BlockIndex, MS_U32 *pu32FlashAddr)
 
     return TRUE;
 }
+
+
+#ifdef CONFIG_SS_CUSTOMIZED_CUS_ZY_ERASE_ENV
+MS_BOOL HAL_SERFLASH_BlockErase_CUS_ZY(MS_U32 u32StartAddr, MS_U32 u32EraseSize, MS_BOOL bWait)
+{
+    return  HAL_FSP_BlockErase_CUS_ZY(u32StartAddr, u32EraseSize, bWait);
+}
+#endif
 
 MS_BOOL HAL_SERFLASH_BlockErase(MS_U32 u32StartBlock, MS_U32 u32EndBlock, MS_BOOL bWait)
 {
@@ -1865,7 +1914,7 @@ HAL_SERFLASH_Write_return:
     HAL_FSP_Entry();
     bRet = HAL_FSP_Write(u32Addr, u32Size, pu8Data);
     HAL_FSP_Exit();
-	#elif defined(CONFIG_FSP_WRITE_BDMA)
+    #elif defined(CONFIG_FSP_WRITE_BDMA)
     HAL_FSP_Entry();
     bRet = HAL_FSP_Write_BDMA(u32Addr, u32Size, pu8Data);
     HAL_FSP_Exit();
@@ -1878,10 +1927,77 @@ HAL_SERFLASH_Write_return:
     return bRet;
 }
 
+MS_BOOL HAL_SERFLASH_ReadRedirect(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
+{
+    if(!BASE_FLASH_OFFSET)
+    {
+        BASE_FLASH_OFFSET = (MS_U32)ioremap(MS_SPI_ADDR, 0x2000000);
+        //printk("[SER flash]MS_SPI_ADDR=(0x%08X)\n",(int)BASE_FLASH_OFFSET);
+    }
+    if(BASE_FLASH_OFFSET)
+    {
+        MS_U32 u32ReadSize = 0;
+        if (u32Addr < 0x1000000)
+        {
+            if (_u8RegEAR) // switch back to bottom 16MB
+                HAL_FSP_WriteExtAddrReg(0);
+            u32ReadSize = u32Size > (0x1000000 - u32Addr) ? (0x1000000 - u32Addr) : u32Size;
+            memcpy((void *)pu8Data, (const void *)(BASE_FLASH_OFFSET+u32Addr), u32ReadSize);
+            u32Size = u32Size - u32ReadSize;
+        }
+        if (u32Size)
+        {
+            MS_U8 u8EAR = 0;
+
+            u32Addr += u32ReadSize;
+            u8EAR = u32Addr >> 24;
+            if (u8EAR)
+                HAL_FSP_WriteExtAddrReg(u8EAR);
+            memcpy((void *)pu8Data+u32ReadSize,(const void *)(BASE_FLASH_OFFSET+(u32Addr&0xFFFFFF)), u32Size);
+        }
+    }
+    return TRUE;
+}
+
+MS_BOOL HAL_SERFLASH_ReadBdma(MS_U32 u32Offset, MS_U32 u32Size, MS_U8 *pu8Data)
+{
+    MS_BOOL Ret = FALSE;
+    MS_U32 u32AlignedOffset = (u32Offset) & (~0xF);
+    MS_U32 u32AlignedSize;
+    MS_U32 u32Delta;
+
+    u32Delta = u32Offset - u32AlignedOffset;
+    u32AlignedSize = ((u32Size + u32Delta) + 0xF) & (~0xF);
+    {
+        HalBdmaParam_t  tBdmaParam;
+        const u8 u8DmaCh = HAL_BDMA_CH0;
+        _HAL_BDMA_INIT(u32AlignedSize);
+        tBdmaParam.ePathSel     = HAL_BDMA_SPI_TO_MIU0;//(pstDmaCfg->phyaddr < ARM_MIU1_BASE_ADDR) ? (HAL_BDMA_MEM_TO_MIU0) : (HAL_BDMA_MEM_TO_MIU1);
+        tBdmaParam.bIntMode     = 0; //0: polling mode
+        tBdmaParam.eDstAddrMode = HAL_BDMA_ADDR_INC;
+        tBdmaParam.u32TxCount   = u32AlignedSize;//(u32Size + 0xF) & (~0xF);
+        tBdmaParam.pSrcAddr     = (void*)u32AlignedOffset;//u32Offset;
+        tBdmaParam.pDstAddr     = (void*)pu8BDMA_bus;
+        tBdmaParam.pfTxCbFunc   = NULL;//msys_bdma_done;
+        tBdmaParam.u32Pattern   = 0;
+        HalBdma_Initialize(u8DmaCh);
+        //DEBUG_SER_FLASH(E_SERFLASH_DBGLV_INFO, printk("%s(0x%08X, %d, %p)b\n", __FUNCTION__, (int)u32Addr, (int)u32Size, pu8Data));
+        if (HAL_BDMA_PROC_DONE != HalBdma_Transfer(u8DmaCh, &tBdmaParam)) {
+            //DEBUG_SER_FLASH(E_SERFLASH_DBGLV_INFO, printk("err\n"));
+            return FALSE;
+        }
+        Chip_Flush_MIU_Pipe();
+        Chip_Inv_Cache_Range(pu8BDMA_virt, u32AlignedSize);//u32Size);
+        //memcpy(pu8Data, (void*)pu8BDMA_virt, u32Size);
+        memcpy(pu8Data, (void*)pu8BDMA_virt + u32Delta, u32Size);
+        Ret = TRUE;
+    }
+    return TRUE;
+}
+
 MS_BOOL HAL_SERFLASH_Read(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
 {
     MS_BOOL Ret = FALSE;
-
     MS_ASSERT( MsOS_In_Interrupt() == FALSE );
     //MS_ASSERT(_HAL_SERFLASH_Check51RunMode());
     if (FALSE == MS_SERFLASH_OBTAIN_MUTEX(_s32SERFLASH_Mutex, SERFLASH_MUTEX_WAIT_TIME))
@@ -1900,44 +2016,55 @@ MS_BOOL HAL_SERFLASH_Read(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
     }
 #else
     DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("%s(0x%08X, %d, %p)\n", __FUNCTION__, (int)u32Addr, (int)u32Size, pu8Data));
-
-    HAL_SERFLASH_SelectReadMode(gReadMode);
+    if(_hal_SERFLASH.u8MID == MID_25Q)
+    {
+        HAL_SERFLASH_SelectReadMode(_hal_SERFLASH.u16SPIMaxClk[1]);
+    }
+    else
+    {
+        HAL_SERFLASH_SelectReadMode(gReadMode);
+    }
 
     #ifdef CONFIG_FSP_READ_DIRERECT
-        if(!BASE_FLASH_OFFSET)
+    if(!BASE_FLASH_OFFSET)
+    {
+        BASE_FLASH_OFFSET = (MS_U32)ioremap(MS_SPI_ADDR, 0x2000000);
+        //printk("[SER flash]MS_SPI_ADDR=(0x%08X)\n",(int)BASE_FLASH_OFFSET);
+    }
+    if(BASE_FLASH_OFFSET)
+    {
+        MS_U32 u32ReadSize = 0;
+        if (u32Addr < 0x1000000)
         {
-            BASE_FLASH_OFFSET = (MS_U32)ioremap(MS_SPI_ADDR, 0x2000000);
-            //printk("[SER flash]MS_SPI_ADDR=(0x%08X)\n",(int)BASE_FLASH_OFFSET);
+            if (_u8RegEAR) // switch back to bottom 16MB
+                HAL_FSP_WriteExtAddrReg(0);
+            u32ReadSize = u32Size > (0x1000000 - u32Addr) ? (0x1000000 - u32Addr) : u32Size;
+            memcpy((void *)pu8Data, (const void *)(BASE_FLASH_OFFSET+u32Addr), u32ReadSize);
+            u32Size = u32Size - u32ReadSize;
         }
-        if(BASE_FLASH_OFFSET)
+        if (u32Size)
         {
-            MS_U32 u32ReadSize = 0;
-            if (u32Addr < 0x1000000)
-            {
-                if (_u8RegEAR) // switch back to bottom 16MB
-                    HAL_FSP_WriteExtAddrReg(0);
-                u32ReadSize = u32Size > (0x1000000 - u32Addr) ? (0x1000000 - u32Addr) : u32Size;
-                memcpy((void *)pu8Data, (const void *)(BASE_FLASH_OFFSET+u32Addr), u32ReadSize);
-                u32Size = u32Size - u32ReadSize;
-            }
-            if (u32Size)
-            {
-                MS_U8 u8EAR = 0;
+            MS_U8 u8EAR = 0;
 
-                u32Addr += u32ReadSize;
-                u8EAR = u32Addr >> 24;
-                if (u8EAR)
-                    HAL_FSP_WriteExtAddrReg(u8EAR);
-                memcpy((void *)pu8Data+u32ReadSize,(const void *)(BASE_FLASH_OFFSET+(u32Addr&0xFFFFFF)), u32Size);
-            }
+            u32Addr += u32ReadSize;
+            u8EAR = u32Addr >> 24;
+            if (u8EAR)
+                HAL_FSP_WriteExtAddrReg(u8EAR);
+            memcpy((void *)pu8Data+u32ReadSize,(const void *)(BASE_FLASH_OFFSET+(u32Addr&0xFFFFFF)), u32Size);
         }
-        Ret = TRUE;
-    #elif defined(CONFIG_FSP_READ_RIUOP)
-        Ret = HAL_FSP_Read(u32Addr, u32Size, pu8Data);
-    #else
-        #error "FPS READ"
-    #endif
-
+    }
+    Ret = TRUE;
+#elif defined(CONFIG_FSP_READ_RIUOP)
+    Ret = HAL_FSP_Read(u32Addr, u32Size, pu8Data);
+#elif defined(CONFIG_FSP_READ_BDMA)
+    Ret = HAL_SERFLASH_ReadBdma(u32Addr, u32Size, pu8Data);
+#else
+#error "FPS READ"
+#endif
+    if(gReadMode > E_FAST_MODE && gReadMode != E_RIUISP_MODE)
+    {
+        HAL_SERFLASH_SelectReadMode(E_FAST_MODE);
+    }
 #endif
     MS_SERFLASH_RELEASE_MUTEX(_s32SERFLASH_Mutex);
     return Ret;
@@ -3111,7 +3238,7 @@ HAL_SERFLASH_WriteStatusReg_return:
 
 MS_BOOL HAL_SPI_EnterIBPM(void)
 {
-	MS_BOOL bRet = FALSE;
+    MS_BOOL bRet = FALSE;
 
     MS_ASSERT( MsOS_In_Interrupt() == FALSE );
     MS_ASSERT(_HAL_SERFLASH_Check51RunMode());
@@ -3143,16 +3270,16 @@ MS_BOOL HAL_SPI_EnterIBPM(void)
         goto HAL_SPI_EnableIBPM_return;
     }
 
-	ISP_WRITE(REG_ISP_SPI_CECLR, ISP_SPI_CECLR); // SPI CEB dis
+    ISP_WRITE(REG_ISP_SPI_CECLR, ISP_SPI_CECLR); // SPI CEB dis
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_RDSCUR);	// Read Security Register
+    ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_RDSCUR);   // Read Security Register
 
     if ( !_HAL_SERFLASH_WaitWriteDataRdy() )
     {
         goto HAL_SPI_EnableIBPM_return;
     }
 
-	ISP_WRITE(REG_ISP_SPI_RDREQ, 0x01); // SPI read request
+    ISP_WRITE(REG_ISP_SPI_RDREQ, 0x01); // SPI read request
 
     if ( _HAL_SERFLASH_WaitReadDataRdy() == FALSE )
     {
@@ -3161,9 +3288,9 @@ MS_BOOL HAL_SPI_EnterIBPM(void)
 
     if((ISP_READ(REG_ISP_SPI_RDATA) & BIT(7)) == BIT(7))
     {
-		bRet = TRUE;
+        bRet = TRUE;
         DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG,
-			            printk("MXIC Security Register 0x%02X\n", ISP_READ(REG_ISP_SPI_RDATA)));
+                        printk("MXIC Security Register 0x%02X\n", ISP_READ(REG_ISP_SPI_RDATA)));
     }
 
 HAL_SPI_EnableIBPM_return:
@@ -3181,7 +3308,7 @@ HAL_SPI_EnableIBPM_return:
 
 MS_BOOL HAL_SPI_SingleBlockLock(MS_PHYADDR u32FlashAddr, MS_BOOL bLock)
 {
-	MS_BOOL bRet = FALSE;
+    MS_BOOL bRet = FALSE;
 
     MS_ASSERT( MsOS_In_Interrupt() == FALSE );
     MS_ASSERT(_HAL_SERFLASH_Check51RunMode());
@@ -3192,16 +3319,16 @@ MS_BOOL HAL_SPI_SingleBlockLock(MS_PHYADDR u32FlashAddr, MS_BOOL bLock)
         return bRet;
     }
 
-	if ( _bIBPM != TRUE )
-	{
-		printk("%s not in Individual Block Protect Mode\n", __FUNCTION__);
+    if ( _bIBPM != TRUE )
+    {
+        printk("%s not in Individual Block Protect Mode\n", __FUNCTION__);
         MS_SERFLASH_RELEASE_MUTEX(_s32SERFLASH_Mutex);
         return bRet;
-	}
+    }
 
     _HAL_ISP_Enable();
 
-	if ( _HAL_SERFLASH_WaitWriteCmdRdy() == FALSE )
+    if ( _HAL_SERFLASH_WaitWriteCmdRdy() == FALSE )
     {
         goto HAL_SPI_SingleBlockLock_return;
     }
@@ -3213,87 +3340,87 @@ MS_BOOL HAL_SPI_SingleBlockLock(MS_PHYADDR u32FlashAddr, MS_BOOL bLock)
         goto HAL_SPI_SingleBlockLock_return;
     }
 
-	ISP_WRITE(REG_ISP_TRIGGER_MODE, 0x3333);	// Enable trigger mode
+    ISP_WRITE(REG_ISP_TRIGGER_MODE, 0x3333);    // Enable trigger mode
 
-	if( bLock )
-	{
-		ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_SBLK);		// Single Block Lock Protection
-	}
-	else
-	{
-		ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_SBULK);	// Single Block unLock Protection
-	}
+    if( bLock )
+    {
+        ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_SBLK);     // Single Block Lock Protection
+    }
+    else
+    {
+        ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_SBULK);    // Single Block unLock Protection
+    }
 
     if ( !_HAL_SERFLASH_WaitWriteDataRdy() )
     {
         goto HAL_SPI_SingleBlockLock_return;
     }
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x10)&0xFF)));
-	if(!_HAL_SERFLASH_WaitWriteDataRdy())
+    ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x10)&0xFF)));
+    if(!_HAL_SERFLASH_WaitWriteDataRdy())
     {
         goto HAL_SPI_SingleBlockLock_return;
     }
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x08)&0xFF)));
-	if(!_HAL_SERFLASH_WaitWriteDataRdy())
+    ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x08)&0xFF)));
+    if(!_HAL_SERFLASH_WaitWriteDataRdy())
     {
         goto HAL_SPI_SingleBlockLock_return;
     }
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x00)&0xFF)));
-	if(!_HAL_SERFLASH_WaitWriteDataRdy())
+    ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x00)&0xFF)));
+    if(!_HAL_SERFLASH_WaitWriteDataRdy())
     {
         goto HAL_SPI_SingleBlockLock_return;
     }
 
 #if defined (MS_DEBUG)
-	ISP_WRITE(REG_ISP_SPI_CECLR, ISP_SPI_CECLR); // SPI CEB dis
+    ISP_WRITE(REG_ISP_SPI_CECLR, ISP_SPI_CECLR); // SPI CEB dis
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_RDBLOCK);	// Read Block Lock Status
+    ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_RDBLOCK);  // Read Block Lock Status
 
     if ( !_HAL_SERFLASH_WaitWriteDataRdy() )
     {
         goto HAL_SPI_SingleBlockLock_return;
     }
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x10)&0xFF)));
-	if(!_HAL_SERFLASH_WaitWriteDataRdy())
-	{
-	    goto HAL_SPI_SingleBlockLock_return;
-	}
+    ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x10)&0xFF)));
+    if(!_HAL_SERFLASH_WaitWriteDataRdy())
+    {
+        goto HAL_SPI_SingleBlockLock_return;
+    }
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x08)&0xFF)));
-	if(!_HAL_SERFLASH_WaitWriteDataRdy())
-	{
-	    goto HAL_SPI_SingleBlockLock_return;
-	}
+    ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x08)&0xFF)));
+    if(!_HAL_SERFLASH_WaitWriteDataRdy())
+    {
+        goto HAL_SPI_SingleBlockLock_return;
+    }
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x00)&0xFF)));
-	if(!_HAL_SERFLASH_WaitWriteDataRdy())
-	{
-	    goto HAL_SPI_SingleBlockLock_return;
-	}
+    ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x00)&0xFF)));
+    if(!_HAL_SERFLASH_WaitWriteDataRdy())
+    {
+        goto HAL_SPI_SingleBlockLock_return;
+    }
 
-	ISP_WRITE(REG_ISP_SPI_RDREQ, 0x01); // SPI read request
+    ISP_WRITE(REG_ISP_SPI_RDREQ, 0x01); // SPI read request
 
-	if ( _HAL_SERFLASH_WaitReadDataRdy() == FALSE )
-	{
-	    goto HAL_SPI_SingleBlockLock_return;
-	}
+    if ( _HAL_SERFLASH_WaitReadDataRdy() == FALSE )
+    {
+        goto HAL_SPI_SingleBlockLock_return;
+    }
 
-	if( bLock )
-	{
-		if( ISP_READ(REG_ISP_SPI_RDATA) == 0xFF )
-			bRet = TRUE;
-	}
-	else
-	{
-		if( ISP_READ(REG_ISP_SPI_RDATA) == 0x00 )
-			bRet = TRUE;
-	}
+    if( bLock )
+    {
+        if( ISP_READ(REG_ISP_SPI_RDATA) == 0xFF )
+            bRet = TRUE;
+    }
+    else
+    {
+        if( ISP_READ(REG_ISP_SPI_RDATA) == 0x00 )
+            bRet = TRUE;
+    }
 #else//No Ceck
-	bRet = TRUE;
+    bRet = TRUE;
 #endif
 
 HAL_SPI_SingleBlockLock_return:
@@ -3324,18 +3451,18 @@ MS_BOOL HAL_SPI_GangBlockLock(MS_BOOL bLock)
         return bRet;
     }
 
-	if ( _bIBPM != TRUE )
-	{
-		printk("%s not in Individual Block Protect Mode\n", __FUNCTION__);
+    if ( _bIBPM != TRUE )
+    {
+        printk("%s not in Individual Block Protect Mode\n", __FUNCTION__);
         return bRet;
-	}
+    }
 
     _HAL_SERFLASH_ActiveFlash_Set_HW_WP(bLock);
     udelay(bLock ? 5 : 20); // when disable WP, delay more time
 
     _HAL_ISP_Enable();
 
-	if ( _HAL_SERFLASH_WaitWriteCmdRdy() == FALSE )
+    if ( _HAL_SERFLASH_WaitWriteCmdRdy() == FALSE )
     {
         goto HAL_SERFLASH_WriteProtect_return;
     }
@@ -3347,29 +3474,29 @@ MS_BOOL HAL_SPI_GangBlockLock(MS_BOOL bLock)
         goto HAL_SERFLASH_WriteProtect_return;
     }
 
-	ISP_WRITE(REG_ISP_TRIGGER_MODE, 0x3333);	// Enable trigger mode
+    ISP_WRITE(REG_ISP_TRIGGER_MODE, 0x3333);    // Enable trigger mode
 
-	if( bLock )
-	{
-		ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_GBLK);		// Gang Block Lock Protection
-	}
-	else
-	{
-		ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_GBULK);	// Gang Block unLock Protection
-	}
+    if( bLock )
+    {
+        ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_GBLK);     // Gang Block Lock Protection
+    }
+    else
+    {
+        ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_GBULK);    // Gang Block unLock Protection
+    }
 
     if ( !_HAL_SERFLASH_WaitWriteDataRdy() )
     {
         goto HAL_SERFLASH_WriteProtect_return;
     }
 
-	bRet = TRUE;
+    bRet = TRUE;
 
 HAL_SERFLASH_WriteProtect_return:
 
     ISP_WRITE(REG_ISP_SPI_CECLR, ISP_SPI_CECLR); // SPI CEB dis
 
-	ISP_WRITE(REG_ISP_TRIGGER_MODE, 0x2222);     // disable trigger mode
+    ISP_WRITE(REG_ISP_TRIGGER_MODE, 0x2222);     // disable trigger mode
 
     _HAL_ISP_Disable();
 
@@ -3385,7 +3512,7 @@ HAL_SERFLASH_WriteProtect_return:
 
 MS_U8 HAL_SPI_ReadBlockStatus(MS_PHYADDR u32FlashAddr)
 {
-	MS_U8 u8Val = 0xA5;
+    MS_U8 u8Val = 0xA5;
 
     MS_ASSERT( MsOS_In_Interrupt() == FALSE );
     MS_ASSERT(_HAL_SERFLASH_Check51RunMode());
@@ -3396,12 +3523,12 @@ MS_U8 HAL_SPI_ReadBlockStatus(MS_PHYADDR u32FlashAddr)
         return u8Val;
     }
 
-	if ( _bIBPM != TRUE )
-	{
-		printk("%s not in Individual Block Protect Mode\n", __FUNCTION__);
+    if ( _bIBPM != TRUE )
+    {
+        printk("%s not in Individual Block Protect Mode\n", __FUNCTION__);
         MS_SERFLASH_RELEASE_MUTEX(_s32SERFLASH_Mutex);
         return u8Val;
-	}
+    }
 
     _HAL_ISP_Enable();
 
@@ -3417,39 +3544,39 @@ MS_U8 HAL_SPI_ReadBlockStatus(MS_PHYADDR u32FlashAddr)
 
     ISP_WRITE(REG_ISP_TRIGGER_MODE, 0x3333);          // Enable trigger mode
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_RDBLOCK);	// Read Block Lock Status
+    ISP_WRITE(REG_ISP_SPI_WDATA, ISP_SPI_CMD_RDBLOCK);  // Read Block Lock Status
 
     if ( !_HAL_SERFLASH_WaitWriteDataRdy() )
     {
         goto HAL_SPI_ReadBlockStatus_return;
     }
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x10)&0xFF)));
-	if(!_HAL_SERFLASH_WaitWriteDataRdy())
-	{
-	    goto HAL_SPI_ReadBlockStatus_return;
-	}
+    ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x10)&0xFF)));
+    if(!_HAL_SERFLASH_WaitWriteDataRdy())
+    {
+        goto HAL_SPI_ReadBlockStatus_return;
+    }
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x08)&0xFF)));
-	if(!_HAL_SERFLASH_WaitWriteDataRdy())
-	{
-	    goto HAL_SPI_ReadBlockStatus_return;
-	}
+    ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x08)&0xFF)));
+    if(!_HAL_SERFLASH_WaitWriteDataRdy())
+    {
+        goto HAL_SPI_ReadBlockStatus_return;
+    }
 
-	ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x00)&0xFF)));
-	if(!_HAL_SERFLASH_WaitWriteDataRdy())
-	{
-	    goto HAL_SPI_ReadBlockStatus_return;
-	}
+    ISP_WRITE(REG_ISP_SPI_WDATA, BITS(7:0, ((u32FlashAddr >> 0x00)&0xFF)));
+    if(!_HAL_SERFLASH_WaitWriteDataRdy())
+    {
+        goto HAL_SPI_ReadBlockStatus_return;
+    }
 
-	ISP_WRITE(REG_ISP_SPI_RDREQ, 0x01); // SPI read request
+    ISP_WRITE(REG_ISP_SPI_RDREQ, 0x01); // SPI read request
 
-	if ( _HAL_SERFLASH_WaitReadDataRdy() == FALSE )
-	{
-	    goto HAL_SPI_ReadBlockStatus_return;
-	}
+    if ( _HAL_SERFLASH_WaitReadDataRdy() == FALSE )
+    {
+        goto HAL_SPI_ReadBlockStatus_return;
+    }
 
-	u8Val = ISP_READ(REG_ISP_SPI_RDATA);
+    u8Val = ISP_READ(REG_ISP_SPI_RDATA);
 
 HAL_SPI_ReadBlockStatus_return:
 
@@ -3488,7 +3615,7 @@ MS_U8 HAL_SERFLASH_ReadStatusByFSP(void)
 
 void HAL_SERFLASH_ReadWordFlashByFSP(MS_U32 u32Addr, MS_U8 *pu8Buf)
 {
-#define HAL_FSP_READ_SIZE	4
+#define HAL_FSP_READ_SIZE   4
     if(!HAL_FSP_Read(u32Addr,HAL_FSP_READ_SIZE,pu8Buf))
         printk("HAL_FSP_Read Fail:Addr is %x pu8Buf is :%x\n",(unsigned int)u32Addr, (unsigned int)pu8Buf);
 
@@ -3497,7 +3624,7 @@ void HAL_SERFLASH_ReadWordFlashByFSP(MS_U32 u32Addr, MS_U8 *pu8Buf)
 void HAL_SERFLASH_CheckEmptyByFSP(MS_U32 u32Addr, MS_U32 u32ChkSize)
 {
     MS_U32 i;
-	MS_U32 u32FlashData = 0;
+    MS_U32 u32FlashData = 0;
 
     while(HAL_SERFLASH_ReadStatusByFSP()==0x01)
     {
@@ -3506,7 +3633,7 @@ void HAL_SERFLASH_CheckEmptyByFSP(MS_U32 u32Addr, MS_U32 u32ChkSize)
     for(i=0;i<u32ChkSize;i+=4)
     {
         HAL_SERFLASH_ReadWordFlashByFSP(u32Addr+i,(MS_U8 *)u32FlashData);
-		printk("[FSP Debug] fr = 0x%x\n", (int)u32FlashData);
+        printk("[FSP Debug] fr = 0x%x\n", (int)u32FlashData);
         if(u32FlashData != 0xFFFFFFFF)
         {
             printk("check failed in addr:%x value:%x\n",(int)(u32Addr+i), (int)u32FlashData);
@@ -3538,7 +3665,7 @@ void HAL_SERFLASH_EraseBlock64KByFSP(MS_U32 u32Addr) //4 // erase 64K bytes, nee
 void HAL_SERFLASH_ProgramFlashByFSP(MS_U32 u32Addr, MS_U32 u32Data)
 {
 
-   #define HAL_FSP_WRITE_SIZE	4
+   #define HAL_FSP_WRITE_SIZE   4
    MS_U8 pu8Write_Data = NULL;
    MS_U8 u8index;
    for (u8index=0;u8index<HAL_FSP_WRITE_SIZE;u8index++)
@@ -3648,17 +3775,19 @@ void HAL_FSP_Entry(void)
         printk("[FSP] %s ENTRY fails!\n", __FUNCTION__);
         return;
     }
-    HAL_SERFLASH_SelectReadMode(E_FAST_MODE);
+    HAL_SERFLASH_SelectReadMode(E_SINGLE_MODE);
+#if 0
     if (gReadMode==E_QUAD_MODE)
     {
-	    HAL_QUAD_Enable(0);
+        HAL_QUAD_Enable(1);
     }
+#endif
 }
 
 void HAL_FSP_Exit(void)
 {
-    if (gReadMode==E_QUAD_MODE)
-		HAL_QUAD_Enable(1);
+    //if (gReadMode==E_QUAD_MODE)
+        //HAL_QUAD_Enable(1);
     MS_SERFLASH_RELEASE_MUTEX(_s32SERFLASH_Mutex);
 }
 
@@ -3685,10 +3814,10 @@ MS_BOOL HAL_FSP_EraseChip(void)
     FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_FSCHK_ON,REG_FSP_FSCHK_MASK);
     FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
     bRet &= _HAL_FSP_WaitDone();
-	if(!bRet)
-	{
-		printk("[FSP] Erase Chip Timeout !!!!\r\n");
-	}
+    if(!bRet)
+    {
+        printk("[FSP] Erase Chip Timeout !!!!\r\n");
+    }
     return bRet;
 }
 
@@ -3722,19 +3851,42 @@ static MS_BOOL _HAL_FSP_BlockErase(MS_U32 u32FlashAddr, EN_FLASH_ERASE eSize)
     FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_FSCHK_ON,REG_FSP_FSCHK_MASK);
     FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
     bRet &= _HAL_FSP_WaitDone();
-	if(!bRet)
-	{
-		printk("[FSP] Block Erase Timeout !!!!offset:0x%lx cmd:0x%x \r\n", u32FlashAddr, eSize);
-	}
+    if(!bRet)
+    {
+        printk("[FSP] Block Erase Timeout !!!!offset:0x%lx cmd:0x%x \r\n", u32FlashAddr, eSize);
+    }
 
     return bRet;
 }
 
+#ifdef CONFIG_SS_CUSTOMIZED_CUS_ZY_ERASE_ENV
+MS_BOOL HAL_FSP_BlockErase_CUS_ZY(MS_U32 u32StartAddr, MS_U32 u32EraseSize, MS_BOOL bWait)
+{
+    MS_BOOL bRet = TRUE;
+    MS_U32  u32FlashAddr = 0;
+
+    HAL_FSP_Entry();
+
+    u32FlashAddr = u32StartAddr;
+    if (u32EraseSize == 0x1000)
+    {
+        bRet &= _HAL_FSP_BlockErase(u32FlashAddr,SPI_CMD_SE);
+    }
+    else
+    {
+        bRet = FALSE;
+    }
+
+    HAL_FSP_Exit();
+    return bRet;
+}
+#endif
+
 MS_BOOL HAL_FSP_BlockErase(MS_U32 u32StartBlock, MS_U32 u32EndBlock, MS_BOOL bWait)
 {
     MS_BOOL bRet = TRUE;
-    MS_U32	u32Idx;
-    MS_U32	u32FlashAddr = 0;
+    MS_U32  u32Idx;
+    MS_U32  u32FlashAddr = 0;
     DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("%s(0x%08x, 0x%08x, %d)\n", __FUNCTION__, (unsigned int)u32StartBlock, (unsigned int)u32EndBlock, (int)bWait));
     MS_ASSERT( u32StartBlock<=u32EndBlock && u32EndBlock<NUMBER_OF_SERFLASH_SECTORS );
     HAL_FSP_Entry();
@@ -3778,10 +3930,10 @@ MS_BOOL HAL_FSP_CheckWriteDone(void)
     FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_FSCHK_ON,REG_FSP_FSCHK_MASK);
     FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
     bRet &= _HAL_FSP_WaitDone();
-	if(!bRet)
-	{
-		printk("[FSP] Check Write Done Timeout !!!!\r\n");
-	}
+    if(!bRet)
+    {
+        printk("[FSP] Check Write Done Timeout !!!!\r\n");
+    }
 
     return bRet;
 }
@@ -3895,41 +4047,41 @@ MS_BOOL HAL_FSP_Write_Burst(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
 
 MS_BOOL HAL_QPI_Enable(MS_BOOL bEnable)
 {
-	MS_BOOL bRet = TRUE;
-	HAL_FSP_WriteBufs(0,SPI_CMD_QPI);
-	FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE0(1),REG_FSP_WBF_SIZE0_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_ENABLE,REG_FSP_ENABLE_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_NRESET,REG_FSP_RESET_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_INT,REG_FSP_INT_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_2NDCMD_OFF,REG_FSP_2NDCMD_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_3THCMD_OFF,REG_FSP_3THCMD_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_FSCHK_ON,REG_FSP_FSCHK_MASK);
-	FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
-	bRet &= _HAL_FSP_WaitDone();
-	if(!bRet)
-	{
-		printk("[FSP] QPI Enable Timeout !!!!\r\n");
-	}
+    MS_BOOL bRet = TRUE;
+    HAL_FSP_WriteBufs(0,SPI_CMD_QPI);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE0(1),REG_FSP_WBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_ENABLE,REG_FSP_ENABLE_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_NRESET,REG_FSP_RESET_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_INT,REG_FSP_INT_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_2NDCMD_OFF,REG_FSP_2NDCMD_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_3THCMD_OFF,REG_FSP_3THCMD_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_FSCHK_ON,REG_FSP_FSCHK_MASK);
+    FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
+    bRet &= _HAL_FSP_WaitDone();
+    if(!bRet)
+    {
+        printk("[FSP] QPI Enable Timeout !!!!\r\n");
+    }
     return bRet;
 }
 
 MS_BOOL HAL_QPI_RESET(MS_BOOL bEnable)
 {
-	MS_BOOL bRet = TRUE;
-	HAL_FSP_WriteBufs(0,SPI_CMD_QPI_RST);
-	FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE0(1),REG_FSP_WBF_SIZE0_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_ENABLE,REG_FSP_ENABLE_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_NRESET,REG_FSP_RESET_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_INT,REG_FSP_INT_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_2NDCMD_OFF,REG_FSP_2NDCMD_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_3THCMD_OFF,REG_FSP_3THCMD_MASK);
-	FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_FSCHK_ON,REG_FSP_FSCHK_MASK);
-	FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
-	bRet &= _HAL_FSP_WaitDone();
-	if(!bRet)
-	{
-		printk("[FSP] QPI Reset Timeout !!!!\r\n");
-	}
+    MS_BOOL bRet = TRUE;
+    HAL_FSP_WriteBufs(0,SPI_CMD_QPI_RST);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE0(1),REG_FSP_WBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_ENABLE,REG_FSP_ENABLE_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_NRESET,REG_FSP_RESET_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_INT,REG_FSP_INT_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_2NDCMD_OFF,REG_FSP_2NDCMD_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_3THCMD_OFF,REG_FSP_3THCMD_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_FSCHK_ON,REG_FSP_FSCHK_MASK);
+    FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
+    bRet &= _HAL_FSP_WaitDone();
+    if(!bRet)
+    {
+        printk("[FSP] QPI Reset Timeout !!!!\r\n");
+    }
     return bRet;
 }
 
@@ -3937,18 +4089,27 @@ MS_BOOL HAL_QUAD_Enable(MS_BOOL bEnable)
 {
     MS_BOOL bRet = TRUE;
     MS_U8 u8data;
+    MS_U16 u16data;
     DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("[FSP] %s %d\n", __FUNCTION__, bEnable));
     if(_hal_SERFLASH.u8MID == MID_MXIC)
     {
+        bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR, 1, &u8data);
         if(bEnable)
-            u8data =  SF_SR_QUALD;
-        else
-            u8data =  0;
-        bRet = HAL_FSP_WriteStatusReg(u8data);
+        {
+            if((u8data & SF_SR_QUAD) == 0) {
+                u8data |= SF_SR_QUAD;
+                bRet = HAL_FSP_WriteStatusReg(u8data);
+            }
+        } else {
+            if((u8data & SF_SR_QUAD) != 0) {
+                u8data &= ~SF_SR_QUAD;
+                bRet = HAL_FSP_WriteStatusReg(u8data);
+            }
+        }
     }
-    else if(_hal_SERFLASH.u8MID == MID_GD)
+    else if(_hal_SERFLASH.u8MID == MID_GD||_hal_SERFLASH.u8MID == MID_ZB)
     {
-        MS_U8 u8status[3]={0xff,0xff,0xff,};
+        MS_U8 u8status[3]={0xff,0xff,0xff};
         if(bEnable)
             u8data =  BITS(1:1, 1);
         else
@@ -3958,7 +4119,66 @@ MS_BOOL HAL_QUAD_Enable(MS_BOOL bEnable)
         bRet = HAL_FSP_ReadStatus(0x35, 1, u8status);
         DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("[FSP] GD status2:0x%x 0x%x 0x%x\n",u8status[0], u8status[1], u8status[2]));
     }
+    else if(_hal_SERFLASH.u8MID == MID_XMC)
+    {
+        if(_hal_SERFLASH.u8DID0 == 0x70)
+        {
+            bRet = HAL_FSP_ReadStatus(0x3A, 1, &u8data);//enter otp mode
+        }
+        bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR, 1, &u8data);
+        if(bEnable)
+        {
+            if((u8data & SF_SR_QUAD) == 0) {
+            u8data |= SF_SR_QUAD;
+            bRet = HAL_FSP_WriteStatusReg(u8data);
+            }
+        } else {
+            if((u8data & SF_SR_QUAD) != 0) {
+                u8data &= ~SF_SR_QUAD;
+                bRet = HAL_FSP_WriteStatusReg(u8data);
+        }
+            }
+        if(_hal_SERFLASH.u8DID0 == 0x70)
+        {
+            bRet = HAL_FSP_ReadStatus(0x04, 1, &u8data);//exit otp mode
+        }
+    }
+    else if(_hal_SERFLASH.u8MID == MID_WB  || _hal_SERFLASH.u8MID == MID_EON)
+    {
+        MS_U8 u8status[1]={0xff};
+        if(bEnable)
+            u8data =  BITS(1:1, 1);
+        else
+            u8data =  BITS(1:1, 0);
 
+        bRet = HAL_FSP_WriteStatus(SPI_CMD_WRSR2, 1, &u8data);
+        bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR2, 1, u8status);
+        //printk("[FSP] WB u8data:0x%x  status2:0x%x\n",u8data, u8status[0]);
+        DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("[FSP] WB status2:0x%x\n",u8status[0]));
+    }
+
+    else if(_hal_SERFLASH.u8MID == MID_XTX)
+    {
+        if(bEnable) {
+            bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR2, 1, &u8data);
+            u8data |= BIT1;
+            u16data = (u8data << 0x08)&0xffff;
+            u16data |= BITS(3:0,3);
+            bRet = HAL_FSP_WriteStatusReg2(u16data);
+            bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR2, 1, &u8data);
+        }
+        else
+        {
+            bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR2, 1, &u8data);
+            u8data &= ~BIT1;
+            u16data = (u8data << 0x08)&0xffff;
+            u16data |= BITS(3:0,3);
+            bRet = HAL_FSP_WriteStatusReg2(u16data);
+        }
+        bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR2, 1, &u8data);
+        DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("[FSP] XTX status2:0x%x\n",u8data));
+
+    }
     return bRet;
 }
 
@@ -4034,7 +4254,7 @@ MS_BOOL HAL_FSP_Write(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
         pu8Data += u8remainder;
     }
 
-	return bRet;
+    return bRet;
 }
 
 MS_BOOL HAL_FSP_Read(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
@@ -4060,7 +4280,7 @@ MS_BOOL HAL_FSP_Read(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
         HAL_FSP_WriteBufs(1,(MS_U8)((u32Addr>>0x10)&0xFF));
         HAL_FSP_WriteBufs(2,(MS_U8)((u32Addr>>0x08)&0xFF));
         HAL_FSP_WriteBufs(3,(MS_U8)((u32Addr>>0x00)&0xFF));
-	/*Lost first byte in using normal read command;Dummy Byte for Fast Read*/
+    /*Lost first byte in using normal read command;Dummy Byte for Fast Read*/
         //HAL_FSP_WriteBufs(4, 0x00);
         FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE0(4),REG_FSP_WBF_SIZE0_MASK);
         FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE1(0),REG_FSP_WBF_SIZE1_MASK);
@@ -4133,7 +4353,7 @@ MS_BOOL HAL_FSP_BurstRead(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
         QSPI_WRITE(REG_SPI_BURST_WRITE,REG_SPI_ENABLE_BURST);
         FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE0(0),REG_FSP_WBF_SIZE0_MASK);
         if(!bRet)
-	    {
+        {
             printk("[FSP] RIU Read Burst FAIL Timeout !!!!\r\n");
         }
         for( u32Idx = 0; u32Idx < u32Size; u32Idx++ )
@@ -4163,12 +4383,12 @@ MS_BOOL HAL_FSP_WriteProtect_Area(MS_BOOL bEnableAllArea, MS_U8 u8BlockProtectBi
     if (bEnableAllArea)
     {        // SF_SR_SRWD: SRWD Status Register Write Protect
         HAL_FSP_WriteBufs(2,(MS_U8)(SF_SR_SRWD | SERFLASH_WRSR_BLK_PROTECT));
-	    }
-	    else
-	    {
+        }
+        else
+        {
         // [4:2] or [5:2] protect blocks
         HAL_FSP_WriteBufs(2,(SF_SR_SRWD | u8BlockProtectBits));
-	    }
+        }
     HAL_FSP_WriteBufs(3,SPI_CMD_RDSR);
     FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE0(1),REG_FSP_WBF_SIZE0_MASK);
     FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE1(2),REG_FSP_WBF_SIZE1_MASK);
@@ -4186,7 +4406,7 @@ MS_BOOL HAL_FSP_WriteProtect_Area(MS_BOOL bEnableAllArea, MS_U8 u8BlockProtectBi
     FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
     bRet &= _HAL_FSP_WaitDone();
     if(!bRet)
-	{
+    {
         printk("[FSP] Write Protect Area FAIL Timeout !!!!\r\n");
     }
     if( bEnableAllArea )
@@ -4200,9 +4420,25 @@ MS_BOOL HAL_FSP_WriteProtect(MS_BOOL bEnable)
     MS_U8 u8Status;
     DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("%s(%d)\n", __FUNCTION__, bEnable));
 
-    u8Status = SF_SR_SRWD;
+    bRet = HAL_FSP_ReadStatusReg(&u8Status);
+    if(bRet == FALSE)
+        return bRet;
+
+    u8Status |= SF_SR_SRWD;//checked on WB/GD/MX
+//quad mode should be handled in read/write
+#if 0 //device dependent
     if (gReadMode==E_QUAD_MODE)
-        u8Status |= SF_SR_QUALD;
+        u8Status |= SF_SR_QUAD;
+#endif
+    //clear BP bits
+    if(_hal_SERFLASH.u8MID == MID_GD)
+    {
+        u8Status &= ~BITS(6:2,0x1F);
+    }
+    else {//check on WB/MX
+        u8Status &= ~BITS(5:2,0xF);
+    }
+
     if (bEnable)
         u8Status |= SERFLASH_WRSR_BLK_PROTECT;
 
@@ -4229,7 +4465,7 @@ MS_BOOL HAL_FSP_WriteProtect(MS_BOOL bEnable)
     FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
     bRet &= _HAL_FSP_WaitDone();
     if(!bRet)
-	{
+    {
         printk("[FSP] Write Protect FAIL Timeout !!!!\r\n");
     }
 
@@ -4262,7 +4498,7 @@ MS_BOOL HAL_FSP_ReadID(MS_U8 *pu8Data, MS_U32 u32Size)
     FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
     bRet &= _HAL_FSP_WaitDone();
     if(!bRet)
-	{
+    {
         printk("[FSP] Read ID FAIL Timeout !!!!\r\n");
     }
     *(u8ptr + 0) = HAL_FSP_ReadBufs(0);
@@ -4293,7 +4529,7 @@ MS_BOOL HAL_FSP_ReadStatusReg(MS_U8 *pu8StatusReg)
     FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
     bRet &= _HAL_FSP_WaitDone();
     if(!bRet)
-	{
+    {
         printk("[FSP] Read Status FAIL Timeout !!!!\r\n");
     }
 
@@ -4322,7 +4558,7 @@ MS_BOOL HAL_FSP_ReadStatusReg2(MS_U8 *pu8StatusReg)
     FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
     bRet &= _HAL_FSP_WaitDone();
     if(!bRet)
-	{
+    {
         printk("[FSP] Read status2 FAIL Timeout !!!!\r\n");
     }
 
@@ -4404,12 +4640,45 @@ MS_BOOL HAL_FSP_WriteStatusReg(MS_U16 u16StatusReg)
     FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
     bRet &= _HAL_FSP_WaitDone();
     if(!bRet)
-	{
+    {
         printk("[FSP] Write Status FAIL Timeout !!!!\r\n");
     }
 
    return bRet;
 }
+
+MS_BOOL HAL_FSP_WriteStatusReg2(MS_U16 u16StatusReg)
+{
+    MS_BOOL bRet = TRUE;
+    DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("%s()", __FUNCTION__));
+    HAL_FSP_WriteBufs(0,SPI_CMD_WREN);
+    HAL_FSP_WriteBufs(1,SPI_CMD_WRSR);
+    HAL_FSP_WriteBufs(2,(MS_U8)((u16StatusReg>>0x00)&0xFF));
+    HAL_FSP_WriteBufs(3,(MS_U8)((u16StatusReg>>0x08)&0xFF));
+    HAL_FSP_WriteBufs(4,SPI_CMD_RDSR2);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE0(1),REG_FSP_WBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE1(3),REG_FSP_WBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE,REG_FSP_WBF_SIZE2(1),REG_FSP_WBF_SIZE2_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE,REG_FSP_RBF_SIZE0(0),REG_FSP_RBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE,REG_FSP_RBF_SIZE1(0),REG_FSP_RBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE,REG_FSP_RBF_SIZE2(1),REG_FSP_RBF_SIZE2_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_ENABLE,REG_FSP_ENABLE_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_NRESET,REG_FSP_RESET_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_INT,REG_FSP_INT_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_2NDCMD_ON,REG_FSP_2NDCMD_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_3THCMD_ON,REG_FSP_3THCMD_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_3THCMD,REG_FSP_RDSR_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL,REG_FSP_FSCHK_ON,REG_FSP_FSCHK_MASK);
+    FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
+    bRet &= _HAL_FSP_WaitDone();
+    if(!bRet)
+    {
+        printk("[FSP] Write Status FAIL Timeout !!!!\r\n");
+    }
+
+   return bRet;
+}
+
 MS_BOOL HAL_FSP_ReadStatus(MS_U8 u8CMD, MS_U8 u8CountData, MS_U8* pu8Data)
 {
     MS_BOOL bRet = TRUE;
@@ -4432,7 +4701,7 @@ MS_BOOL HAL_FSP_ReadStatus(MS_U8 u8CMD, MS_U8 u8CountData, MS_U8* pu8Data)
     FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE,REG_FSP_TRIGGER_MASK);
     bRet &= _HAL_FSP_WaitDone();
     if(!bRet)
-	{
+    {
         printk("[FSP] ReadStatus FAIL Timeout !!!!\r\n");
     }
 
@@ -4485,7 +4754,6 @@ MS_BOOL HAL_FSP_WriteExtAddrReg(MS_U8 u8ExtAddrReg)
         return FALSE;
     else if (u8ExtAddrReg == _u8RegEAR)
         return TRUE;
-
     DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("%s()", __FUNCTION__));
     HAL_FSP_WriteBufs(0,SPI_CMD_WREN);
     HAL_FSP_WriteBufs(1,SPI_CMD_WREAR);
@@ -4516,11 +4784,26 @@ MS_BOOL HAL_FSP_WriteExtAddrReg(MS_U8 u8ExtAddrReg)
 
 
 
-void _HAL_BDMA_INIT(void)
+void _HAL_BDMA_INIT(U32 u32DataSize)
 {
-    MSYS_DMEM_INFO mem_info;
-
-    mem_info.length = 0x100;
+    u32DataSize += BDMA_ALIGN;
+    if(pu8BDMA_virt != 0 && u32BdmaSize < u32DataSize)
+    {
+        int err;
+        err = msys_release_dmem(&mem_info);
+        if(u32DataSize >= BDMA_SIZE_WARNING)
+        {
+            pr_err("\n\n --->from %ld to %d\n\n", u32BdmaSize, u32DataSize);
+        }
+        if(0 != err)
+        {
+            printk("[Ser flash] Unable to free BDMA mem bus=0x%08X (err:%d)\n", (unsigned int)pu8BDMA_bus, err);
+        }
+        pu8BDMA_virt = 0;
+    }
+    if(pu8BDMA_virt != 0)
+        return;
+    mem_info.length = u32DataSize;
     strcpy(mem_info.name, "BDMA_FSP_WBUFF");
 
     if(!msys_request_dmem(&mem_info) )
@@ -4528,7 +4811,8 @@ void _HAL_BDMA_INIT(void)
         pu8BDMA_phys =  mem_info.phys;
         pu8BDMA_virt = mem_info.kvirt;
         pu8BDMA_bus = pu8BDMA_phys&0x1FFFFFFF;
-        printk("[Ser flash] phys=0x%08x, virt=0x%08x, bus=0x%08x\n", (unsigned int)pu8BDMA_phys, (unsigned int)pu8BDMA_virt, (unsigned int)pu8BDMA_bus);
+        u32BdmaSize = mem_info.length;
+        printk("[Ser flash] phys=0x%08x, virt=0x%08x, bus=0x%08x len:0x%lX\n", (unsigned int)pu8BDMA_phys, (unsigned int)pu8BDMA_virt, (unsigned int)pu8BDMA_bus, u32BdmaSize);
     }
     else
     {
@@ -4644,7 +4928,371 @@ MS_BOOL CompareMemory(MS_U32 u32Addr, MS_U32 u32Addr2, MS_U32 u32Size)
     return TRUE;
 }
 
+static MS_BOOL _HAL_QP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u32Len)
+{
+    //struct timeval time_st;
+    MS_U16 u16data;
+    MS_BOOL bRet=FALSE;
+    unsigned long deadline;
+    MS_U8 u8EAR = u32Dst_off >> 24;
 
+    MS_U8 u8status;
+
+    if(u32Len>256)
+        return FALSE;
+    if((u8EAR == 0) && ((u32Dst_off + u32Len) > 0x1000000))
+    {
+        printk("[FSP] PP BDMA cross the 16MB boundary\r\n");
+        return FALSE;
+    }
+    if(u8EAR != _u8RegEAR)
+    {
+        HAL_FSP_WriteExtAddrReg(u8EAR);
+    }
+
+    _HAL_BDMA_INIT(u32Len);
+    if(pu8BDMA_virt == 0)
+    {
+        DEBUG_SER_FLASH(E_SERFLASH_DBGLV_ERR, printk("%s, remap BDMA buffer failed)\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    memcpy((void *)pu8BDMA_virt, (const void *)u32Src_off, u32Len);
+    Chip_Flush_Cache_Range(pu8BDMA_virt, u32Len);
+
+   // printk("    %s(0x%08X, %3d)\n", __FUNCTION__, (int)u32Dst_off, (int)u32Len);
+    do
+    {
+        bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR, 1, &u8status);
+
+        if (!bRet)
+        {
+            break;
+        }
+
+    } while (u8status & SF_SR_WIP_MASK);
+    /*FSP*/
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_ENABLE, REG_FSP_ENABLE_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_NRESET, REG_FSP_RESET_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_INT, REG_FSP_INT_MASK);
+    HAL_FSP_WriteBufs(0, SPI_CMD_WREN);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE0(1), REG_FSP_WBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE1(0), REG_FSP_WBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE2(0), REG_FSP_WBF_SIZE2_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE0(0), REG_FSP_RBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE1(0), REG_FSP_RBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE2(0), REG_FSP_RBF_SIZE2_MASK);
+
+    FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE, REG_FSP_TRIGGER_MASK);
+
+    bRet = _HAL_FSP_WaitDone();
+
+    if(!bRet)
+    {
+        printk("[FSP] FSP(SPI_CMD_WREN) FAIL Timeout !!!!\r\n");
+    }
+
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_ENABLE, REG_FSP_ENABLE_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_NRESET, REG_FSP_RESET_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_INT, REG_FSP_INT_MASK);
+    HAL_FSP_WriteBufs(0, SPI_CMD_QP);
+    HAL_FSP_WriteBufs(1, (MS_U8)((u32Dst_off>>0x10)&0xFF));
+    HAL_FSP_WriteBufs(2, (MS_U8)((u32Dst_off>>0x08)&0xFF));
+    HAL_FSP_WriteBufs(3, (MS_U8)((u32Dst_off>>0x00)&0xFF));
+    //HAL_FSP_WriteBufs(4, 0x00); //dummy
+    //HAL_FSP_WriteBufs(6, SPI_CMD_RDSR);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE0(4), REG_FSP_WBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE1(0), REG_FSP_WBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE2(0), REG_FSP_WBF_SIZE2_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE0(0), REG_FSP_RBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE1(0), REG_FSP_RBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE2(0), REG_FSP_RBF_SIZE2_MASK);
+    FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE, REG_FSP_TRIGGER_MASK);
+
+    bRet = _HAL_FSP_WaitDone();
+
+    if(!bRet)
+    {
+        printk("[FSP] FSP FAIL Timeout !!!!\r\n");
+    }
+
+    //printk("%s, u32Dst_off = %ld\r\n", __FUNCTION__, u32Dst_off);
+
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_ENABLE, REG_FSP_ENABLE_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_NRESET, REG_FSP_RESET_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_INT, REG_FSP_INT_MASK);
+    //set FSP Outside replace
+    FSP_WRITE(REG_FSP_WBF_SIZE_OUTSIDE, (u32Len + 1)&0x0FFF);
+    //FSP_WRITE_MASK(REG_FSP_WBF_OUTSIDE, REG_FSP_WBF_REPLACED(5), REG_FSP_WBF_REPLACED_MASK);
+    //FSP_WRITE_MASK(REG_FSP_WBF_OUTSIDE, REG_FSP_WBF_MODE(0), REG_FSP_WBF_MODE_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_OUTSIDE, REG_FSP_WBF_OUTSIDE_ENABLE, REG_FSP_WBF_OUTSIDE_ENABLE_MASK);
+    QSPI_WRITE(REG_SPI_BURST_WRITE,REG_SPI_ENABLE_BURST);
+    FSP_WRITE(REG_FSP_QUAD_MODE, REG_FSP_QUAD_ENABLE);
+    //FSP_WRITE_MASK(REG_FSP_WBF_OUTSIDE, REG_FSP_WBF_REPLACED(5), REG_FSP_WBF_REPLACED_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE0(0), REG_FSP_WBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE1(0), REG_FSP_WBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE2(0), REG_FSP_WBF_SIZE2_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE0(0), REG_FSP_RBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE1(0), REG_FSP_RBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE2(0), REG_FSP_RBF_SIZE2_MASK);
+
+    /*BDMA */
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x0<<2)), 0x00);
+
+    //Set source and destination path
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x2<<2)), 0X2B40); //MIU to FSP(0xB)
+    // Set source as MIU0
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x3<<2)), 0X0000); //MIU0 as channel0
+    // Set start address
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x4<<2)), (pu8BDMA_bus & 0x0000FFFF));
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x5<<2)), (pu8BDMA_bus >> 16));
+    // Set end address
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x6<<2)), 0x0);
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x7<<2)), 0x0);
+    // Set Size
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x8<<2)), (u32Len & 0x0000FFFF));
+    //WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x9<<2)), (u32Len >> 16));
+
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x0<<2)), 1); // Trigger
+
+    FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE, REG_FSP_TRIGGER_MASK);
+
+    //check BDMA done
+    //SER_FLASH_TIME(time_st);
+    deadline = jiffies + MAX_READY_WAIT_JIFFIES;
+    do
+    {
+
+        //check done
+        u16data = READ_WORD(_hal_isp.u32BdmaBaseAddr + ((0x1)<<2));
+        if(u16data & 8)
+        {
+            //clear done
+            WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x1<<2)), 8);
+            bRet = TRUE;
+            break;
+        }
+    //} while(!SER_FLASH_EXPIRE(time_st, SERFLASH_SAFETY_FACTOR));
+    } while (!time_after_eq(jiffies, deadline));
+
+    if(bRet == FALSE)
+    {
+        printk("Wait for BDMA Done fails!\n");
+    }
+
+    //check FSP done
+    bRet = _HAL_FSP_WaitDone();
+    if(!bRet)
+    {
+        printk("[FSP] BDMA2FSP FAIL Timeout !!!!\r\n");
+    }
+
+    FSP_WRITE(REG_FSP_WBF_SIZE_OUTSIDE, 0x0);
+    FSP_WRITE(REG_FSP_WBF_OUTSIDE, 0x0);
+    QSPI_WRITE(REG_SPI_BURST_WRITE,REG_SPI_BURST_OFF);
+    QSPI_WRITE(REG_SPI_BURST_WRITE,REG_SPI_DISABLE_BURST);
+    FSP_WRITE(REG_FSP_QUAD_MODE, 0x0);
+    //FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE, REG_FSP_TRIGGER_MASK);
+    //CompareMemory(u32Src_off, u32Dst_off+0xF4000000, u32Len);
+#if 0
+    bRet = _HAL_FSP_WaitDone();
+
+    if(!bRet)
+    {
+        printk("[FSP] FSP(SPI_CMD_RDSR) FAIL Timeout !!!!\r\n");
+    }
+#endif
+    do
+    {
+        bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR, 1, &u8status);
+
+        if (!bRet)
+        {
+            break;
+        }
+
+    } while (u8status & SF_SR_WIP_MASK);
+
+    //printk("[FSP] GD status2:0x%x 0x%x 0x%x\n",u8status[0], u8status[1], u8status[2]);
+
+    return bRet;
+}
+
+static MS_BOOL _HAL_4PP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u32Len)
+{
+    MS_U16 u16data;
+    MS_BOOL bRet=FALSE;
+    unsigned long deadline;
+    MS_U8 u8EAR = u32Dst_off >> 24;
+
+    MS_U8 u8status;
+
+    if(u32Len>256)
+        return FALSE;
+    if((u8EAR == 0) && ((u32Dst_off + u32Len) > 0x1000000))
+    {
+        printk("[FSP] PP BDMA cross the 16MB boundary\r\n");
+        return FALSE;
+    }
+    if(u8EAR != _u8RegEAR)
+    {
+        HAL_FSP_WriteExtAddrReg(u8EAR);
+    }
+
+    _HAL_BDMA_INIT(u32Len);
+    if(pu8BDMA_virt == 0)
+    {
+        DEBUG_SER_FLASH(E_SERFLASH_DBGLV_ERR, printk("%s, remap BDMA buffer failed)\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    memcpy((void *)pu8BDMA_virt, (const void *)u32Src_off, u32Len);
+    Chip_Flush_Cache_Range(pu8BDMA_virt, u32Len);
+
+    do
+    {
+        bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR, 1, &u8status);
+
+        if (!bRet)
+        {
+            break;
+        }
+
+    } while (u8status & SF_SR_WIP_MASK);
+
+    /*FSP*/
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_ENABLE, REG_FSP_ENABLE_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_NRESET, REG_FSP_RESET_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_INT, REG_FSP_INT_MASK);
+    HAL_FSP_WriteBufs(0, SPI_CMD_WREN);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE0(1), REG_FSP_WBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE1(0), REG_FSP_WBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE2(0), REG_FSP_WBF_SIZE2_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE0(0), REG_FSP_RBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE1(0), REG_FSP_RBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE2(0), REG_FSP_RBF_SIZE2_MASK);
+
+    FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE, REG_FSP_TRIGGER_MASK);
+
+    bRet = _HAL_FSP_WaitDone();
+
+    if(!bRet)
+    {
+        printk("[FSP] FSP(SPI_CMD_WREN) FAIL Timeout !!!!\r\n");
+    }
+
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_ENABLE, REG_FSP_ENABLE_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_NRESET, REG_FSP_RESET_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_INT, REG_FSP_INT_MASK);
+    HAL_FSP_WriteBufs(0, SPI_CMD_4PP);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE0(1), REG_FSP_WBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE1(0), REG_FSP_WBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE2(0), REG_FSP_WBF_SIZE2_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE0(0), REG_FSP_RBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE1(0), REG_FSP_RBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE2(0), REG_FSP_RBF_SIZE2_MASK);
+    FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE, REG_FSP_TRIGGER_MASK);
+
+    bRet = _HAL_FSP_WaitDone();
+
+    if(!bRet)
+    {
+        printk("[FSP] FSP FAIL Timeout !!!!\r\n");
+    }
+
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_ENABLE, REG_FSP_ENABLE_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_NRESET, REG_FSP_RESET_MASK);
+    FSP_WRITE_MASK(REG_FSP_CTRL, REG_FSP_INT, REG_FSP_INT_MASK);
+    HAL_FSP_WriteBufs(0, (MS_U8)((u32Dst_off>>0x10)&0xFF));
+    HAL_FSP_WriteBufs(1, (MS_U8)((u32Dst_off>>0x08)&0xFF));
+    HAL_FSP_WriteBufs(2, (MS_U8)((u32Dst_off>>0x00)&0xFF));
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE0(3), REG_FSP_WBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE1(0), REG_FSP_WBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_SIZE, REG_FSP_WBF_SIZE2(0), REG_FSP_WBF_SIZE2_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE0(0), REG_FSP_RBF_SIZE0_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE1(0), REG_FSP_RBF_SIZE1_MASK);
+    FSP_WRITE_MASK(REG_FSP_RBF_SIZE, REG_FSP_RBF_SIZE2(0), REG_FSP_RBF_SIZE2_MASK);
+
+    //set FSP Outside replace
+    FSP_WRITE(REG_FSP_WBF_SIZE_OUTSIDE, (u32Len + 1)&0x00FFFFFF);
+    FSP_WRITE_MASK(REG_FSP_WBF_OUTSIDE, REG_FSP_WBF_REPLACED(3), REG_FSP_WBF_REPLACED_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_OUTSIDE, REG_FSP_WBF_MODE(0), REG_FSP_WBF_MODE_MASK);
+    FSP_WRITE_MASK(REG_FSP_WBF_OUTSIDE, REG_FSP_WBF_OUTSIDE_ENABLE, REG_FSP_WBF_OUTSIDE_ENABLE_MASK);
+    QSPI_WRITE(REG_SPI_BURST_WRITE,REG_SPI_ENABLE_BURST);
+    FSP_WRITE(REG_FSP_QUAD_MODE, REG_FSP_QUAD_ENABLE);
+
+    /*BDMA */
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x0<<2)), 0x00);
+
+    //Set source and destination path
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x2<<2)), 0X2B40); //MIU to FSP(0xB)
+    // Set source as MIU0
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x3<<2)), 0X0000); //MIU0 as channel0
+    // Set start address
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x4<<2)), (pu8BDMA_bus & 0x0000FFFF));
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x5<<2)), (pu8BDMA_bus >> 16));
+    // Set end address
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x6<<2)), 0x0);
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x7<<2)), 0x0);
+    // Set Size
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x8<<2)), (u32Len & 0x0000FFFF));
+    //WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x9<<2)), (u32Len >> 16));
+
+    WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x0<<2)), 1); // Trigger
+
+    FSP_WRITE_MASK(REG_FSP_TRIGGER,REG_FSP_FIRE, REG_FSP_TRIGGER_MASK);
+
+    //check BDMA done
+    //SER_FLASH_TIME(time_st);
+    deadline = jiffies + MAX_READY_WAIT_JIFFIES;
+    do
+    {
+
+        //check done
+        u16data = READ_WORD(_hal_isp.u32BdmaBaseAddr + ((0x1)<<2));
+        if(u16data & 8)
+        {
+            //clear done
+            WRITE_WORD((_hal_isp.u32BdmaBaseAddr + (0x1<<2)), 8);
+            bRet = TRUE;
+            break;
+        }
+    //} while(!SER_FLASH_EXPIRE(time_st, SERFLASH_SAFETY_FACTOR));
+    } while (!time_after_eq(jiffies, deadline));
+
+    if(bRet == FALSE)
+    {
+        printk("Wait for BDMA Done fails!\n");
+    }
+
+    //check FSP done
+    bRet = _HAL_FSP_WaitDone();
+    if(!bRet)
+    {
+        printk("[FSP] BDMA2FSP FAIL Timeout !!!!\r\n");
+    }
+
+    FSP_WRITE(REG_FSP_WBF_SIZE_OUTSIDE, 0x0);
+    FSP_WRITE(REG_FSP_WBF_OUTSIDE, 0x0);
+    QSPI_WRITE(REG_SPI_BURST_WRITE,REG_SPI_BURST_OFF);
+    QSPI_WRITE(REG_SPI_BURST_WRITE,REG_SPI_DISABLE_BURST);
+    FSP_WRITE(REG_FSP_QUAD_MODE, 0x0);
+
+    do
+    {
+        bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR, 1, &u8status);
+
+        if (!bRet)
+        {
+            break;
+        }
+
+    } while (u8status & SF_SR_WIP_MASK);
+
+    return bRet;
+}
+
+#if 0
 static MS_BOOL _HAL_PP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u32Len)
 {
     //struct timeval time_st;
@@ -4665,8 +5313,7 @@ static MS_BOOL _HAL_PP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u3
         HAL_FSP_WriteExtAddrReg(u8EAR);
     }
 
-    if(pu8BDMA_virt == 0)
-        _HAL_BDMA_INIT();
+    _HAL_BDMA_INIT(u32Len);
     if(pu8BDMA_virt == 0)
     {
         DEBUG_SER_FLASH(E_SERFLASH_DBGLV_ERR, printk("%s, remap BDMA buffer failed)\n", __FUNCTION__));
@@ -4769,18 +5416,18 @@ static MS_BOOL _HAL_PP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u3
 
     return bRet;
 }
-
-
+#endif
 
 MS_BOOL HAL_FSP_Write_BDMA(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
 {
     MS_BOOL bRet = FALSE;
     MS_U16 u16Rem, u16WriteBytes;
+    //MS_U16 u16WriteBytes;
     MS_U8 *u8Buf = pu8Data;
 
     DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("%s(0x%08X, %4d, %p)\n", __FUNCTION__, (int)u32Addr, (int)u32Size, pu8Data));
     //printk("%s(0x%08X, %d, 0x%p)\n", __FUNCTION__, (int)u32Addr, (int)u32Size, pu8Data);
-
+#if 1
     u16Rem = u32Addr % SERFLASH_PAGE_SIZE;
 
     if (u16Rem)
@@ -4791,8 +5438,15 @@ MS_BOOL HAL_FSP_Write_BDMA(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
             u16WriteBytes = u32Size;
         }
 
-
-        bRet = _HAL_PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
+        if(_hal_SERFLASH.u8MID == MID_MXIC)
+        {
+            bRet = _HAL_4PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
+        }
+        else
+        {
+            bRet = _HAL_QP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
+        }
+        //bRet = _HAL_PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
 
         if ( bRet == TRUE )
         {
@@ -4805,12 +5459,19 @@ MS_BOOL HAL_FSP_Write_BDMA(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
             goto HAL_SERFLASH_Write_return;
         }
     }
-
+#endif
     while(u32Size)
     {
         u16WriteBytes =(u32Size>SERFLASH_PAGE_SIZE) ? SERFLASH_PAGE_SIZE:u32Size;
-
-        bRet = _HAL_PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
+        //bRet = _HAL_PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
+        if(_hal_SERFLASH.u8MID == MID_MXIC)
+        {
+            bRet = _HAL_4PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
+        }
+        else
+        {
+            bRet = _HAL_QP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
+        }
 
         if ( bRet == TRUE  )
         {

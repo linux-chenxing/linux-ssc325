@@ -1,9 +1,8 @@
 /*
 * hal_sdmmc_v5.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: joe.su <joe.su@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef __HAL_SDMMC_V5_H
@@ -152,43 +151,43 @@ typedef struct
 
 //  SDMMC Operation Function
 //----------------------------------------------------------------------------------------------------------
-void Hal_SDMMC_SetDataWidth(IPEmType eIP, SDMMCBusWidthEmType eBusWidth);
-void Hal_SDMMC_SetBusTiming(IPEmType eIP, BusTimingEmType eBusTiming);
-void Hal_SDMMC_SetNrcDelay(IPEmType eIP, U32_T u32RealClk);
+void Hal_SDMMC_SetDataWidth(IpOrder eIP, SDMMCBusWidthEmType eBusWidth);
+void Hal_SDMMC_SetBusTiming(IpOrder eIP, BusTimingEmType eBusTiming);
+void Hal_SDMMC_SetNrcDelay(IpOrder eIP, U32_T u32RealClk);
 
-void Hal_SDMMC_SetCmdToken(IPEmType eIP, U8_T u8Cmd, U32_T u32Arg);
-RspStruct* Hal_SDMMC_GetRspToken(IPEmType eIP);
-void Hal_SDMMC_TransCmdSetting(IPEmType eIP, TransEmType eTransType, U16_T u16BlkCnt, U16_T u16BlkSize, volatile U32_T u32BufAddr, volatile U8_T *pu8Buf);
-RspErrEmType Hal_SDMMC_SendCmdAndWaitProcess(IPEmType eIP, TransEmType eTransType, CmdEmType eCmdType, SDMMCRspEmType eRspType, BOOL_T bCloseClk);
-RspErrEmType Hal_SDMMC_RunBrokenDmaAndWaitProcess(IPEmType eIP, CmdEmType eCmdType);
+void Hal_SDMMC_SetCmdToken(IpOrder eIP, U8_T u8Cmd, U32_T u32Arg);
+RspStruct* Hal_SDMMC_GetRspToken(IpOrder eIP);
+void Hal_SDMMC_TransCmdSetting(IpOrder eIP, TransEmType eTransType, U16_T u16BlkCnt, U16_T u16BlkSize, volatile U32_T u32BufAddr, volatile U8_T *pu8Buf);
+RspErrEmType Hal_SDMMC_SendCmdAndWaitProcess(IpOrder eIP, TransEmType eTransType, CmdEmType eCmdType, SDMMCRspEmType eRspType, BOOL_T bCloseClk);
+RspErrEmType Hal_SDMMC_RunBrokenDmaAndWaitProcess(IpOrder eIP, CmdEmType eCmdType);
 void Hal_SDMMC_ADMASetting(volatile void *pDMATable, U8_T u8Item, U32_T u32SubLen, U16_T u16SubBCnt, U32_T u32SubAddr, U8_T u8MIUSel, BOOL_T bEnd);
 
 //  SDMMC Special Operation Function
 //----------------------------------------------------------------------------------------------------------
-void Hal_SDMMC_ClkCtrl(IPEmType eIP, BOOL_T bEnable, U16_T u16DelayMs);
-void Hal_SDMMC_Reset(IPEmType eIP);
-void Hal_SDMMC_StopProcessCtrl(IPEmType eIP, BOOL_T bEnable);
-BOOL_T Hal_SDMMC_OtherPreUse(IPEmType eIP);
+void Hal_SDMMC_ClkCtrl(IpOrder eIP, BOOL_T bEnable, U16_T u16DelayMs);
+void Hal_SDMMC_Reset(IpOrder eIP);
+void Hal_SDMMC_StopProcessCtrl(IpOrder eIP, BOOL_T bEnable);
+BOOL_T Hal_SDMMC_OtherPreUse(IpOrder eIP);
 ErrGrpEmType Hal_SDMMC_ErrGroup(RspErrEmType eErrType);
 
 // SDMMC Information
 //----------------------------------------------------------------------------------------------------------
 void Hal_SDMMC_DumpMemTool(U8_T u8ListNum, volatile U8_T *pu8Buf);
-U8_T Hal_SDMMC_GetDATBusLevel(IPEmType eIP);
-U16_T Hal_SDMMC_GetMIEEvent(IPEmType eIP);
+U8_T Hal_SDMMC_GetDATBusLevel(IpOrder eIP);
+U16_T Hal_SDMMC_GetMIEEvent(IpOrder eIP);
 
 // SDMMC SDIO Setting
 //----------------------------------------------------------------------------------------------------------
-void Hal_SDMMC_SDIODeviceCtrl(IPEmType eIP, BOOL_T bEnable);
-void Hal_SDMMC_SDIOIntDetCtrl(IPEmType eIP, BOOL_T bEnable);
-void Hal_SDMMC_SetSDIOIntBeginSetting(IPEmType eIP, U8_T u8Cmd, U32_T u32Arg, CmdEmType eCmdType, U16_T u16BlkCnt);
-void Hal_SDMMC_SetSDIOIntEndSetting(IPEmType eIP, RspErrEmType eRspErr, U16_T u16BlkCnt);
+void Hal_SDMMC_SDIODeviceCtrl(IpOrder eIP, BOOL_T bEnable);
+void Hal_SDMMC_SDIOIntDetCtrl(IpOrder eIP, BOOL_T bEnable);
+void Hal_SDMMC_SetSDIOIntBeginSetting(IpOrder eIP, U8_T u8Cmd, U32_T u32Arg, CmdEmType eCmdType, U16_T u16BlkCnt);
+void Hal_SDMMC_SetSDIOIntEndSetting(IpOrder eIP, RspErrEmType eRspErr, U16_T u16BlkCnt);
 
 // SDMMC Interrupt Setting
 //----------------------------------------------------------------------------------------------------------
 #if(EN_BIND_CARD_INT)
 
-void Hal_SDMMC_MIEIntCtrl(IPEmType eIP, BOOL_T bEnable);
+void Hal_SDMMC_MIEIntCtrl(IpOrder eIP, BOOL_T bEnable);
 
 
 #endif //End of EN_BIND_CARD_INT

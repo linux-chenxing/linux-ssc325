@@ -1,9 +1,8 @@
 /*
 * hal_card_regs.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: joe.su <joe.su@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 /***************************************************************************************************************
@@ -77,13 +76,9 @@
 
 #define CARD_BANK(Bank_Addr)                   IO_MAPADDR(Bank_Addr)
 
-volatile void* Hal_CREG_GET_REG_BANK(IPEmType eIP, U8_T u8Bank);
-void Hal_CREG_SET_PORT(IPEmType eIP, PortEmType ePort);
-volatile PortEmType Hal_CREG_GET_PORT(IPEmType eIP);
+volatile void* Hal_CREG_GET_REG_BANK(IpOrder eIP, U8_T u8Bank);
 
 #define GET_CARD_BANK                          Hal_CREG_GET_REG_BANK
-#define GET_CARD_PORT                          Hal_CREG_GET_PORT
-#define SET_CARD_PORT                          Hal_CREG_SET_PORT
 
 //***********************************************************************************************************
 // (3) BASE FCIE Reg Meaning Position (Including File)

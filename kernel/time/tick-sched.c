@@ -31,7 +31,7 @@
 #include <trace/events/timer.h>
 
 #ifdef CONFIG_LH_RTOS
-#include "../../drivers/sstar/ipc/lh_syscall.h"
+#include "drv_dualos.h"
 #endif
 
 /*

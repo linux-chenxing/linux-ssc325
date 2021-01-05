@@ -1,9 +1,8 @@
 /*
 * platform_msys.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,9 +11,10 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
+
 #include <asm/uaccess.h>
 #include <linux/errno.h>
 #include "ms_platform.h"
@@ -27,46 +27,7 @@
 
 int msys_request_freq(MSYS_FREQGEN_INFO *freq_info)
 {
-    if(freq_info->padnum != PAD_CLOCK_OUT)
-    {
-        MSYS_ERROR("Not implement PAD: %d for this platform\n", freq_info->padnum);
-        return -EINVAL;
-    }
-
-    if(freq_info->bEnable)
-    {
-        if(freq_info->freq != FREQ_24MHZ)
-        {
-            MSYS_ERROR("Not implement FREQ: %d for this platform\n", freq_info->freq);
-            return -EINVAL;
-        }
-
-        if(freq_info->bInvert != false)
-            MSYS_WARN("Not support invert clock in this platform");
-
-        switch(freq_info->padnum)
-        {
-            case PAD_CLOCK_OUT:
-                // reg_ext_xtali_se_enb[1]=0
-                CLRREG16(BASE_REG_PMSLEEP_PA + REG_ID_30, BIT1);//enable clock
-                break;
-            default:
-                MSYS_ERROR("Not implement PAD: %d for this platform\n", freq_info->padnum);
-                break;
-        }
-    }
-    else //disable clk
-    {
-        switch(freq_info->padnum)
-        {
-            case PAD_CLOCK_OUT:
-                // reg_ext_xtali_se_enb[1]=1
-                SETREG16(BASE_REG_PMSLEEP_PA + REG_ID_30, BIT1); //disable clk
-                break;
-            default:
-                MSYS_ERROR("Not implement PAD: %d for this platform\n", freq_info->padnum);
-                break;
-        }
-    }
-    return 0;
+    MSYS_ERROR("Not implement PAD: %d for this platform\n", freq_info->padnum);
+    MSYS_ERROR("%s not support for this platform\n", __FUNCTION__);
+    return -EPERM;
 }

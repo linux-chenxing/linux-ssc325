@@ -16,13 +16,8 @@
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
 
-#ifndef MP_USB_MSTAR
-#include <usb_patch_mstar.h>
-#endif
+#include "usb_common_sstar.h"
 
-#if (MP_USB_MSTAR==1)
-#include "../host/ehci-mstar.h"
-#endif
 /*
  * DMA-Coherent Buffers
  */

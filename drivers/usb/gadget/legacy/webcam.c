@@ -16,6 +16,7 @@
 #include <linux/usb/video.h>
 
 #include "u_uvc.h"
+#include "uvc_ait_xu.h"
 
 USB_GADGET_COMPOSITE_OPTIONS();
 
@@ -66,28 +67,44 @@ static char *fn_cntl = FILE_CONTROL;
 module_param(fn_cntl, charp, S_IRUGO);
 MODULE_PARM_DESC(fn_cntl, "Control device file name");
 
+static int playback_channel_count = UAC1_PLAYBACK_CHANNEL_COUNT;
+module_param(playback_channel_count, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(playback_channel_count, "Speaker Channel Counts");
+
+static int capture_channel_count = UAC1_CAPTURE_CHANNEL_COUNT;
+module_param(capture_channel_count, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(capture_channel_count, "Microphone Channel Counts");
+
+static int playback_sample_rate = UAC1_PLAYBACK_SAMPLE_RATE;
+module_param(playback_sample_rate, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(playback_sample_rate, "Speaker Sample Rate");
+
+static int capture_sample_rate = UAC1_CAPTURE_SAMPLE_RATE;
+module_param(capture_sample_rate, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(capture_sample_rate, "Microphone Sample Rate");
+
 static int out_req_buf_size = UAC1_OUT_EP_MAX_PACKET_SIZE;
-module_param(out_req_buf_size, int, S_IRUGO);
+module_param(out_req_buf_size, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(out_req_buf_size, "ISO OUT endpoint request buffer size");
 
 static int in_req_buf_size = UAC1_IN_EP_MAX_PACKET_SIZE;
-module_param(in_req_buf_size, int, S_IRUGO);
+module_param(in_req_buf_size, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(in_req_buf_size, "ISO IN endpoint request buffer size");
 
 static int out_req_count = UAC1_OUT_REQ_COUNT;
-module_param(out_req_count, int, S_IRUGO);
+module_param(out_req_count, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(out_req_count, "ISO OUT endpoint request count");
 
 static int in_req_count = UAC1_IN_REQ_COUNT;
-module_param(in_req_count, int, S_IRUGO);
+module_param(in_req_count, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(in_req_count, "ISO IN endpoint request count");
 
 static int audio_playback_buf_size = UAC1_AUDIO_PLAYBACK_BUF_SIZE;
-module_param(audio_playback_buf_size, int, S_IRUGO);
+module_param(audio_playback_buf_size, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(audio_playback_buf_size, "Audio playback buffer size");
 
 static int audio_capture_buf_size = UAC1_AUDIO_CAPTURE_BUF_SIZE;
-module_param(audio_capture_buf_size, int, S_IRUGO);
+module_param(audio_capture_buf_size, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(audio_capture_buf_size, "Audio capture buffer size");
 
 static int uac_function_enable	= 0;
@@ -97,10 +114,29 @@ MODULE_PARM_DESC(uac_function_enable, "Audio Play Mode, 0: Disable UAC Function,
 					  "1: Speaker Only, 2: Microphone Only, 3: Speaker & Microphone");
 #endif
 #endif
+
+/* --------------------------------------------------------------------------
+ * Customer Define
+ */
+#ifdef USE_AIT_XU
+#define UVC_EU1_GUID UVC_AIT_EU1_GUID
+#define UVC_EU2_GUID UVC_CUS_EU2_GUID
+#else
+#define UVC_EU1_GUID UVC_AIT_EU1_GUID
+#define UVC_EU2_GUID UVC_CUS_EU2_GUID
+#endif
+// termail link:
+//   UVC_IT_ID -> UVC_PU_ID -> UVC_EU1_ID -> UVC_EU2_ID -> UVC_OT_ID;
+
+#define UVC_EU1_ID  (0x6) //for Isp use
+#define UVC_EU2_ID  (0x2) //for customer to use
+#define UVC_OT_ID   (0x3)
+#define UVC_PU_ID   (0x4)
+#define UVC_IT_ID   (0x1)
+
 /* --------------------------------------------------------------------------
  * Device descriptor
  */
-
 #define WEBCAM_VENDOR_ID		0x1d6b	/* Linux Foundation */
 #define WEBCAM_PRODUCT_ID		0x0102	/* Webcam A/V gadget */
 #define WEBCAM_DEVICE_BCD		0x0010	/* 0.10 */
@@ -176,7 +212,7 @@ static const struct uvc_camera_terminal_descriptor uvc_camera_terminal = {
 	.bLength		= UVC_DT_CAMERA_TERMINAL_SIZE(3),
 	.bDescriptorType	= USB_DT_CS_INTERFACE,
 	.bDescriptorSubType = UVC_VC_INPUT_TERMINAL,
-	.bTerminalID		= 1,
+	.bTerminalID		= UVC_IT_ID,
 	.wTerminalType		= cpu_to_le16(0x0201),
 	.bAssocTerminal		= 0,
 	.iTerminal		= 0,
@@ -189,12 +225,44 @@ static const struct uvc_camera_terminal_descriptor uvc_camera_terminal = {
 	.bmControls[2]		= 0,
 };
 
+DECLARE_UVC_EXTENSION_UNIT_DESCRIPTOR(1, 2);
+
+static const struct UVC_EXTENSION_UNIT_DESCRIPTOR(1,2) uvc_extension_unit1 = {
+	.bLength = UVC_DT_EXTENSION_UNIT_SIZE(1,2),
+	.bDescriptorType = USB_DT_CS_INTERFACE,
+	.bDescriptorSubType = UVC_VC_EXTENSION_UNIT,
+	.bUnitID = UVC_EU1_ID,
+	.guidExtensionCode = UVC_EU1_GUID,
+	.bNumControls = 0x0E,
+	.bNrInPins = 0x01,
+	.baSourceID[0] = UVC_PU_ID,
+	.bControlSize = 0x02,
+	.bmControls[0] = 0xFF,
+	.bmControls[1] = 0x6F,
+	.iExtension = 0x00,
+};
+
+static const struct UVC_EXTENSION_UNIT_DESCRIPTOR(1, 2) uvc_extension_unit2 = {
+	.bLength = UVC_DT_EXTENSION_UNIT_SIZE(1,2),
+	.bDescriptorType = USB_DT_CS_INTERFACE,
+	.bDescriptorSubType = UVC_VC_EXTENSION_UNIT,
+	.bUnitID = UVC_EU2_ID,
+    .guidExtensionCode = UVC_EU2_GUID,
+	.bNumControls = 0x06,
+	.bNrInPins = 0x01,
+	.baSourceID[0] = UVC_EU1_ID,
+	.bControlSize = 0x02,
+	.bmControls[0] = 0x3F,
+	.bmControls[1] = 0x00,
+	.iExtension = 0x00,
+};
+
 static const struct uvc_processing_unit_descriptor uvc_processing = {
 	.bLength		= UVC_DT_PROCESSING_UNIT_SIZE(2),
 	.bDescriptorType	= USB_DT_CS_INTERFACE,
 	.bDescriptorSubType = UVC_VC_PROCESSING_UNIT,
-	.bUnitID		= 2,
-	.bSourceID		= 1,
+	.bUnitID		= UVC_PU_ID,
+	.bSourceID		= UVC_IT_ID,
 	.wMaxMultiplier		= cpu_to_le16(16*1024),
 	.bControlSize		= 2,
 	.bmControls[0]		= 1,
@@ -209,10 +277,10 @@ static const struct uvc_output_terminal_descriptor uvc_output_terminal = {
 	.bLength		= UVC_DT_OUTPUT_TERMINAL_SIZE,
 	.bDescriptorType	= USB_DT_CS_INTERFACE,
 	.bDescriptorSubType = UVC_VC_OUTPUT_TERMINAL,
-	.bTerminalID		= 3,
+	.bTerminalID		= UVC_OT_ID,
 	.wTerminalType		= cpu_to_le16(0x0101),
 	.bAssocTerminal		= 0,
-	.bSourceID		= 2,
+	.bSourceID		= UVC_EU2_ID,
 	.iTerminal		= 0,
 };
 
@@ -906,6 +974,8 @@ static const struct uvc_descriptor_header * const uvc_fs_control_cls[] = {
 	(const struct uvc_descriptor_header *) &uvc_control_header,
 	(const struct uvc_descriptor_header *) &uvc_camera_terminal,
 	(const struct uvc_descriptor_header *) &uvc_processing,
+	(const struct uvc_descriptor_header *) &uvc_extension_unit1,
+	(const struct uvc_descriptor_header *) &uvc_extension_unit2,
 	(const struct uvc_descriptor_header *) &uvc_output_terminal,
 	NULL,
 };
@@ -914,6 +984,8 @@ static const struct uvc_descriptor_header * const uvc_ss_control_cls[] = {
 	(const struct uvc_descriptor_header *) &uvc_control_header,
 	(const struct uvc_descriptor_header *) &uvc_camera_terminal,
 	(const struct uvc_descriptor_header *) &uvc_processing,
+	(const struct uvc_descriptor_header *) &uvc_extension_unit1,
+	(const struct uvc_descriptor_header *) &uvc_extension_unit2,
 	(const struct uvc_descriptor_header *) &uvc_output_terminal,
 	NULL,
 };
@@ -1036,6 +1108,10 @@ static int __init audio_bind(struct usb_composite_dev *cdev)
 	uac1_opts->fn_play = fn_play;
 	uac1_opts->fn_cap = fn_cap;
 	uac1_opts->fn_cntl = fn_cntl;
+	uac1_opts->playback_channel_count = playback_channel_count;
+	uac1_opts->playback_sample_rate = playback_sample_rate;
+	uac1_opts->capture_channel_count = capture_channel_count;
+	uac1_opts->capture_sample_rate = capture_sample_rate;
 	uac1_opts->out_req_buf_size = out_req_buf_size;
 	uac1_opts->out_req_count = out_req_count;
 	uac1_opts->audio_playback_buf_size = audio_playback_buf_size;

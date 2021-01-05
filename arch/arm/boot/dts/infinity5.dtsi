@@ -1,17 +1,19 @@
 /*
- * Copyright (c) 2014 MundoReader S.L.
- * Author: Matthias Brugger <matthias.bgg@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
+* infinity5.dtsi- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
+*/
 
 #include <../../../../drivers/sstar/include/infinity5/irqs.h>
 #include <../../../../drivers/sstar/include/infinity5/gpio.h>
@@ -314,6 +316,9 @@
             banks = <0x1202>,<0x1203>,<0x1204>,<0x1205>,<0x1206>,<0x1207>,<0x1038>;
             interrupts = <GIC_SPI INT_IRQ_MIPI_CSI2_0 IRQ_TYPE_LEVEL_HIGH>,<GIC_SPI INT_IRQ_MIPI_CSI2_1 IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_csi_mac_lptx_top_i_0>,<&CLK_csi_mac_top_i_0>,<&CLK_csi_ns_top_i_0>,<&CLK_csi_mac_lptx_top_i_1>,<&CLK_csi_mac_top_i_1>,<&CLK_csi_ns_top_i_1>;
+            /* Config max lane number */
+            csi_sr0_lane_num = <4>;
+            csi_sr1_lane_num = <2>;
             status = "ok";
         };
 
@@ -333,6 +338,9 @@
             vif_sr1_mipi_mode_1lane = <2>;
             vif_sr1_mipi_mode_2lane = <1>;
             vif_sr1_bt656_mode = <1>;
+            /* Config mclk 37.125MHz supported */
+            vif_sr0_mclk_37p125 = <1>;
+            vif_sr1_mclk_37p125 = <1>;
         };
 
         ispalgo: ispalgo {
@@ -368,7 +376,7 @@
         };
 
         ive0: ive@0x1F2A4000 {
-            compatible = "sstar,infinity5-ive";
+            compatible = "sstar,infinity-ive";
             reg = <0x1F2A4000 0x100>,<0x1F2A4200 0x100>;
             interrupts = <GIC_SPI INT_IRQ_IVE_INT IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_ive>,<&CLK_miu_ive>;
@@ -472,12 +480,24 @@
             linein-gain-level=<2>;  //0~7
             amp-gpio = <PAD_PM_GPIO1  1>;
             clocks = <&CLK_upll_384m>;
-           // playback-dma-buffer=<98304>; //512(ms)*48(kHz)*2(ch)*2(16bits)
-           // capture-dma-buffer=<122880>; //640(ms)*48(kHz)*2(ch)*2(16bits)
+
             digmic-padmux = <6>; //1~6
             i2stdm-padmux = <1>; //only 1 mode
             i2smck-padmux = <1>; //only 1 mode
             i2smod-padmux = <0>; //0:i2s tdm, 1:i2s normal
+            keep-i2s-clk = <0>;
+
+            //I2S RX TDM
+            i2s-rx-tdm-ws-pgm = <0>; // 0: OFF  1: ON
+            i2s-rx-tdm-ws-width = <0>; // value: 0~31 (width = value + 1)
+            i2s-rx-tdm-ch-swap = <0 0>; // 0: OFF  1: ON
+
+            //I2S TX TDM
+            i2s-tx-tdm-ws-pgm = <0>; // 0: OFF  1: ON
+            i2s-tx-tdm-ws-width = <0>; // value: 0~31 (width = value + 1)
+            i2s-tx-tdm-ch-swap = <0 0>; // 0: OFF  1: ON
+            i2s-tx-tdm-active-slot = <0x03>; // value: 0x00 ~ 0xFF (bit0->slot0, bit1->slot1, ... )
+
             status = "ok";
         };
 
@@ -492,7 +512,11 @@
             slot-max-clks = <48000000>,<48000000>,<48000000>;
             slot-intcdzs = <1>,<1>,<1>;
             slot-fakecdzs = <0>,<0>,<0>;
-            slot-pwr-gpios = <19>,<0>,<0>;
+            slot-cdzs-gpios = <PAD_PM_IRIN>,<PAD_PM_SD_CDZ>,<0>; // Pad 0: PAD_PM_SD_CDZ
+            slot-pwr-gpios = <PAD_PM_GPIO12>,<PAD_FUART_RTS>,<0>; // Pad 0: PAD_FUART_RTS
+            slot-pwr-off-delay = <30>,<30>,<30>;
+            slot-sdio-use = <0>,<0>,<0>;
+						
             interrupts-extended = <&ms_main_intc GIC_SPI INT_IRQ_SDIO IRQ_TYPE_LEVEL_HIGH>,
                                  <&ms_main_intc GIC_SPI INT_IRQ_FCIE IRQ_TYPE_LEVEL_HIGH>,
                                  <&ms_main_intc GIC_SPI INT_IRQ_FCIE IRQ_TYPE_LEVEL_HIGH>,
@@ -508,6 +532,7 @@
 
         aesdma {
             compatible = "sstar,infinity-aes";
+            interrupts=<GIC_SPI INT_IRQ_WADR_ERROR IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_aesdma>;
             status = "ok";
         };
@@ -596,11 +621,6 @@
         sar: sar {
             compatible = "sstar,infinity-sar";
             reg = <0x1F002800 0x200>;
-            status = "ok";
-        };
-
-        uio@0{
-            compatible = "fsl,elbc-gpcm-uio";
             status = "ok";
         };
 

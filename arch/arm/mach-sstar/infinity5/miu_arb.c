@@ -1,9 +1,8 @@
 /*
 * miu_arb.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: Alterman.Lin <alterman.lin@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/kernel.h>
@@ -123,17 +122,17 @@ static struct miu_policy_tbl policy_rr =
     {
     // miu0
     {
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
     },
     // miu1
     {
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
     },
     }
 };
@@ -143,17 +142,17 @@ static struct miu_policy_tbl policy_rt =
     {
     // miu0
     {
-        {0x0000FF99, 0xA0AEA2BE, 0xAAA2AAAA, 0x3020, 0xC106, 0xFDF9},
-        {0x0000FFCC, 0xABAAA8A2, 0xA8AAAAAE, 0x0002, 0xC106, 0xEFFF},
-        {0x00000000, 0xAAB80A2A, 0xAA8ABAEA, 0x01C8, 0xC006, 0xFBFF},
-        {0x1032FF01, 0xAAAAAAFF, 0xAAAAAA00, 0x0000, 0xC306, 0xFFF0},
+        {0x8021FF99, 0xA0AEA2BE, 0xAAA2AA82, 0x3020, 0xC305, 0xFDF9},
+        {0x0000FFCC, 0xABEAA8A2, 0xA82AAAAE, 0x0002, 0xC105, 0xE7FF},
+        {0x00000000, 0xAAB80A0A, 0xAA8ABAFA, 0x01CC, 0xC005, 0xFBFF},
+        {0x10324800, 0xAAAAAAF3, 0xAAAAAA0C, 0x0002, 0xC305, 0xFFF0},
     },
     // miu1
     {
-        {0x0000FF99, 0xA0AEA2BE, 0xAAA2AAAA, 0x3020, 0xC106, 0xFDF9},
-        {0x0000FFCC, 0xABAAA8A2, 0xA8AAAAAE, 0x0002, 0xC106, 0xEFFF},
-        {0x00000000, 0xAAB80A2A, 0xAA8ABAEA, 0x01C8, 0xC006, 0xFBFF},
-        {0x1032FF01, 0xAAAAAAFF, 0xAAAAAA00, 0x0000, 0xC306, 0xFFF0},
+        {0x8021FF99, 0xA0AEA2BE, 0xAAA2AA82, 0x3020, 0xC305, 0xFDF9},
+        {0x0000FFCC, 0xABEAA8A2, 0xA82AAAAE, 0x0002, 0xC105, 0xE7FF},
+        {0x00000000, 0xAAB80A0A, 0xAA8ABAFA, 0x01CC, 0xC005, 0xFBFF},
+        {0x10324800, 0xAAAAAAF3, 0xAAAAAA0C, 0x0002, 0xC305, 0xFFF0},
     },
     }
 };
@@ -171,12 +170,13 @@ static struct miu_policy_tbl policy_cur;
 static void _set_priority(unsigned char miu, int client, char pri)
 {
     int base;
-    int g, ofst;
+    int g, c, ofst;
     struct miu_reg_val *val;
 
     // update reg
     g = client / MIU_GRP_CLIENT_NUM;
-    ofst = client << 1;
+    c = client % MIU_GRP_CLIENT_NUM;
+    ofst = c << 1;
     val = &(policy_cur.val[miu][g]);
     val->priority = (val->priority & ~(0x3 << ofst)) | (pri << ofst);
 
@@ -188,7 +188,7 @@ static void _set_priority(unsigned char miu, int client, char pri)
 static void _set_burst(unsigned char miu, int client, char burst)
 {
     int base;
-    int g, ofst, i = 0, idx = 0;
+    int g, c, ofst, i = 0, idx = 0;
     struct miu_reg_val *val;
 
     do {
@@ -202,16 +202,17 @@ static void _set_burst(unsigned char miu, int client, char burst)
 
     // update reg
     g = client / MIU_GRP_CLIENT_NUM;
-    ofst = client << 1;
+    c = client % MIU_GRP_CLIENT_NUM;
+    ofst = c << 1;
     val = &(policy_cur.val[miu][g]);
     if (idx == MIU_ARB_BURST_NOLIM)
     {
         val->burst = (val->burst & ~(0x3 << ofst));
-        val->nolimit |= (1 << client);
+        val->nolimit |= (1 << c);
     }
     else {
         val->burst = (val->burst & ~(0x3 << ofst)) | (idx << ofst);
-        val->nolimit &= ~(1 << client);
+        val->nolimit &= ~(1 << c);
     }
 
     base = (miu == 0) ? BASE_REG_MIU_ARB_E_PA : BASE_REG_MIU1_ARB_E_PA;
@@ -223,18 +224,19 @@ static void _set_burst(unsigned char miu, int client, char burst)
 static void _set_promote(unsigned char miu, int client, char promote)
 {
     int base;
-    int g;
+    int g, c;
     struct miu_reg_val *val;
 
     // update reg
     g = client / MIU_GRP_CLIENT_NUM;
+    c = client % MIU_GRP_CLIENT_NUM;
     val = &(policy_cur.val[miu][g]);
     if (promote)
     {
-        val->promote |= (1 << client);
+        val->promote |= (1 << c);
     }
     else {
-        val->promote &= ~(1 << client);
+        val->promote &= ~(1 << c);
     }
 
     base = (miu == 0) ? BASE_REG_MIU_ARB_E_PA : BASE_REG_MIU1_ARB_E_PA;
@@ -277,7 +279,7 @@ static void _set_flowctrl(unsigned char miu, int grp, struct arb_flowctrl *fctrl
             // only ID0 enabled, set ID1 as ID0
             MIU_ARB_SET_CNT_ID1(fctrl->cnt1_id, MIU_ARB_GET_CNT_ID0(fctrl->cnt1_id));
         }
-        val->flowctrl = (val->flowctrl & ~(0xFFFF)) | (fctrl->cnt1_id << 16) | (fctrl->cnt1_period << 24);
+        val->flowctrl = (val->flowctrl & ~(0xFFFF0000)) | (fctrl->cnt1_id << 16) | (fctrl->cnt1_period << 24);
     }
 
     // update reg
@@ -340,54 +342,60 @@ static bool _flowctrl_enable(unsigned char miu, short client, bool enable, char 
 
     if (enable)
     {
-        // enabled group flow control cnt0 has the same period
-        if (MIU_ARB_GET_CNT_EN(f->cnt0_enable) && (f->cnt0_period == period))
-        {
-            if (!MIU_ARB_GET_CNT_ID0_EN(f->cnt0_enable))
+        do {
+            // enabled group flow control cnt0 has the same period
+            if (MIU_ARB_GET_CNT_EN(f->cnt0_enable) && (f->cnt0_period == period))
+            {
+                if (!MIU_ARB_GET_CNT_ID0_EN(f->cnt0_enable))
+                {
+                    //id0 not used
+                    MIU_ARB_SET_CNT_ID0_EN(f->cnt0_enable, 1);
+                    MIU_ARB_SET_CNT_ID0(f->cnt0_id, i);
+                    break;
+                }
+                else if (!MIU_ARB_GET_CNT_ID1_EN(f->cnt0_enable))
+                {
+                    //id1 not used
+                    MIU_ARB_SET_CNT_ID1_EN(f->cnt0_enable, 1);
+                    MIU_ARB_SET_CNT_ID1(f->cnt0_id, i);
+                    break;
+                }
+            }
+            // enabled group flow control cnt1 has the same period
+            if (MIU_ARB_GET_CNT_EN(f->cnt1_enable) && (f->cnt1_period == period))
+            {
+                if (!MIU_ARB_GET_CNT_ID0_EN(f->cnt1_enable))
+                {
+                    //id0 not used
+                    MIU_ARB_SET_CNT_ID0_EN(f->cnt1_enable, 1);
+                    MIU_ARB_SET_CNT_ID0(f->cnt1_id, i);
+                    break;
+                }
+                else if (!MIU_ARB_GET_CNT_ID1_EN(f->cnt1_enable))
+                {
+                    //id1 not used
+                    MIU_ARB_SET_CNT_ID1_EN(f->cnt1_enable, 1);
+                    MIU_ARB_SET_CNT_ID1(f->cnt1_id, i);
+                    break;
+                }
+            }
+            if (!MIU_ARB_GET_CNT_EN(f->cnt0_enable))
             {
                 MIU_ARB_SET_CNT_ID0_EN(f->cnt0_enable, 1);
+                f->cnt0_period = period;
                 MIU_ARB_SET_CNT_ID0(f->cnt0_id, i);
-                return 0;
+                break;
             }
-            else if (!MIU_ARB_GET_CNT_ID1_EN(f->cnt0_enable))
-            {
-                MIU_ARB_SET_CNT_ID1_EN(f->cnt0_enable, 1);
-                MIU_ARB_SET_CNT_ID1(f->cnt0_id, i);
-                return 0;
-            }
-        }
-        // enabled group flow control cnt1 has the same period
-        if (MIU_ARB_GET_CNT_EN(f->cnt1_enable) && (f->cnt1_period == period))
-        {
-            if (!MIU_ARB_GET_CNT_ID0_EN(f->cnt1_enable))
+            if (!MIU_ARB_GET_CNT_EN(f->cnt1_enable))
             {
                 MIU_ARB_SET_CNT_ID0_EN(f->cnt1_enable, 1);
+                f->cnt1_period = period;
                 MIU_ARB_SET_CNT_ID0(f->cnt1_id, i);
-                return 0;
+                break;
             }
-            else if (!MIU_ARB_GET_CNT_ID1_EN(f->cnt1_enable))
-            {
-                MIU_ARB_SET_CNT_ID1_EN(f->cnt1_enable, 1);
-                MIU_ARB_SET_CNT_ID1(f->cnt1_id, i);
-                return 0;
-            }
-        }
-        if (!MIU_ARB_GET_CNT_EN(f->cnt0_enable))
-        {
-            MIU_ARB_SET_CNT_ID0_EN(f->cnt0_enable, 1);
-            f->cnt0_period = period;
-            MIU_ARB_SET_CNT_ID0(f->cnt0_id, i);
-            return 0;
-        }
-        if (!MIU_ARB_GET_CNT_EN(f->cnt1_enable))
-        {
-            MIU_ARB_SET_CNT_ID0_EN(f->cnt1_enable, 1);
-            f->cnt1_period = period;
-            MIU_ARB_SET_CNT_ID0(f->cnt1_id, i);
-            return 0;
-        }
-        printk(KERN_ERR "No available flow control cnt\n");
-        return 1; // failed
+            return 1; // not free one, failed
+
+        } while(1);
     }
     else
     {
@@ -407,6 +415,11 @@ static bool _flowctrl_enable(unsigned char miu, short client, bool enable, char 
         else if (MIU_ARB_GET_CNT_ID1_EN(f->cnt1_enable) && (MIU_ARB_GET_CNT_ID1(f->cnt1_id) == i))
         {
             MIU_ARB_SET_CNT_ID1_EN(f->cnt1_enable, 0);
+        }
+        else
+        {
+            //nothing changed
+            return 0;
         }
     }
     _set_flowctrl(miu, g, f);
@@ -1133,4 +1146,17 @@ void create_miu_bw_node(struct bus_type *miu_subsys)
         device_create_file(&miu_arb_dev[i].dev, &dev_attr_policy);
     }
     _load_policy(MIU_ARB_POLICY_RT);
+
+    //adjust group 3 to lowest priority, all groups have same burst length
+    OUTREG16(BASE_REG_MIU_ARB_B_PA + REG_ID_27, 0xC0);
+    OUTREG16(BASE_REG_MIU_ARB_B_PA + REG_ID_31, 0x8080);
+    OUTREG16(BASE_REG_MIU_ARB_B_PA + REG_ID_32, 0xAA);
+    OUTREG16(BASE_REG_MIU_ARB_B_PA + REG_ID_2E, 0x00);
+    OUTREG16(BASE_REG_MIU1_ARB_B_PA + REG_ID_27, 0xC0);
+    OUTREG16(BASE_REG_MIU1_ARB_B_PA + REG_ID_31, 0x8080);
+    OUTREG16(BASE_REG_MIU1_ARB_B_PA + REG_ID_32, 0xAA);
+    OUTREG16(BASE_REG_MIU1_ARB_B_PA + REG_ID_2E, 0x00);
+    //VEN_W high priority enable
+    OUTREG16(BASE_REG_MIU_ARB_E_PA + REG_ID_64, 0xFFFD);
+    OUTREG16(BASE_REG_MIU1_ARB_E_PA + REG_ID_64, 0xFFFD);
 }

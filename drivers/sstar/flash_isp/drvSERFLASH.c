@@ -1,9 +1,8 @@
 /*
 * drvSERFLASH.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/string.h>
@@ -383,6 +382,16 @@ MS_BOOL MDrv_SERFLASH_BlockToAddress(MS_U32 u32BlockIndex, MS_U32 *pu32FlashAddr
 }
 
 
+#ifdef CONFIG_SS_CUSTOMIZED_CUS_ZY_ERASE_ENV
+
+MS_BOOL MDrv_SERFLASH_BlockErase_CUS_ZY(MS_U32 u32StartAddr, MS_U32 u32EraseSize, MS_BOOL bWait);
+
+MS_BOOL MDrv_SERFLASH_BlockErase_CUS_ZY(MS_U32 u32StartAddr, MS_U32 u32EraseSize, MS_BOOL bWait)
+{
+    return HAL_SERFLASH_BlockErase_CUS_ZY(u32StartAddr, u32EraseSize, bWait);
+}
+#endif
+
 //-------------------------------------------------------------------------------------------------
 /// Description : Erase certain sectors given starting address and size in Serial Flash
 /// @param  u32StartAddr    \b IN: start address at block boundry
@@ -400,6 +409,13 @@ MS_BOOL MDrv_SERFLASH_AddressErase(MS_U32 u32StartAddr, MS_U32 u32EraseSize, MS_
     DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("%s(0x%08x, 0x%08x, %d)\n", __FUNCTION__,
             (unsigned int)u32StartAddr, (unsigned int)u32EraseSize, (int)bWait));
 
+#ifdef CONFIG_SS_CUSTOMIZED_CUS_ZY_ERASE_ENV
+    if ((u32StartAddr == 0x5F000)&&(u32EraseSize == 0x1000))
+    {
+        return MDrv_SERFLASH_BlockErase_CUS_ZY(u32StartAddr, u32EraseSize, bWait);
+    }
+#endif
+
     if (   FALSE == MDrv_SERFLASH_AddressToBlock(u32StartAddr, &u32StartBlock)
         || FALSE == MDrv_SERFLASH_AddressToBlock(u32StartAddr + u32EraseSize - 1, &u32EndBlock)
         )
@@ -409,7 +425,6 @@ MS_BOOL MDrv_SERFLASH_AddressErase(MS_U32 u32StartAddr, MS_U32 u32EraseSize, MS_
 
     return MDrv_SERFLASH_BlockErase(u32StartBlock, u32EndBlock, bWait);
 }
-
 
 //-------------------------------------------------------------------------------------------------
 /// Description : Erase certain sectors in Serial Flash
@@ -530,7 +545,7 @@ MS_BOOL MDrv_SERFLASH_Read(MS_U32 u32FlashAddr, MS_U32 u32FlashSize, MS_U8 *user
 #else
     return HAL_SERFLASH_Read(u32FlashAddr, u32FlashSize, user_buffer);
 #endif
-    
+
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -841,16 +856,16 @@ MS_BOOL MDrv_FSP_Write(MS_U32 u32FlashAddr, MS_U32 u32FlashSize, MS_U8 *user_buf
 {
 		MS_U32 Index;
 		MS_U32 u32ProgData;
-	
+
 #define FSP_WRITE_SIZE	4
-	
+
 		for(Index = 0; Index < u32FlashSize; )
 		{
 			u32ProgData = (*(user_buffer + Index))|(*(user_buffer + Index + 1)<<8)|(*(user_buffer + Index + 2)<<16)|(*(user_buffer + Index + 3)<<24);
 			HAL_SERFLASH_ProgramFlashByFSP(u32FlashAddr+Index, u32ProgData);
 			Index += FSP_WRITE_SIZE;
 		}
-		
+
 	return 1;
 }
 
@@ -858,7 +873,7 @@ MS_BOOL MDrv_FSP_Write(MS_U32 u32FlashAddr, MS_U32 u32FlashSize, MS_U8 *user_buf
 MS_BOOL MDrv_FSP_ReadStatusRegister(MS_U8 *pu8StatusReg)
 {
 	*pu8StatusReg = HAL_SERFLASH_ReadStatusByFSP();
-	
+
 	return 1;
 }
 

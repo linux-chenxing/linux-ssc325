@@ -1,17 +1,19 @@
 /*
- * Copyright (c) 2014 MundoReader S.L.
- * Author: Matthias Brugger <matthias.bgg@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
+* infinity6-fpga.dtsi- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
+*/
 
 #include <../../../../drivers/sstar/include/infinity6/irqs.h>
 #include <../../../../drivers/sstar/include/infinity6/gpio.h>
@@ -440,7 +442,7 @@
             reg = <0x1F003400 0x600>;
             clocks = <&CLK_xtali_12m>;
             npwm = <11>;
-            pad-ctrl = <PAD_PWM0 PAD_PWM1 PAD_UNKNOWN PAD_UNKNOWN PAD_SPI0_CZ PAD_SPI0_CK PAD_SPI0_DI PAD_SPI0_DO PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN>;
+            pad-ctrl = <PAD_PWM0 PAD_PWM1 PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN>;
             status = "ok";
         };
 
@@ -464,8 +466,6 @@
             interrupts=<GIC_SPI INT_IRQ_CMDQ2 IRQ_TYPE_LEVEL_HIGH>;
             status = "ok";
         };
-
-
 
     };
 };

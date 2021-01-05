@@ -1,9 +1,8 @@
 /*
 * mhal_gpio.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/kernel.h>
@@ -951,23 +950,23 @@ void MHal_SAR_GPIO_WriteRegBit(U32 u32Reg, U8 u8Enable, U8 u8BitMsk)
 void MHal_FuartPAD_DisableFunction(U8 u8IndexGPIO)
 {
     if (MHal_CHIPTOP_ReadRegMsk(REG_FUART_MODE, BIT0|BIT1|BIT2) == BIT0 ) {
-        printk("[gpio] Disable FUART function\n");
+        printk("[gpio] Disable FUART\n");
         MHal_CHIPTOP_WriteRegBit(REG_FUART_MODE, DISABLE, BIT0|BIT1|BIT2);
     }
     else if (PAD_FUART_RTS != u8IndexGPIO) {
         if (MHal_CHIPTOP_ReadRegMsk(REG_FUART_MODE, BIT0|BIT1|BIT2) == (BIT0|BIT1)) {
-            printk("[gpio] Disable FUART function\n");
+            printk("[gpio] Disable FUART\n");
             MHal_CHIPTOP_WriteRegBit(REG_FUART_MODE, DISABLE, BIT0|BIT1|BIT2);
         }
     }
 
     if (MHal_CHIPTOP_ReadRegMsk(REG_SPI0_MODE, BIT0|BIT1) == (BIT0|BIT1)) {
-        printk("[gpio] Disable SPI0 function\n");
+        printk("[gpio] Disable SPI0\n");
         MHal_CHIPTOP_WriteRegBit(REG_SPI0_MODE, DISABLE, BIT0|BIT1);
     }
 
     if (MHal_CHIPTOP_ReadRegMsk(REG_EJ_MODE, BIT0|BIT1) == BIT0) {
-        printk("[gpio] Disable EJ_MODE function\n");
+        printk("[gpio] Disable EJ_MODE\n");
         MHal_CHIPTOP_WriteRegBit(REG_EJ_MODE,DISABLE, BIT0|BIT1);
     }
 
@@ -980,12 +979,12 @@ void MHal_SPI0PAD_DisableFunction(void)
     MHal_CHIPTOP_WriteRegBit(REG_TEST_OUT_MODE,DISABLE,BIT5|BIT4);
 
     if (MHal_CHIPTOP_ReadRegMsk(REG_SPI0_MODE, BIT1|BIT0) == BIT0) {
-        printk("[gpio] Disable SPI0 function\n");
+        printk("[gpio] Disable SPI0\n");
         MHal_CHIPTOP_WriteRegBit(REG_SPI0_MODE, DISABLE, BIT0|BIT1);
     }
 
     if (MHal_CHIPTOP_ReadRegMsk(REG_EJ_MODE,BIT1|BIT0) == BIT1) {
-        printk("[gpio] Disable EJ_MODE function\n");
+        printk("[gpio] Disable EJ_MODE\n");
         MHal_CHIPTOP_WriteRegBit(REG_EJ_MODE,DISABLE,BIT1|BIT0);
     }
 }
@@ -1058,24 +1057,24 @@ void MHal_GPIO_Pad_Set(U8 u8IndexGPIO)
         break;
     case PAD_FUART_RX:
         if (MHal_CHIPTOP_ReadRegMsk(REG_PWM0_MODE, BIT2|BIT1|BIT0) == (BIT1|BIT0)) {
-            printk("[gpio] Disable PWM0 function\n");
+            printk("[gpio] Disable PWM0\n");
             MHal_CHIPTOP_WriteRegBit(REG_PWM0_MODE,DISABLE, BIT2|BIT1|BIT0);
         }
 
         if (MHal_CHIPTOP_ReadRegMsk(REG_UART0_MODE, BIT6|BIT5|BIT4) == BIT5) {
-            printk("[gpio] Disable UART0 function\n");
+            printk("[gpio] Disable UART0\n");
             MHal_CHIPTOP_WriteRegBit(REG_UART0_MODE, DISABLE, BIT6|BIT5|BIT4);
         }
         MHal_FuartPAD_DisableFunction(u8IndexGPIO);
         break;
     case PAD_FUART_TX:
         if (MHal_CHIPTOP_ReadRegMsk(REG_PWM1_MODE, BIT5|BIT4|BIT3) == BIT4) {
-            printk("[gpio] Disable PWM1 function\n");
+            printk("[gpio] Disable PWM1\n");
             MHal_CHIPTOP_WriteRegBit(REG_PWM1_MODE,DISABLE, BIT5|BIT4|BIT3);
         }
 
         if (MHal_CHIPTOP_ReadRegMsk(REG_UART0_MODE, BIT6|BIT5|BIT4) == BIT5) {
-            printk("[gpio] Disable UART0 function\n");
+            printk("[gpio] Disable UART0\n");
             MHal_CHIPTOP_WriteRegBit(REG_UART0_MODE, DISABLE, BIT6|BIT5|BIT4);
         }
 
@@ -1083,12 +1082,12 @@ void MHal_GPIO_Pad_Set(U8 u8IndexGPIO)
         break;
     case PAD_FUART_CTS:
         if (MHal_CHIPTOP_ReadRegMsk(REG_PWM2_MODE, BIT2|BIT1|BIT0) == BIT1) {
-            printk("[gpio] Disable PWM2 function\n");
+            printk("[gpio] Disable PWM2\n");
             MHal_CHIPTOP_WriteRegBit(REG_PWM2_MODE,DISABLE, BIT2|BIT1|BIT0);
         }
 
         if (MHal_CHIPTOP_ReadRegMsk(REG_UART1_MODE, BIT1|BIT0) == BIT1) {
-            printk("[gpio] Disable UART1 function\n");
+            printk("[gpio] Disable UART1\n");
             MHal_CHIPTOP_WriteRegBit(REG_UART1_MODE, DISABLE, BIT1|BIT0);
         }
 
@@ -1096,12 +1095,12 @@ void MHal_GPIO_Pad_Set(U8 u8IndexGPIO)
         break;
     case PAD_FUART_RTS:
         if (MHal_CHIPTOP_ReadRegMsk(REG_PWM3_MODE, BIT6|BIT5|BIT4) == BIT5) {
-            printk("[gpio] Disable PWM3 function\n");
+            printk("[gpio] Disable PWM3\n");
             MHal_CHIPTOP_WriteRegBit(REG_PWM3_MODE,DISABLE, BIT6|BIT5|BIT4);
         }
 
         if (MHal_CHIPTOP_ReadRegMsk(REG_UART1_MODE, BIT0|BIT1) == BIT1) {
-            printk("[gpio] Disable UART1 function\n");
+            printk("[gpio] Disable UART1\n");
             MHal_CHIPTOP_WriteRegBit(REG_UART1_MODE, DISABLE, BIT0|BIT1);
         }
 
@@ -1202,28 +1201,28 @@ void MHal_GPIO_Pad_Set(U8 u8IndexGPIO)
         break;
     case PAD_SPI0_CZ:
         if (MHal_CHIPTOP_ReadRegMsk(REG_PWM4_MODE, BIT1|BIT0) == BIT1) {
-            printk("[gpio] Disable PWM4 function\n");
+            printk("[gpio] Disable PWM4\n");
             MHal_CHIPTOP_WriteRegBit(REG_PWM4_MODE,DISABLE, BIT1|BIT0);
         }
         MHal_SPI0PAD_DisableFunction();
         break;
     case PAD_SPI0_CK:
         if (MHal_CHIPTOP_ReadRegMsk(REG_PWM5_MODE, BIT4|BIT3) == BIT4) {
-            printk("[gpio] Disable PWM5 function\n");
+            printk("[gpio] Disable PWM5\n");
             MHal_CHIPTOP_WriteRegBit(REG_PWM5_MODE,DISABLE, BIT4|BIT3);
         }
         MHal_SPI0PAD_DisableFunction();
         break;
     case PAD_SPI0_DI:
         if (MHal_CHIPTOP_ReadRegMsk(REG_PWM6_MODE, BIT1|BIT0) == BIT1) {
-            printk("[gpio] Disable PWM6 function\n");
+            printk("[gpio] Disable PWM6\n");
             MHal_CHIPTOP_WriteRegBit(REG_PWM6_MODE,DISABLE, BIT1|BIT0);
         }
         MHal_SPI0PAD_DisableFunction();
         break;
     case PAD_SPI0_DO:
         if (MHal_CHIPTOP_ReadRegMsk(REG_PWM7_MODE, BIT5|BIT4) == BIT5) {
-            printk("[gpio] Disable PWM7 function\n");
+            printk("[gpio] Disable PWM7\n");
             MHal_CHIPTOP_WriteRegBit(REG_PWM7_MODE,DISABLE, BIT5|BIT4);
         }
         MHal_SPI0PAD_DisableFunction();
@@ -1245,7 +1244,7 @@ void MHal_GPIO_Pad_Set(U8 u8IndexGPIO)
     case PAD_PM_LED0:
     case PAD_PM_LED1:
         if (MHal_PM_SLEEP_ReadRegMsk(REG_LED_MODE,BIT4|BIT5) == BIT4) {
-            printk("[gpio] Disable ethernet ACK/LINK led\n");
+            printk("[gpio] Disable eth ACK/LINK led\n");
             MHal_PM_SLEEP_WriteRegBit(REG_LED_MODE,DISABLE,BIT4);
         }
         break;
@@ -1331,7 +1330,7 @@ static int PMSLEEP_GPIO_To_Irq(U8 u8IndexGPIO)
 {
     if (u8IndexGPIO == PAD_PM_IRIN)
         return INT_PMSLEEP_IRIN;
-    else if (u8IndexGPIO >= PAD_PM_GPIO0 && u8IndexGPIO <= PAD_PM_GPIO10)
+    else if (u8IndexGPIO >= PAD_PM_GPIO0 && u8IndexGPIO <= PAD_PM_GPIO15)
         return (u8IndexGPIO-PAD_PM_GPIO0) + INT_PMSLEEP_GPIO_0;
     else
         return -1;

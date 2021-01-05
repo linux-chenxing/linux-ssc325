@@ -44,13 +44,7 @@
 #include <linux/dma-mapping.h>
 
 #include "usb.h"
-
-#ifndef MP_USB_MSTAR
-#include <usb_patch_mstar.h>
-#endif
-#if (MP_USB_MSTAR==1)
-#include "../host/ehci-mstar.h"
-#endif
+#include "usb_common_sstar.h"
 
 const char *usbcore_name = "usbcore";
 

@@ -32,7 +32,8 @@
 
 #include "power.h"
 
-#include <mstar/mpatch_macro.h>
+//#include <mstar/mpatch_macro.h>
+#include <usb_patch_mstar.h>
 
 const char *pm_labels[] = { "mem", "standby", "freeze", NULL };
 const char *pm_states[PM_SUSPEND_MAX];

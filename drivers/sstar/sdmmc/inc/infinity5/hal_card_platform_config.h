@@ -1,9 +1,8 @@
 /*
-* hal_card_paltform_config.h - Sigmastar
+* hal_card_platform_config.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: joe.su <joe.su@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,74 +11,51 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
-#define EN_DEV_TREE_SUP            (TRUE)
+//
+#include "gpio.h"
 
-#define D_IP1_IP                   EV_IP_FCIE1                    //SDIO
-#define D_IP1_PORT                 EV_PFCIE5_SDIO                 //Port Setting for FCIE5 (SDIO)
+//
+#define IP_0_TYPE   IP_TYPE_SDIO
+#define IP_1_TYPE   IP_TYPE_FCIE
+#define IP_2_TYPE   IP_TYPE_NONE
 
-#define D_IP2_IP                   EV_IP_FCIE2                    //FCIE
+/* --------------------------------------------------------
+< WT_POWERUP >
+SD Spec:
+- This delay should be sufficient to allow the power supply to reach the minimum voltage.
+HW measure:
+- About 5x us is enough.
 
-#define D_IP2_PORT                 EV_PFCIE5_FCIE                 //Port Setting for FCIE5 (FCIE)
+< WT_POWERON >
+SD Spec:
+- This delay must be at least 74 clock sizes, or 1 ms, or the time required to reach a stable voltage.
 
-#define D_IP3_IP                   EV_IP_FCIE3                    //FCIE
-#define D_IP3_PORT                 EV_PFCIE5_FCIE                 //Port Setting for FCIE5 (FCIE)
-
-
-#define WT_POWERUP                 20 //(ms)
-#define WT_POWERON                 60 //(ms)
-#define WT_POWEROFF                80 //(ms)
-
-
-#define D_SDMMC1_MUTEX             EV_MUTEX1
-#define D_SDMMC2_MUTEX             EV_MUTEX2
-#define D_SDMMC3_MUTEX             EV_MUTEX3
-
-#define EV_SDMMC1_DOWN_LVL         (FALSE)
-#define EV_SDMMC2_DOWN_LVL         (FALSE)
-#define EV_SDMMC3_DOWN_LVL         (FALSE)
-
-#define EV_SDMMC1_SDIO_IRQ         (TRUE)
-#define EV_SDMMC2_SDIO_IRQ         (FALSE)
-#define EV_SDMMC3_SDIO_IRQ         (FALSE)
-
-#define EV_SDMMC1_SDIO_PRT         (FALSE)
-#define EV_SDMMC2_SDIO_PRT         (FALSE)
-#define EV_SDMMC3_SDIO_PRT         (FALSE)
-
-#include "../../../sstar/include/infinity5/irqs.h"
-
-#define V_IP1_MIEIRQ               (INT_IRQ_SDIO+32)
-#define V_IP2_MIEIRQ               (INT_IRQ_FCIE+32)
-#define V_IP3_MIEIRQ               0
-
-#define V_IP_MIEIRQ_PARA           IRQF_SHARED //|IRQF_DISABLED
-
-#define V_PAD1_CDZIRQ              (INT_FIQ_SD_CDZ+32)
-#define V_PAD2_CDZIRQ              (INT_PMSLEEP_GPIO_7+160)
-#define V_PAD3_CDZIRQ              0
-
-#define V_PAD1_PWRGPIO             (19)
-#define V_PAD2_PWRGPIO             0
-#define V_PAD3_PWRGPIO             0
-
-#define V_PAD1_CDZIRQ_PARA         IRQF_SHARED //|IRQF_DISABLED
-#define V_PAD2_CDZIRQ_PARA         IRQF_SHARED //|IRQF_DISABLED
-#define V_PAD3_CDZIRQ_PARA         IRQF_SHARED //|IRQF_DISABLED
-
-#define EN_PAD1_CDZIRQ_SHARD       (FALSE)
-#define EN_PAD2_CDZIRQ_SHARD       (FALSE)
-#define EN_PAD3_CDZIRQ_SHARD       (FALSE)
-#define EN_PAD1_CDZIRQ_WAKEUP      (FALSE)
-#define EN_PAD2_CDZIRQ_WAKEUP      (FALSE)
-#define EN_PAD3_CDZIRQ_WAKEUP      (FALSE)
+< WT_POWEROFF >
+SD Spec:
+- the card VDD shall be once lowered to less than 0.5Volt for a minimum period of 1ms.
+HW measure:
+- SD_3V3 has 2K resistance to gnd: 30 ms.
+- SD_3V3 does Not have any resistance to gnd: 1500 ms.
+-------------------------------------------------------- */
+#define WT_POWERUP                  1    //(ms)
+#define WT_POWERON                  1    //(ms)
+#define WT_POWEROFF                 30   //(ms) Here is only for default, real value will be from DTS.
 
 #define WT_EVENT_RSP                10      //(ms)
 #define WT_EVENT_READ               2000    //(ms)
 #define WT_EVENT_WRITE              3000    //(ms)
+
+#define DEF_CDZ_PAD_SLOT0           (PAD_PM_SD_CDZ)
+#define DEF_CDZ_PAD_SLOT1           (PAD_PM_IRIN)
+#define DEF_CDZ_PAD_SLOT2           0
+
+#define DEF_PWR_PAD_SLOT0           (PAD_FUART_RTS)
+#define DEF_PWR_PAD_SLOT1           (PAD_PM_GPIO6)
+#define DEF_PWR_PAD_SLOT2           0
 
 #define EN_MSYS_REQ_DMEM            (FALSE)
 

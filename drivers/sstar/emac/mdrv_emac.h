@@ -1,4 +1,19 @@
-/* SigmaStar trade secret */
+/*
+* mdrv_emac.h- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
+*/
 /*
 * mdrv_emac.h- Sigmastar
 *
@@ -26,6 +41,8 @@
 
 #define MINOR_EMAC_NUM               1
 #define MAJOR_EMAC_NUM               241
+
+#define EXT_PHY_PATCH                1
 
 /////////////////////////////////
 // to be refined
@@ -226,6 +243,9 @@ struct emac_handle
     /* Receive */
     // spinlock_t mutexRXD;
     rx_desc_queue_t rx_desc_queue;
+#if EXT_PHY_PATCH
+    char* pu8RXBuf;
+#endif    
 
     /* Suspend and resume */
     unsigned long ep_flag;
@@ -361,8 +381,9 @@ struct emac_handle
 #endif
 
 #if EMAC_SG
-    char*               pTxBuf;
-    int                 TxBufIdx;
+    // char*               pTxBuf;
+    // int                 TxBufIdx;
+    int                 maxSG;
 #endif // #if EMAC_SG
 
 };

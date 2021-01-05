@@ -1,9 +1,8 @@
 /*
 * mhal_miu.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _MHAL_MIU_H_
@@ -37,7 +36,6 @@
 // MMU
 #define MMU_MAX_CLIENT_NUM          (8)
 #define MMU_INVALID_ENTRY_VAL       (0x1FF)
-
 
 #ifndef BIT0
 #define BIT0  0x0001UL
@@ -94,9 +92,12 @@ MS_BOOL HAL_MIU_Protect(    MS_U8   u8Blockx,
 MS_BOOL HAL_MIU_ParseOccupiedResource(void);
 unsigned int HAL_MIU_ProtectDramSize(void);
 int HAL_MIU_ClientIdToName(MS_U16 clientId, char *clientName);
+int HAL_MIU_Enable_Goup1_Smaller_Group2(unsigned char u8Enable);
 
 // MMU HAL Function
+int __HAL_MMU_GetChipId(void);
 int HAL_MMU_SetRegion(unsigned short u16Region);
+int HAL_MMU_SetRegionReplaceable(unsigned short u16Region, unsigned short u16ReplaceRegion);
 int HAL_MMU_Map(unsigned short u16PhyAddrEntry, unsigned short u16VirtAddrEntry);
 unsigned short HAL_MMU_MapQuery(unsigned short u16PhyAddrEntry);
 int HAL_MMU_UnMap(unsigned short u16PhyAddrEntry);

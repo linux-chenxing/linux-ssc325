@@ -31,11 +31,12 @@
 #include <linux/io-64-nonatomic-lo-hi.h>
 
 /* Code sharing between pci-quirks and xhci hcd */
-#include	"xhci-ext-caps.h"
+#include "xhci-ext-caps.h"
 #include "pci-quirks.h"
 
 #ifndef MP_USB_MSTAR
-#include <mstar/mpatch_macro.h>
+//#include <mstar/mpatch_macro.h>
+#include "usb_patch_mstar.h"
 #endif
 
 #if (MP_USB_MSTAR==1)

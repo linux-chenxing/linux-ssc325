@@ -1,9 +1,8 @@
 /*
-* hal_card_platform_iNF5.c- Sigmastar
+* hal_card_platform.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: joe.su <joe.su@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 /***************************************************************************************************************
@@ -33,22 +32,33 @@
  *
  ***************************************************************************************************************/
 
-#include "hal_card_platform.h"
-#include "hal_card_timer.h"
-#include "mstar_chip.h"
-//***********************************************************************************************************
-// Config Setting (Internel)
-//***********************************************************************************************************
+#include "../inc/hal_card_platform.h"
+#include "../inc/hal_card_timer.h"
+#include "gpio.h"
 
+// #include "padmux.h"
+// Mask it, beacuse of
+// drivers/sstar/include/infinity5/padmux.h:81:1: error: unknown type name ¡¥S32¡¦
+// S32 HalPadSetVal(U32 u32PadID, U32 u32Mode);
+
+#include "mdrv_gpio.h"
+#include "mdrv_padmux.h"
+#include "hal_card_platform_pri_config.h"
+
+#include "mstar_chip.h" // For Hal_CARD_TransMIUAddr
+
+//***********************************************************************************************************
+// Config Setting (Internal)
+//***********************************************************************************************************
 // Platform Register Basic Address
 //------------------------------------------------------------------------------------
-#define A_CLKGEN_BANK       GET_CARD_REG_ADDR(A_RIU_BASE, 0x81C00)
-#define A_PADTOP_BANK       GET_CARD_REG_ADDR(A_RIU_BASE, 0x81E00)
-#define A_PM_SLEEP_BANK     GET_CARD_REG_ADDR(A_RIU_BASE, 0x00700)
-#define A_PM_GPIO_BANK      GET_CARD_REG_ADDR(A_RIU_BASE, 0x00780)
-#define A_CHIPTOP_BANK      GET_CARD_REG_ADDR(A_RIU_BASE, 0x80F00)
-#define A_MCM_SC_GP_BANK    GET_CARD_REG_ADDR(A_RIU_BASE, 0x89900)
-#define A_SC_GP_CTRL_BANK   GET_CARD_REG_ADDR(A_RIU_BASE, 0x89980)
+#define A_CLKGEN_BANK       GET_CARD_REG_ADDR(A_RIU_BASE, 0x81C00)//1038h
+#define A_PADTOP_BANK       GET_CARD_REG_ADDR(A_RIU_BASE, 0x81E00)//103Ch
+#define A_PM_SLEEP_BANK     GET_CARD_REG_ADDR(A_RIU_BASE, 0x00700)//0Eh
+#define A_PM_GPIO_BANK      GET_CARD_REG_ADDR(A_RIU_BASE, 0x00780)//0Fh
+#define A_CHIPTOP_BANK      GET_CARD_REG_ADDR(A_RIU_BASE, 0x80F00)//101Eh
+#define A_MCM_SC_GP_BANK    GET_CARD_REG_ADDR(A_RIU_BASE, 0x89900)//1132h
+#define A_SC_GP_CTRL_BANK   GET_CARD_REG_ADDR(A_RIU_BASE, 0x89980)//1133h
 
 // Clock Level Setting (From High Speed to Low Speed)
 //-----------------------------------------------------------------------------------------------------------
@@ -104,122 +114,55 @@
 #define CLK3_0          0
 
 
-// Reg Dynamic Variable
-//-----------------------------------------------------------------------------------------------------------
-static volatile BusTimingEmType ge_BusTiming[3] = {0};
+#define pr_sd_err(fmt, arg...)  printk(fmt, ##arg)
+
+static volatile U16_T _gu16PowerPadNumForEachIp[IP_TOTAL] = {PAD_UNKNOWN};
+static volatile U16_T _gu16CdzPadNumForEachIp[IP_TOTAL] = {PAD_UNKNOWN};
 
 
 //***********************************************************************************************************
 // IP Setting for Card Platform
 //***********************************************************************************************************
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_IPOnceSetting
- *     @author jeremy.wang (2015/7/17)
- * Desc: IP once setting , it's about platform setting.
- *
- * @param eIP : FCIE1/FCIE2/...
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_IPOnceSetting(IPEmType eIP)
+void Hal_CARD_IPOnceSetting(IpOrder eIP)
 {
-    CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x50), BIT15_T);         //reg_all_pad_in => Close
-    //CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_MCM_SC_GP_BANK, 0x09), 0xF000);      //Test
+    IpSelect eIpSel = (IpSelect)eIP;
 
-    if(eIP == EV_IP_FCIE1)
+#if (FORCE_SWITCH_PAD)
+    CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x50), BIT15_T);  // reg_all_pad_in => Close
+#endif
+
+    if (eIpSel == IP_SDIO)
     {
         //Enable Clock Source to avoid reset fail
         CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CLKGEN_BANK,0x45), BIT05_T|BIT04_T|BIT03_T|BIT02_T|BIT01_T|BIT00_T); //[5:2]: Clk_Sel [1]: Clk_i [0]: Clk_g
         CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT08_T | BIT09_T | BIT10_T); //sdio mode = 0
     }
-    else if(eIP == EV_IP_FCIE2)
+    else if (eIpSel == IP_FCIE)
     {
         //Enable Clock Source to avoid reset fail
         CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CLKGEN_BANK,0x43), BIT05_T|BIT04_T|BIT03_T|BIT02_T|BIT01_T|BIT00_T); //[5:2]: Clk_Sel [1]: Clk_i [0]: Clk_g
         CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT02_T | BIT03_T); //sd mode = 0
-    }
-    else if(eIP == EV_IP_FCIE3)
-    {
-    }
-
-
-}
-
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_IPBeginSetting
- *     @author jeremy.wang (2015/7/29)
- * Desc: IP begin setting before every operation, it's about platform setting.
- *
- * @param eIP : FCIE1/FCIE2/...
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_IPBeginSetting(IPEmType eIP)
-{
-
-    if(eIP == EV_IP_FCIE1)
-    {
-    }
-    else if(eIP == EV_IP_FCIE2)
-    {
-    }
-    else if(eIP == EV_IP_FCIE3)
-    {
-    }
-
-
-}
-
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_IPEndSetting
- *     @author jeremy.wang (2015/7/29)
- * Desc: IP end setting after every operation, it's about platform setting.
- *
- * @param eIP : FCIE1/FCIE2/...
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_IPEndSetting(IPEmType eIP)
-{
-
-    if(eIP == EV_IP_FCIE1)
-    {
-    }
-    else if(eIP == EV_IP_FCIE2)
-    {
-    }
-    else if(eIP == EV_IP_FCIE3)
-    {
     }
 }
 
 //***********************************************************************************************************
 // PAD Setting for Card Platform
 //***********************************************************************************************************
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_InitPADPin
- *     @author jeremy.wang (2015/7/28)
- * Desc: Init PAD Pin Status ( pull enable, pull up/down, driving strength)
- *
- * @param ePAD : PAD
- * @param bTwoCard : two card(1 bit) or not
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_InitPADPin(PADEmType ePAD, BOOL_T bTwoCard)
+void Hal_CARD_InitPADPin(IpOrder eIP, PadOrder ePAD)
 {
+    PadSelect ePadSel = (PadSelect)ePAD;
 
-    if(ePAD == EV_PAD1) //PAD_SD
+    if (ePadSel == PAD_SD)
     {
         CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x32), BIT12_T|BIT11_T|BIT10_T|BIT09_T|BIT08_T);   //D3, D2, D1, D0, CMD=> pull en
         CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x32), BIT05_T|BIT04_T|BIT03_T|BIT02_T|BIT01_T|BIT00_T);   //CLK, D3, D2, D1, D0, CMD => drv: 0
     }
-    else if (ePAD == EV_PAD2) //PAD_NAND
+    else if (ePadSel == PAD_NAND)
     {
         CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x31), BIT04_T|BIT03_T|BIT02_T|BIT01_T|BIT00_T);   //D3, D2, D1, D0, CMD=> pull en
         CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x30), BIT06_T|BIT04_T|BIT03_T|BIT02_T|BIT01_T|BIT00_T);   //CLK, D3, D2, D1, D0, CMD => drv: 0
     }
-    else if (ePAD == EV_PAD3) //PAD_LCD
+    else if (ePadSel == PAD_LCD)
     {
         // D0 - pe:[0x4c]bit0, se:[0x4e]bit0
         // D1 - pe:[0x4c]bit1, se:[0x4e]bit1
@@ -246,51 +189,63 @@ void Hal_CARD_InitPADPin(PADEmType ePAD, BOOL_T bTwoCard)
         // CLK - drv:bit2, ie:bit6
         CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x47), BIT02_T|BIT06_T);
     }
-    else if (ePAD == EV_PAD4) //PAD_SNR: Sensor GPIO
+    else if (ePadSel == PAD_SNR)
     {
         // TODO:
     }
-
 }
 
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_SetPADToPortPath
- *     @author jeremy.wang (2015/7/28)
- * Desc: Set PAD to connect IP Port
- *
- * @param eIP : FCIE1/FCIE2/...
- * @param ePort : Port (But FCIE5 use it to decide FCIE or SDIO IP)
- * @param ePAD : PAD
- * @param bTwoCard : 1-bit two cards or not
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_SetPADToPortPath(IPEmType eIP, PortEmType ePort, PADEmType ePAD, BOOL_T bTwoCard)
+BOOL_T Hal_CARD_GetPadInfoCdzPad(IpOrder eIP, U32_T *nPadNum)
 {
+#if (PADMUX_SET == PADMUX_SET_BY_FUNC)
+    return TRUE;
+#else
+    return TRUE;
+#endif
+}
 
-    SET_CARD_PORT(eIP, ePort);
+BOOL_T Hal_CARD_GetPadInfoPowerPad(IpOrder eIP, U32_T *nPadNum)
+{
+#if (PADMUX_SET == PADMUX_SET_BY_FUNC)
+    return TRUE;
+#else
+    return TRUE;
+#endif
+}
 
-    if(eIP == EV_IP_FCIE1) // SDIO
+void Hal_CARD_ConfigSdPad(IpOrder eIP, PadOrder ePAD) //Hal_CARD_SetPADToPortPath
+{
+    IpSelect eIpSel = (IpSelect)eIP;
+    PadSelect ePadSel = (PadSelect)ePAD;
+
+    if (eIpSel == IP_SDIO)
     {
-        if(ePAD == EV_PAD1)  //PAD_SD
+        if (ePadSel == PAD_SD)
         {
             //CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT03_T);         //sd mode2 = 0
             CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT08_T);         //sdio mode = 1
         }
-        else if (ePAD == EV_PAD3) //PAD_LCD
+        else if (ePadSel == PAD_NAND)
+        {
+            //
+        }
+        else if (ePadSel == PAD_LCD)
         {
             //CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT02_T | BIT03_T | BIT08_T | BIT09_T | BIT10_T); //sd mode = 0, clear sdio mode
             CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT08_T | BIT09_T);    //sdio mode = 3
         }
-
+        else if (ePadSel == PAD_SNR)
+        {
+            //
+        }
     }
-    else if(eIP == EV_IP_FCIE2) // FCIE
+    else if (eIpSel == IP_FCIE)
     {
-        if(ePAD == EV_PAD1)  //PAD_SD
+        if (ePadSel == PAD_SD)
         {
             CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT03_T);         //sd mode = 2
         }
-        else if(ePAD == EV_PAD2)  //PAD_NAND
+        else if (ePadSel == PAD_NAND)
         {
             CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT00_T);           //reg_nand_mode = 0
             CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x13), BIT00_T);           //reg_emmc_mode = 0
@@ -298,26 +253,64 @@ void Hal_CARD_SetPADToPortPath(IPEmType eIP, PortEmType ePort, PADEmType ePAD, B
             //CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT03_T);           //sd_mode2 = 0
             CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT02_T);           //sd_mode1 = 1
         }
-
     }
-
 }
 
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_PullPADPin
- *     @author jeremy.wang (2015/7/28)
- * Desc: Pull PAD Pin for Special Purpose (Avoid Power loss.., Save Power)
- *
- * @param ePAD : PAD
- * @param ePinPull : Pull up/Pull down
- * @param bTwoCard :  two card(1 bit) or not
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_PullPADPin(PADEmType ePAD, PinPullEmType ePinPull, BOOL_T bTwoCard)
+void Hal_CARD_ConfigPowerPad(IpOrder eIP, U16_T nPadNum)
 {
+    IpSelect eIpSel = (IpSelect)eIP;
+    U16_T nPadNo = nPadNum;
 
-    if(ePAD == EV_PAD1) //PAD_SD
+    if (eIpSel >= IP_TOTAL)
+    {
+        pr_sd_err("sdmmc error ! [%s][%d]\n", __FUNCTION__, __LINE__);
+        return;
+    }
+
+    if (nPadNo == PAD_UNKNOWN)
+    {
+        // Save Power PadNum
+        _gu16PowerPadNumForEachIp[(U16_T)eIpSel] = PAD_UNKNOWN;
+        return;
+    }
+
+#if (PADMUX_SET == PADMUX_SET_BY_FUNC)
+
+    // Not support
+
+#else
+
+    switch (nPadNo)
+    {
+        case PAD_FUART_RTS:
+            break;
+
+        case PAD_PM_GPIO6:
+            break;
+
+        case PAD_PM_GPIO12:
+            break;
+
+        default:
+            pr_sd_err("sdmmc error ! [%s][%d]\n", __FUNCTION__, __LINE__);
+            return;
+            break;
+    }
+
+#endif
+
+    // Save Power PadNum
+    _gu16PowerPadNumForEachIp[(U16_T)eIpSel] = nPadNo;
+
+    // Default power off
+    Hal_CARD_PowerOff(eIP, 0);
+}
+
+void Hal_CARD_PullPADPin(IpOrder eIP, PadOrder ePAD, PinPullEmType ePinPull)
+{
+    PadSelect ePadSel = (PadSelect)ePAD;
+
+    if (ePadSel == PAD_SD)
     {
         if(ePinPull ==EV_PULLDOWN)
         {
@@ -374,11 +367,9 @@ void Hal_CARD_PullPADPin(PADEmType ePAD, PinPullEmType ePinPull, BOOL_T bTwoCard
 
             //SD_D3
             CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PADTOP_BANK, 0x55), BIT05_T);           // input mode
-
         }
-
     }
-    else if(ePAD == EV_PAD2) //PAD_NAND
+    else if (ePadSel == PAD_NAND)
     {
         if(ePinPull ==EV_PULLDOWN)
         {
@@ -414,8 +405,6 @@ void Hal_CARD_PullPADPin(PADEmType ePAD, PinPullEmType ePinPull, BOOL_T bTwoCard
             //SD_D3
             CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PADTOP_BANK, 0x46), BIT05_T);           // output mode
             CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PADTOP_BANK, 0x46), BIT04_T);           // output:0
-
-
         }
         else if(ePinPull == EV_PULLUP)
         {
@@ -444,13 +433,9 @@ void Hal_CARD_PullPADPin(PADEmType ePAD, PinPullEmType ePinPull, BOOL_T bTwoCard
 
             CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT03_T);           //sd_mode2 = 0
             CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT02_T);           //sd_mode1 = 1
-
-
-
         }
-
     }
-    else if(ePAD == EV_PAD3) //PAD_LCD
+    else if (ePadSel == PAD_LCD)
     {
         if(ePinPull ==EV_PULLDOWN)
         {
@@ -534,35 +519,23 @@ void Hal_CARD_PullPADPin(PADEmType ePAD, PinPullEmType ePinPull, BOOL_T bTwoCard
             // Mode switch
             //CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT08_T | BIT09_T| BIT10_T);  //sdio mode = 3
             CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_CHIPTOP_BANK, 0x08), BIT08_T | BIT09_T);  //sdio mode = 3
-
         }
-
     }
-    else if(ePAD == EV_PAD4) //PAD_SNR
+    else if (ePadSel == PAD_SNR)
     {
-        // TODO:
+        //
     }
-
 }
 
 
 //***********************************************************************************************************
 // Clock Setting for Card Platform
 //***********************************************************************************************************
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_SetClock
- *     @author jeremy.wang (2015/7/23)
- * Desc: Set Clock Level by Real Clock from IP
- *
- * @param eIP : FCIE1/FCIE2/...
- * @param u32ClkFromIPSet : Clock Value From IP Source Set
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_SetClock(IPEmType eIP, U32_T u32ClkFromIPSet)
+void Hal_CARD_SetClock(IpOrder eIP, U32_T u32ClkFromIPSet)
 {
+    IpSelect eIpSel = (IpSelect)eIP;
 
-    if(eIP == EV_IP_FCIE1)
+    if (eIpSel == IP_SDIO)
     {
         CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CLKGEN_BANK,0x45), BIT05_T|BIT04_T|BIT03_T|BIT02_T|BIT01_T|BIT00_T); //[5:2]: Clk_Sel [1]: Clk_i [0]: Clk_g
 
@@ -612,7 +585,7 @@ void Hal_CARD_SetClock(IPEmType eIP, U32_T u32ClkFromIPSet)
         }
 
     }
-    else if(eIP == EV_IP_FCIE2)
+    if (eIpSel == IP_FCIE)
     {
         CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_CLKGEN_BANK,0x43), BIT05_T|BIT04_T|BIT03_T|BIT02_T|BIT01_T|BIT00_T); //[5:2]: Clk_Sel [1]: Clk_i [0]: Clk_g
         CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_SC_GP_CTRL_BANK,0x25), BIT07_T); // select clk_fcie_p
@@ -662,63 +635,12 @@ void Hal_CARD_SetClock(IPEmType eIP, U32_T u32ClkFromIPSet)
                 break;*/
 
         }
-
     }
-    else if(eIP == EV_IP_FCIE3)
-    {
-        switch(u32ClkFromIPSet)
-        {
-            /*
-            case CLK3_F:      //48000KHz
-                break;
-            case CLK3_E:      //43200KHz
-                break;
-            case CLK3_D:      //40000KHz
-                break;
-            case CLK3_C:      //36000KHz
-                break;
-            case CLK3_B:      //32000KHz
-                break;
-            case CLK3_A:      //24000KHz
-                break;
-            case CLK3_9:      //12000KHz
-                break;
-            case CLK3_8:      //300KHz
-                break;
-            case CLK2_4:
-                break;
-            case CLK_3:
-                break;
-            case CLK2_2:
-                break;
-            case CLK2_1:
-                break;
-            case CLK2_0:
-                break;*/
-
-        }
-
-    }
-
 }
 
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_FindClockSetting
- *     @author jeremy.wang (2015/7/20)
- * Desc: Find Real Clock Level Setting by Reference Clock
- *
- * @param eIP : FCIE1/FCIE2/...
- * @param u32ReffClk : Reference Clock Value
- * @param u8PassLevel : Pass Level to Clock Speed
- * @param u8DownLevel : Down Level to Decrease Clock Speed
- *
- * @return U32_T  : Real Clock
- ----------------------------------------------------------------------------------------------------------*/
-U32_T Hal_CARD_FindClockSetting(IPEmType eIP, U32_T u32ReffClk, U8_T u8PassLevel, U8_T u8DownLevel)
+U32_T Hal_CARD_FindClockSetting(IpOrder eIP, U32_T u32ReffClk)
 {
-    U8_T  u8LV = u8PassLevel;
+    U8_T  u8LV = 0;
     U32_T u32RealClk = 0;
     U32_T u32ClkArr[3][16] = { \
         {CLK1_F, CLK1_E, CLK1_D, CLK1_C, CLK1_B, CLK1_A, CLK1_9, CLK1_8, CLK1_7, CLK1_6, CLK1_5, CLK1_4, CLK1_3, CLK1_2, CLK1_1, CLK1_0} \
@@ -734,405 +656,256 @@ U32_T Hal_CARD_FindClockSetting(IPEmType eIP, U32_T u32ReffClk, U8_T u8PassLevel
         }
     }
 
-    /****** For decrease clock speed******/
-    if( (u8DownLevel) && (u32RealClk) && ((u8LV+u8DownLevel)<=15) )
-    {
-        if(u32ClkArr[eIP][u8LV+u8DownLevel]>0) //Have Level for setting
-            u32RealClk = u32ClkArr[eIP][u8LV+u8DownLevel];
-    }
-
     return u32RealClk;
 }
-
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_SetBusTiming
- *     @author jeremy.wang (2015/7/20)
- * Desc: Platform Setting for different Bus Timing
- *
- * @param eIP : FCIE1/FCIE2/...
- * @param eBusTiming : LOW/DEF/HS/SDR12/DDR...
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_SetBusTiming(IPEmType eIP, BusTimingEmType eBusTiming)
-{
-    ge_BusTiming[eIP] = eBusTiming;
-}
-
 
 //***********************************************************************************************************
 // Power and Voltage Setting for Card Platform
 //***********************************************************************************************************
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_SetPADPower
- *     @author jeremy.wang (2015/7/30)
- * Desc: Set PAD power to different voltage
- *
- * @param ePAD : PAD
- * @param ePADVdd : NORMAL/MIN/LOW Voltage Level
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_SetPADPower(PADEmType ePAD, PADVddEmType ePADVdd)
+void Hal_CARD_PowerOn(IpOrder eIP, U16_T u16DelayMs)
 {
+    IpSelect eIpSel = (IpSelect)eIP;
+    U16_T nPadNo = 0;
 
-    if(ePAD == EV_PAD1)
+    if (eIpSel >= IP_TOTAL)
     {
-    }
-    else if(ePAD == EV_PAD2)
-    {
-
-    }
-    else if(ePAD == EV_PAD3)
-    {
-        if(ePADVdd == EV_NORVOL)
-        {
-        }
-    }
-}
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_PowerOn
- *     @author jeremy.wang (2015/7/29)
- * Desc: Power ON Card Power
- *
- * @param ePAD : PAD
- * @param u16DelayMs : Delay ms for stable power
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_PowerOn(PADEmType ePAD, U16_T u16DelayMs)
-{
-
-    if(ePAD==EV_PAD1) //PAD_SD
-    {
-        CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PADTOP_BANK, 0x17), BIT05_T);           // output mode
-        CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PADTOP_BANK, 0x17), BIT04_T);           // output:0
-
-
-    }
-    else if(ePAD==EV_PAD2) //PAD_NAND
-    {
-        CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x06), BIT00_T);           // output mode
-        CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x06), BIT01_T);           // output:0
-    }
-    else if(ePAD==EV_PAD3) //PAD_LCD
-    {
-        CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x0C), BIT00_T);           // output mode
-        CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x0C), BIT01_T);           // output:0
+        pr_sd_err("sdmmc error ! [%s][%d]\n", __FUNCTION__, __LINE__);
+        return;
     }
 
-    Hal_Timer_mSleep(u16DelayMs);
-    //Hal_Timer_mDelay(u16DelayMs);
+    nPadNo = _gu16PowerPadNumForEachIp[(U16_T)eIpSel];
 
-}
-
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_PowerOff
- *     @author jeremy.wang (2015/7/29)
- * Desc: Power Off Card Power
- *
- * @param ePAD : PAD
- * @param u16DelayMs :  Delay ms to confirm no any spower
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_PowerOff(PADEmType ePAD, U16_T u16DelayMs)
-{
-
-    if( (ePAD==EV_PAD1)) //PAD_SD
+    if (nPadNo == PAD_UNKNOWN)
     {
-        CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PADTOP_BANK, 0x17), BIT05_T);           // output mode
-        CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PADTOP_BANK, 0x17), BIT04_T);           // output:1
-
+        // Maybe we don't use power pin.
+        return;
     }
-    else if(ePAD==EV_PAD2) //PAD_NAND
+
+#if (GPIO_SET == GPIO_SET_BY_FUNC)
+
+    // Whatever mdrv_padmux_active is ON or OFF, just do GPIO_set.
+    MDrv_GPIO_Set_Low(nPadNo);
+
+#else
+
+    switch (nPadNo)
     {
-        CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x06), BIT00_T);           // output mode
-        CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x06), BIT01_T);           // output:0
+        case PAD_FUART_RTS:
+            CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PADTOP_BANK, 0x17), BIT05_T);   // output mode
+            CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PADTOP_BANK, 0x17), BIT04_T);   // output:0
+            break;
 
-    }
-    else if(ePAD==EV_PAD3) //PAD_LCD
-    {
-        CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x0C), BIT00_T);           // output mode
-        CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x0C), BIT01_T);           // output:0
+        case PAD_PM_GPIO6:
+            CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x06), BIT00_T);  // output mode
+            CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x06), BIT01_T);  // output:0
+            break;
 
+        case PAD_PM_GPIO12:
+            CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x0C), BIT00_T);  // output mode
+            CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x0C), BIT01_T);  // output:0
+            break;
+
+        default:
+            pr_sd_err("sdmmc error ! [%s][%d]\n", __FUNCTION__, __LINE__);
+            break;
     }
+
+#endif
 
     Hal_Timer_mSleep(u16DelayMs);
     //Hal_Timer_mDelay(u16DelayMs);
 }
 
+void Hal_CARD_PowerOff(IpOrder eIP, U16_T u16DelayMs)
+{
+    IpSelect eIpSel = (IpSelect)eIP;
+    U16_T nPadNo = 0;
+
+    if (eIpSel >= IP_TOTAL)
+    {
+        pr_sd_err("sdmmc error ! [%s][%d]\n", __FUNCTION__, __LINE__);
+        return;
+    }
+
+    nPadNo = _gu16PowerPadNumForEachIp[(U16_T)eIpSel];
+
+    if (nPadNo == PAD_UNKNOWN)
+    {
+        // Maybe we don't use power pin.
+        return;
+    }
+
+#if (GPIO_SET == GPIO_SET_BY_FUNC)
+
+    // Whatever mdrv_padmux_active is ON or OFF, just do GPIO_set.
+    MDrv_GPIO_Set_High(nPadNo);
+
+#else
+
+    switch (nPadNo)
+    {
+        case PAD_FUART_RTS:
+            CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PADTOP_BANK, 0x17), BIT05_T);   // output mode
+            CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PADTOP_BANK, 0x17), BIT04_T);   // output:1
+            break;
+
+        case PAD_PM_GPIO6:
+            CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x06), BIT00_T);  // output mode
+            CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x06), BIT01_T);  // output:1
+            break;
+
+        case PAD_PM_GPIO12:
+            CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x0C), BIT00_T);  // output mode
+            CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x0C), BIT01_T);  // output:1
+            break;
+
+        default:
+            pr_sd_err("sdmmc error ! [%s][%d]\n", __FUNCTION__, __LINE__);
+            break;
+    }
+
+#endif
+
+    Hal_Timer_mSleep(u16DelayMs);
+    //Hal_Timer_mDelay(u16DelayMs);
+}
 
 //***********************************************************************************************************
 // Card Detect and GPIO Setting for Card Platform
 //***********************************************************************************************************
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_InitGPIO
- *     @author jeremy.wang (2016/12/15)
- * Desc: Init GPIO Setting for CDZ or other GPIO (Pull high/low and driving, base SD/GPIO mode setting)
- *
- * @param eGPIO : GPIO1/GPIO2/...
- * @param ePAD : PAD
- * @param bEnable : Enable GPIO or disable GPIO to avoid loss power
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_InitGPIO(GPIOEmType eGPIO, PADEmType ePAD, BOOL_T bEnable)
+void Hal_CARD_ConfigCdzPad(IpOrder eIP, U16_T nPadNum) // Hal_CARD_InitGPIO
 {
-    if( eGPIO==EV_GPIO1 ) //EV_GPIO1 for Slot 0
+    IpSelect eIpSel = (IpSelect)eIP;
+    U16_T nPadNo = nPadNum;
+
+    if (eIpSel >= IP_TOTAL)
     {
-        if(ePAD==EV_PAD1) //PAD_SD
-        {
-            if(bEnable)
-            {
-                CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_SLEEP_BANK, 0x28), BIT14_T);   //SD_CDZ mode en
-                CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x47), BIT00_T);    //input mode
-            }
-        }
-        else if(ePAD==EV_PAD2) //PAD_NAND
-        {
-            if(bEnable)
-            {
-                CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x1C), BIT00_T);    //input mode
-            }
-        }
-        else if(ePAD==EV_PAD3) //PAD_LCD
-        {
-            if(bEnable)
-            {
-                CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_SLEEP_BANK, 0x1C), BIT04_T);   //PM_IRIN as GPIO
-                CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x14), BIT00_T);    //input mode
-            }
-        }
-
-    }
-    else if( eGPIO==EV_GPIO2 ) //EV_GPIO2 for Slot 1
-    {
-
-        if(ePAD==EV_PAD1) //PAD_SD
-        {
-            CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_SLEEP_BANK, 0x28), BIT14_T);   //SD_CDZ mode en
-            CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x47), BIT00_T);    //input mode
-        }
-
+        pr_sd_err("sdmmc error ! [%s][%d]\n", __FUNCTION__, __LINE__);
+        return;
     }
 
-}
-
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_GetGPIOState
- *     @author jeremy.wang (2016/12/15)
- * Desc: Get GPIO input mode value (Include input mode setting)
- *
- * @param eGPIO : GPIO1/GPIO2/...
- * @param ePAD : PAD
- *
- * @return BOOL_T  : Insert (TRUE) or Remove (FALSE)
- ----------------------------------------------------------------------------------------------------------*/
-BOOL_T Hal_CARD_GetGPIOState(GPIOEmType eGPIO, PADEmType ePAD)
-{
-    U16_T u16Reg = 0;
-
-
-    if( eGPIO==EV_GPIO1 ) //EV_GPIO1 for Slot 0
+    if (nPadNo == PAD_UNKNOWN)
     {
-        if(ePAD==EV_PAD1) //PAD_SD
-        {
-            u16Reg = CARD_REG(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x47)) & BIT02_T;
-        }
-        else if(ePAD==EV_PAD2) //PAD_NAND
-        {
-            u16Reg = CARD_REG(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x07)) & BIT02_T;
-        }
-        else if(ePAD==EV_PAD3) //PAD_LCD
-        {
-            u16Reg = CARD_REG(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x14)) & BIT02_T;
-        }
-
-    }
-    if( eGPIO==EV_GPIO2 ) //EV_GPIO2 for Slot 1
-    {
-        if(ePAD==EV_PAD1) //PAD_SD
-        {
-            u16Reg = CARD_REG(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x47)) & BIT02_T;
-        }
-
-        if(!u16Reg) //Low Active
-            return (TRUE);
-        else
-            return (FALSE);
-
-
-
+        // Save CDZ PadNum
+        _gu16CdzPadNumForEachIp[(U16_T)eIpSel] = PAD_UNKNOWN;
+        return;
     }
 
-    if(!u16Reg) //Low Active
-        return (TRUE);
-    else
-        return (FALSE);
+// PADMUX
+#if (PADMUX_SET == PADMUX_SET_BY_FUNC)
 
-
-    return (FALSE);
-}
-
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_SetGPIOState
- *     @author jeremy.wang (2016/12/15)
- * Desc: Set GPIO output mode value (Include output mode setting), it's for SDIO WIFI control using
- *
- * @param eGPIO : GPIO1/GPIO2/...
- * @param ePAD : PAD
- * @param bOutputState : TRUE or FALSE
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_SetGPIOState(GPIOEmType eGPIO, PADEmType ePAD, BOOL_T bOutputState)
-{
-
-    /*if( eGPIO==EV_GPIO1 ) //EV_GPIO1 for Slot 0
+    if (0 == mdrv_padmux_active())
     {
-        CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PMGPIO_BANK, 0x05), BIT00_T);           //PMU_GPIO_OUT_EN
-
-        if(bOutputState)
-        {
-            CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PMGPIO_BANK, 0x07), BIT00_T);        //PMU_GPIO_OUT=1
-        }
-        else
-        {
-            CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PMGPIO_BANK, 0x07), BIT00_T);       //PMU_GPIO_OUT=0
-        }
-    }
-    if( eGPIO==EV_GPIO2 ) //EV_GPIO2 for Slot 1
-    {
-    }
-    if( eGPIO==EV_GPIO3 ) //EV_GPIO2 for Slot 1
-    {
+        MDrv_GPIO_PadVal_Set(nPadNo, PINMUX_FOR_GPIO_MODE);
     }
 
-    // Add a 500ms Delay after card removing to avoid the next card inserting issue
-    if(bOutputState==1)
+#else
+
+    switch (nPadNo)
     {
-        Hal_Timer_mSleep(500);
+        case PAD_PM_SD_CDZ:
+            //
+            break;
+
+        case PAD_PM_IRIN:
+            CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_SLEEP_BANK, 0x1C), BIT04_T); // PM_IRIN as GPIO
+            break;
+
+        default:
+            pr_sd_err("sdmmc error ! [%s][%d]\n", __FUNCTION__, __LINE__);
+            return;
+            break;
     }
-    else // For 0->1, 1->0 stable
-    {
-        Hal_Timer_mSleep(1);
-    }*/
 
-}
-
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_GetGPIONum
- *     @author jeremy.wang (2016/12/15)
- * Desc: Get GPIO number for special platform (like Linux) to use it get irq number
- *
- * @param eGPIO : GPIO1/GPIO2/...
- * @param ePAD : PAD
- *
- * @return U32_T  : GPIO number
- ----------------------------------------------------------------------------------------------------------*/
-U32_T Hal_CARD_GetGPIONum(GPIOEmType eGPIO, PADEmType ePAD)
-{
-    //S32_T s32GPIO = -1;
-
-    /*if( eGPIO==EV_GPIO1 ) //EV_GPIO1 for Slot 0
-    {
-        //s32GPIO = DrvPadmuxGetGpio(IO_CHIP_INDEX_SD_CDZ);
-    }
-    else if( eGPIO==EV_GPIO2)
-    {
-    }*/
-
-    /*if(s32GPIO>0)
-        return (U32_T)s32GPIO;
-    else
-        return 0;*/
-
-    return  0;
-}
-
-
-#if (D_OS == D_OS__LINUX)
-#include <linux/irq.h>
-#include "../../../sstar/include/infinity5/irqs.h"
 #endif
 
-//extern struct irq_chip gic_arch_extn;
-extern struct irq_chip ms_main_intc_irqchip;
-extern struct irq_chip ms_pm_intc_irqchip;
+// GPIO
+#if (GPIO_SET == GPIO_SET_BY_FUNC)
+    // Whatever mdrv_padmux_active is ON or OFF, just set it to input mode.
+    MDrv_GPIO_Pad_Odn(nPadNo);
+#else
 
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_SetGPIOIntAttr
- *     @author jeremy.wang (2016/12/15)
- * Desc: Set GPIO Interrupt Attribute (Option 1..5), it could design for different requirement
- *
- * @param eGPIO : GPIO1/GPIO2/...
- * @param ePAD : PAD
- * @param eGPIOOPT :  Option1/Option2/...
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_SetGPIOIntAttr(GPIOEmType eGPIO, PADEmType ePAD, GPIOOptEmType eGPIOOPT, unsigned int irq)
-{
-#if (D_OS == D_OS__LINUX)
-    if(eGPIOOPT==EV_GPIO_OPT1) //clear interrupt
+    switch (nPadNo)
     {
-        struct irq_data *sd_irqdata = irq_get_chip_data(irq);
-        struct irq_chip *chip = irq_get_chip(irq);
+        case PAD_PM_SD_CDZ:
+            CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x47), BIT00_T);  //input mode
+            break;
 
-        chip->irq_ack(sd_irqdata);
-        //CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PMSLEEP_BANK, 0x75),  BIT00_T);
+        case PAD_PM_IRIN:
+            //
+            CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x14), BIT00_T);  // input mode
+            break;
+
+        default:
+            pr_sd_err("sdmmc error ! [%s][%d]\n", __FUNCTION__, __LINE__);
+            return;
+            break;
     }
-    else if((eGPIOOPT==EV_GPIO_OPT2))
-    {
-    }
-    else if((eGPIOOPT==EV_GPIO_OPT3))  //sd polarity _HI Trig for remove
-    {
-        irq_set_irq_type(irq, IRQ_TYPE_EDGE_RISING);
-        //CARD_REG_CLRBIT(GET_CARD_REG_ADDR(A_PM_SLEEP_BANK, 0x7B),  BIT00_T);
-    }
-    else if((eGPIOOPT==EV_GPIO_OPT4)) //sd polarity _LO Trig for insert
-    {
-        irq_set_irq_type(irq, IRQ_TYPE_EDGE_FALLING);
-        //CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_SLEEP_BANK, 0x7B),  BIT00_T);
-    }
+
 #endif
+
+    // This is a special case, SD_CDZ mode ON/OFF status will use different GIC path.
+    // We must switch ON - SD_CDZ mode
+    if (nPadNo == PAD_PM_SD_CDZ)
+    {
+        CARD_REG_SETBIT(GET_CARD_REG_ADDR(A_PM_SLEEP_BANK, 0x28), BIT14_T); //SD_CDZ mode en
+    }
+
+    // Save CDZ PadNum
+    _gu16CdzPadNumForEachIp[(U16_T)eIpSel] = nPadNo;
 }
 
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_GPIOIntFilter
- *     @author jeremy.wang (2016/12/15)
- * Desc: GPIO Interrupt Filter, it could design to filter GPIO Interrupt (Many sources belong to the same one)
- *
- * @param eGPIO : GPIO1/GPIO2/...
- * @param ePAD : PAD
- *
- * @return BOOL_T  : TRUE or FALSE
- ----------------------------------------------------------------------------------------------------------*/
-BOOL_T Hal_CARD_GPIOIntFilter(GPIOEmType eGPIO, PADEmType ePAD)
+BOOL_T Hal_CARD_GetCdzState(IpOrder eIP) // Hal_CARD_GetGPIOState
 {
+    IpSelect eIpSel = (IpSelect)eIP;
+    U16_T nPadNo = 0;
+    U8_T nLv = 0;
 
-    if( eGPIO==EV_GPIO1 ) //EV_GPIO1 for Slot 0
+    if (eIpSel >= IP_TOTAL)
     {
-        return (TRUE);
-    }
-    else if( eGPIO==EV_GPIO2 )
-    {
-         return (TRUE);
-    }
-    else if( eGPIO==EV_GPIO3 )
-    {
-         return (TRUE);
+        pr_sd_err("sdmmc error ! [%s][%d]\n", __FUNCTION__, __LINE__);
+        goto fail;
     }
 
-    return (FALSE);
+    nPadNo = _gu16CdzPadNumForEachIp[(U16_T)eIpSel];
+
+    if (nPadNo == PAD_UNKNOWN)
+    {
+        // Maybe we don't use CDZ pin.
+        goto fail;
+    }
+
+#if (GPIO_SET == GPIO_SET_BY_FUNC)
+    nLv = MDrv_GPIO_Pad_Read(nPadNo);
+#else
+
+    switch (nPadNo)
+    {
+        case PAD_PM_SD_CDZ:
+            nLv = CARD_REG(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x47)) & BIT02_T;
+            break;
+
+        case PAD_PM_IRIN:
+            nLv = CARD_REG(GET_CARD_REG_ADDR(A_PM_GPIO_BANK, 0x14)) & BIT02_T;
+            break;
+
+        default:
+            pr_sd_err("sdmmc error ! [%s][%d]\n", __FUNCTION__, __LINE__);
+            goto fail;
+            break;
+    }
+
+#endif
+
+    if (!nLv) // Low Active
+    {
+        return TRUE;
+    }
+
+fail:
+
+    return FALSE;
 }
-
 
 //***********************************************************************************************************
 // MIU Setting for Card Platform

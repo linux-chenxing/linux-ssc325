@@ -28,7 +28,7 @@
 #include <asm/mach/arch.h>
 #include <asm/mach-types.h>
 
-#ifdef CONFIG_MS_BUILTIN_DTB
+#ifdef CONFIG_SS_BUILTIN_DTB
 extern void *builtin_dtb_start;
 #endif
 
@@ -234,7 +234,7 @@ const struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 
 	if (!dt_phys || !early_init_dt_verify(phys_to_virt(dt_phys)))
 	{
-#ifdef CONFIG_MS_BUILTIN_DTB
+#ifdef CONFIG_SS_BUILTIN_DTB
 		if(early_init_dt_verify(builtin_dtb_start))
 		{
 			extern int early_atags_to_fdt(void *atag_list, void *fdt, int total_space);

@@ -1,4 +1,19 @@
-/* SigmaStar trade secret */
+/*
+* mhal_emac.h- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
+*/
 /*
 * mhal_emac.h- Sigmastar
 *
@@ -329,6 +344,10 @@
 #define REG_EMAC_JULIAN_0124            0x00000124
 #define REG_EMAC_JULIAN_0134            0x00000134
 #define REG_EMAC_JULIAN_0138            0x00000138
+#define REG_EMAC_JULIAN_0146            0x00000146           // REG_ETH_EMAC1_h23
+
+#define PIPE_LINE_DELAY                 (0x0001 << 4)
+#define EMAC_PATCH_LOCK                 (0x0001 << 15)
 
 //#define REG_CAMA0_l                     0x00000200         // 16 LSB of CAM address  0
 //#define REG_CAMA0_h                     0x00000204         // 32 MSB of CAM address  0
@@ -440,6 +459,7 @@ void MHal_EMAC_Set_Rx_Tx_Burst16_Mode(void*, u32 xval);
 // void MHal_EMAC_Set_Tx_Rx_Req_Priority_Switch(u32 xval);
 void MHal_EMAC_Set_Rx_Byte_Align_Offset(void*, u32 xval);
 // void MHal_EMAC_Write_Protect(u32 start_addr, u32 length);
+void MHal_EMAC_Set_Pipe_Line_Delay(void*, int enable);
 
 void* MHal_EMAC_Alloc(u32 riu, u32 x32, u32 riu_phy);
 void MHal_EMAC_Free(void*);
@@ -485,8 +505,12 @@ void MHal_EMAC_PhyMode(void*, u32 phy_mode);
 
 int MHal_EMAC_FlowControl_TX(void*);
 
+void MHal_EMAC_MIU_Protect_RX(void* hal, u32 start, u32 end);
+
 // for fpga
 void MHal_EMAC_mdio_path(void* hal, int mdio_path);
+
+void MHal_EMAC_Phy_Restart_An(void* hal);
 
 #endif
 // -----------------------------------------------------------------------------

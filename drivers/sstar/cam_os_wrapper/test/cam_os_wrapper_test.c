@@ -1,15 +1,18 @@
-/* Copyright (c) 2018-2019 Sigmastar Technology Corp.
- All rights reserved.
-
- Unless otherwise stipulated in writing, any and all information contained
-herein regardless in any format shall remain the sole proprietary of
-Sigmastar Technology Corp. and be kept in strict confidence
-(Sigmastar Confidential Information) by the recipient.
-Any unauthorized act including without limitation unauthorized disclosure,
-copying, use, reproduction, sale, distribution, modification, disassembling,
-reverse engineering and compiling of the contents of Sigmastar Confidential
-Information is unlawful and strictly prohibited. Sigmastar hereby reserves the
-rights to any and all damages, losses, costs and expenses resulting therefrom.
+/*
+* cam_os_wrapper_test.c- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
 */
 
 
@@ -1086,7 +1089,7 @@ static void _TestCamOsSystemTime(void)
     {
         CamOsGetTimeOfDay(&tTs);
         nRawTime = (time_t)tTs.nSec;
-        tTm = localtime (&nRawTime);     
+        tTm = localtime (&nRawTime);
         CamOsPrintf("RawSecond: %d  ->  %d/%02d/%02d [%d]  %02d:%02d:%02d\n",
                     tTs.nSec,
                     tTm->tm_year+1900,

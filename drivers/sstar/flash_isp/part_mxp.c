@@ -1,9 +1,8 @@
 /*
 * part_mxp.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/version.h>
@@ -30,7 +29,7 @@ static int mxp_table_size=0;
 static int mxp_record_count=0;
 static mxp_manager* mxp;
 static mxp_record*  mxp_parts=NULL;
-static const int mxp_offset[] = {0xA000/*40K*/, 0xC000/*48K*/, 0xF000/*60K*/, 0x20000/*128K*/, 0x40000/*256K*/, 0x80000/*512K*/};
+static const int mxp_offset[] = {0xA000/*40K*/, 0xC000/*48K*/, 0xF000/*60K*/, 0x10000/*64K*/, 0x20000/*128K*/, 0x40000/*256K*/, 0x80000/*512K*/};
 
 int mxp_base;
 

@@ -1,9 +1,8 @@
 /*
 * mdrv_sar.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/module.h>
@@ -28,6 +27,7 @@
 #include <linux/of_device.h>
 #include <linux/interrupt.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/uaccess.h>
 #include <linux/io.h>
 #include <linux/cpufreq.h>
@@ -92,7 +92,7 @@ BOOL HAL_SAR_Write2ByteMask(U32 u32RegAddr, U16 u16Val, U16 u16Mask)
 static long ms_sar_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
     S32 s32Err= 0;
-    ADC_CONFIG_READ_ADC adcCfg;
+    SAR_ADC_CONFIG_READ adcCfg;
 
     //printk("%s is invoked\n", __FUNCTION__);
 
@@ -128,12 +128,12 @@ static long ms_sar_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
     switch(cmd)
     {
-    case MS_SAR_INIT:
+    case IOCTL_SAR_INIT:
         ms_sar_hw_init();
         break;
 
-    case MS_SAR_SET_CHANNEL_READ_VALUE:
-        if(copy_from_user(&adcCfg, (ADC_CONFIG_READ_ADC __user *)arg, sizeof(ADC_CONFIG_READ_ADC)))
+    case IOCTL_SAR_SET_CHANNEL_READ_VALUE:
+        if(copy_from_user(&adcCfg, (SAR_ADC_CONFIG_READ __user *)arg, sizeof(SAR_ADC_CONFIG_READ)))
         {
             return EFAULT;
         }
@@ -143,7 +143,7 @@ static long ms_sar_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         adcCfg.adc_value = ms_sar_get(channel);
         sarDbg("channel = %d , adc =%d \n",channel, adcCfg.adc_value);
 
-        if(copy_to_user((ADC_CONFIG_READ_ADC __user *)arg, &adcCfg, sizeof( ADC_CONFIG_READ_ADC)))
+        if(copy_to_user((SAR_ADC_CONFIG_READ __user *)arg, &adcCfg, sizeof( SAR_ADC_CONFIG_READ)))
         {
             return EFAULT;
         }
@@ -210,12 +210,15 @@ EXPORT_SYMBOL(ms_sar_get);
 
 static int infinity_sar_probe(struct platform_device *pdev)
 {
+    int retval;
     struct device *dev;
     struct ms_sar *sar;
     struct resource *res;
+    struct clk *clk;
+    struct clk_hw *hw_parent;
 
-    //sarDbg("[SAR] infinity_sar_probe \n");
-    printk("[SAR] infinity_sar_probe \n");
+    sarDbg("[SAR] infinity_sar_probe \n");
+    // printk("[SAR] infinity_sar_probe \n");
     dev = &pdev->dev;
     sar = devm_kzalloc(dev, sizeof(*sar), GFP_KERNEL);
     if (!sar)
@@ -232,14 +235,47 @@ static int infinity_sar_probe(struct platform_device *pdev)
     sar->reg_base = devm_ioremap_resource(&pdev->dev, res);
     _gMIO_MapBase=(U32)sar->reg_base;
 
+    //2. set clk
+    clk = of_clk_get(pdev->dev.of_node, 0);
+    if(IS_ERR(clk))
+    {
+        retval = PTR_ERR(clk);
+        sarDbg("[%s]: of_clk_get failed\n", __func__);
+    }
+    else
+    {
+        /* select clock mux */
+        hw_parent = clk_hw_get_parent_by_index(__clk_get_hw(clk), 0);  // select mux 0
+        sarDbg( "[%s]parent_num:%d parent[0]:%s\n", __func__,
+                clk_hw_get_num_parents(__clk_get_hw(clk)), clk_hw_get_name(hw_parent));
+        clk_set_parent(clk, hw_parent->clk);
+
+        clk_prepare_enable(clk);
+        sarDbg("[SAR] clk_prepare_enable\n");
+    }
+
     misc_register(&sar_miscdev);
     return 0;
 }
 
-static int infinity_sar_remove(struct platform_device *dev)
+static int infinity_sar_remove(struct platform_device *pdev)
 {
+    struct clk *clk;
     sarDbg("[SAR]infinity_sar_remove \n");
     misc_deregister(&sar_miscdev);
+
+    clk = of_clk_get(pdev->dev.of_node, 0);
+    if (IS_ERR(clk))
+    {
+        sarDbg( "[SAR] Fail to get clk!\n" );
+
+    }
+    else
+    {
+        clk_disable_unprepare(clk);
+        clk_put(clk);
+    }
+
     return 0;
 }
 

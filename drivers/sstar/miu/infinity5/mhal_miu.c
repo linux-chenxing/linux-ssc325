@@ -1,9 +1,8 @@
 /*
 * mhal_miu.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/printk.h>
@@ -268,7 +267,7 @@ static MS_S16 HAL_MIU_GetClientIndex(MS_U8 u8MiuSel, eMIUClientID eClientID)
     MS_U8 idx = 0;
 
     if (MIU_MAX_DEVICE <= u8MiuSel) {
-        MIU_HAL_ERR("Wrong MIU device:%u\n", u8MiuSel);
+        MIU_HAL_ERR("%s not support MIU%u!\n", __FUNCTION__, u8MiuSel );
         return (-1);
     }
 
@@ -298,7 +297,7 @@ static MS_U16 HAL_MIU_Read2Byte(MS_U32 u32RegProtectId)
 static MS_BOOL HAL_MIU_WriteByte(MS_U32 u32RegProtectId, MS_U8 u8Val)
 {
     if (!u32RegProtectId) {
-        MIU_HAL_ERR("%s reg error!\n", __FUNCTION__);
+        MIU_HAL_ERR("%s reg err\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -313,7 +312,7 @@ static MS_BOOL HAL_MIU_WriteByte(MS_U32 u32RegProtectId, MS_U8 u8Val)
 static MS_BOOL HAL_MIU_Write2Byte(MS_U32 u32RegProtectId, MS_U16 u16Val)
 {
     if (!u32RegProtectId) {
-        MIU_HAL_ERR("%s reg error!\n", __FUNCTION__);
+        MIU_HAL_ERR("%s reg err\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -509,7 +508,7 @@ MS_BOOL HAL_MIU_GetHitProtectInfo(MS_U8 u8MiuSel, MIU_PortectInfo *pInfo)
         u32EndAddr = (pInfo->uAddress + MIU_PROTECT_ADDRESS_UNIT - 1);
 
         HAL_MIU_ClientIdToName((MS_U8)(GET_HIT_CLIENT(u16Ret)), clientName);
-        printk(KERN_EMERG "MIU%u Block:%u Client:%s ID:%u-%u Hitted_Address(MIU):0x%x<->0x%x\n",
+        printk(KERN_EMERG "MIU%u Block:%u Client:%s ID:%u-%u Hitted_Addr:0x%x<->0x%x\n",
                u8MiuSel, pInfo->u8Block, clientName,
                pInfo->u8Group, pInfo->u8ClientID,
                pInfo->uAddress, u32EndAddr);
@@ -595,18 +594,18 @@ MS_BOOL HAL_MIU_Protect(    MS_U8   u8Blockx,
     // Parameter check
     if (u8Blockx >= E_MIU_BLOCK_NUM)
     {
-        MIU_HAL_ERR("Err: Out of the number of protect device\n");
+        MIU_HAL_ERR("Err: Blk Num out of range\n");
         return FALSE;
     }
     else if (((u32Start & ((1 << MIU_PAGE_SHIFT) -1)) != 0) ||
              ((u32End & ((1 << MIU_PAGE_SHIFT) -1)) != 0))
     {
-        MIU_HAL_ERR("Err: Protected address should be aligned to 8KB\n");
+        MIU_HAL_ERR("Err: Protected addr not 8KB aligned\n");
         return FALSE;
     }
     else if (u32Start >= u32End)
     {
-        MIU_HAL_ERR("Err: Start address is equal to or more than end address\n");
+        MIU_HAL_ERR("Err: Invalid end addr\n");
         return FALSE;
     }
 
@@ -823,7 +822,7 @@ unsigned int HAL_MIU_ProtectDramSize(void)
     u8Val = (u8Val >> 4) & 0xF;
 
     if (0 == u8Val) {
-        MIU_HAL_ERR("MIU protect DRAM size is undefined. Using 0x40000000 as default\n");
+        MIU_HAL_ERR("MIU protect size undefined. Using 0x40000000\n");
         return 0x40000000;
     }
     return (0x1 << (20 + u8Val));
@@ -835,7 +834,7 @@ int HAL_MIU_ClientIdToName(MS_U16 clientId, char *clientName)
 
     if (!clientName) {
         iRet = -1;
-        MIU_HAL_ERR("do nothing, input wrong clientName\n");
+        MIU_HAL_ERR("Wrong clientName\n");
         return iRet;
     }
 
@@ -1039,7 +1038,7 @@ int HAL_MIU_ClientIdToName(MS_U16 clientId, char *clientName)
             strcpy(clientName, "CPU_RW");
             break;
         default:
-            MIU_HAL_ERR("Input wrong clientId [%d]\n", clientId);
+            MIU_HAL_ERR("Wrong clientId %d\n", clientId);
             iRet = -1;
             break;
     }

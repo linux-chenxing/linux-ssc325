@@ -1,9 +1,8 @@
 /*
 * mdrv_sha.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -169,18 +168,20 @@ static int infinity_sha256_update(struct shash_desc *desc, const u8 *data, unsig
         HAL_SHA_ManualMode(1);
         
         HAL_SHA_Start();
+        udelay(1);  //sha256 cost about 1~1.4us
 
         u32loopCnt = 0;
         while(((HAL_SHA_GetStatus() & SHARNG_CTRL_SHA_READY) != SHARNG_CTRL_SHA_READY) )
         {
             u32loopCnt++;
-            mdelay(1);
+
             if(u32loopCnt>LOOP_CNT)
             {
                 printk("ERROR!! %s %d %d \n",__FUNCTION__, __LINE__, SHA256_BLOCK_SIZE);
                 break;
             }
         }
+
         HAL_SHA_Out((U32)sctx->state);
         HAL_SHA_Clear();
         u32InputCopied += SHA256_BLOCK_SIZE;
@@ -310,11 +311,12 @@ int infinity_sha_update(u32 *in, u32 len, u32 *state, u32 count, u8 once)
     }
 
     HAL_SHA_Start();
+    udelay(1);  //sha256 cost about 1~1.4us
 
     while(((HAL_SHA_GetStatus() & SHARNG_CTRL_SHA_READY) != SHARNG_CTRL_SHA_READY) && (loop < LOOP_CNT))
     {
         loop++;
-        udelay(10);
+        //usleep_range(20, 80);
     }
     HAL_SHA_ReadOut((U32)state);
     msg_cnt = HAL_SHA_ReadWordCnt() << 2;

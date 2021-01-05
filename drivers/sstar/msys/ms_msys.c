@@ -1,9 +1,8 @@
 /*
 * ms_msys.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 /*
@@ -45,57 +44,34 @@
 #include "mdrv_msys_io.h"
 #include "platform_msys.h"
 #include "mdrv_verchk.h"
-#include "mdrv_miu.h"
+
 #include "mdrv_system.h"
-#include "cam_os_wrapper.h"
-#include "hal_bdma.h"
-#include "hal_movedma.h"
-
-
-#define MSYS_PERF_TEST          0
-
-#if MSYS_PERF_TEST
-
-#if 1
-#define dmac_map_area			__glue(_CACHE,_dma_map_area)
-#define dmac_unmap_area 		__glue(_CACHE,_dma_unmap_area)
-extern void dmac_map_area(const void *, size_t, int);
-extern void dmac_unmap_area(const void *, size_t, int);
-#else
-#define dmac_map_area(a, b, c) {}
-#define dmac_unmap_area(a, b, c) {}
+#ifdef CONFIG_MS_CPU_FREQ
+#include "cpu_freq.h"
 #endif
+#include "cam_os_wrapper.h"
+
+//#define CONFIG_MS_SYSTEM_PART_STRING /*used to in I3*/
+//#define CONFIG_MSYS_REQUEST_PROC  /*used to in I3*/
+//#define CONFIG_MSYS_KFILE_API /*used to in I3*/
+//#define CONFIG_IOCTL_MSYS_MIU_PROTECT /*used to in I3*/
+//#define CONFIG_MS_US_TICK_API
+//#define CONFIG_MS_PIU_TICK_API
+#define CONFIG_IOCTL_MSYS_USER_TO_PHYSICAL
+#define CONFIG_IOCTL_MSYS_DMEM
+#ifdef CONFIG_ARCH_INFINITY2
+#define CONFIG_IOCTL_MSYS_GET_UDID
+#endif
+#define CONFIG_IOCTL_MSYS_ADDR_TRANS
+#define CONFIG_IOCTL_FLUSH_CACHE
+//#define CONFIG_IOCTL_IPCM_USELESS
 
 
-#include <linux/time.h>
 
-#define STR_IMI         "IMI"
-#define STR_MIU         "MIU"
-#define STR_CACHE       "CACHE"
-#define STR_CPUINFO     "CPUINFO"
-#define STR_ALL         "ALL"
-
-////////////////////////////////////////////
-#define STR_CPUINFO_CA9         "ARMv7 CA9"
-#define STR_CPUINFO_CA7         "ARMv7 CA7"
-#define STR_CPUINFO_CA53        "ARMv8 CA53"
-#define STR_CPUINFO_NULL        "CPU_NULL"
-#define IRQ_LIST 1000
-#define CPU_PART_CA7            0xC07
-#define CPU_PART_CA9            0xC09
-#define CPU_PART_CA53           0xD03
-#define CPU_PART_NULL           0x000
-
-#define IMI_ADDR_INVALID        0xFFFFFFFF
-#define IMI_SIZE_INVALID        0xFFFFFFFF
-#endif // #if MSYS_PERF_TEST
-
-#define BENCH_MEMORY_FUNC            0
 #define MSYS_DEBUG                   0
 #define MINOR_SYS_NUM               128
 #define MAJOR_SYS_NUM               233
 
-#define MSYS_MIU_PROTECT        	1
 
 #if MSYS_DEBUG
 #define MSYS_PRINT(fmt, args...)    printk("[MSYS] " fmt, ## args)
@@ -105,7 +81,6 @@ extern void dmac_unmap_area(const void *, size_t, int);
 
 #define MSYS_ERROR(fmt, args...)    printk(KERN_ERR"MSYS: " fmt, ## args)
 #define MSYS_WARN(fmt, args...)     printk(KERN_WARNING"MSYS: " fmt, ## args)
-
 
 extern void Chip_Flush_Memory(void);
 
@@ -121,14 +96,13 @@ typedef struct
   struct list_head list;
 } PROC_INFO_LIST;
 
+#ifdef CONFIG_MSYS_REQUEST_PROC
 static int msys_request_proc_attr(MSYS_PROC_ATTRIBUTE* proc_attr);
 static int msys_release_proc_attr(MSYS_PROC_ATTRIBUTE* proc_attr);
 static int msys_request_proc_dev(MSYS_PROC_DEVICE* proc_dev);
 static int msys_release_proc_dev(MSYS_PROC_DEVICE* proc_dev);
-
-#if BENCH_MEMORY_FUNC==1
-static void msys_bench_memory(unsigned int);
 #endif
+
 
 static struct file_operations msys_fops = {
     .owner = THIS_MODULE,
@@ -138,16 +112,18 @@ static struct file_operations msys_fops = {
 };
 
 
-static struct miscdevice sys_dev = {
+struct miscdevice sys_dev = {
     .minor      = MINOR_SYS_NUM,
     .name       = "msys",
     .fops       = &msys_fops,
 };
 
+#ifdef CONFIG_MS_SYSTEM_PART_STRING
 static unsigned char data_part_string[32]={0};
 static unsigned char system_part_string[32]={0};
+static unsigned char mstar_property_path[32]="/data";
+#endif
 
-//static unsigned char mstar_property_path[32]="/data";
 
 static u64 sys_dma_mask = 0xffffffffUL;
 struct list_head kept_mem_head;
@@ -155,25 +131,15 @@ struct list_head fixed_mem_head;
 static struct mutex dmem_mutex;
 static unsigned char fixed_dmem_enabled=0;
 static unsigned char dmem_realloc_enabled=0;
-//static unsigned long dmem_lock_flags;
-
-static unsigned int dmem_retry_interval=100; //(ms)
 static unsigned int dmem_retry_count=16;
 
-#if defined(CONFIG_MS_BDMA)
-static CamOsTsem_t m_stBdmaDoneSem[HAL_BDMA_CH_NUM];
-#endif
-#if defined(CONFIG_MS_MOVE_DMA)
-static CamOsTsem_t m_stMdmaDoneSem;
-#endif
 
 struct DMEM_INFO_LIST
 {
     struct list_head list;
     MSYS_DMEM_INFO dmem_info;
 };
-
-
+#if 0
 //port from fs/proc/meminfo.c
 unsigned int meminfo_free_in_K(void)
 {
@@ -242,7 +208,7 @@ unsigned int meminfo_free_in_K(void)
 
 }
 EXPORT_SYMBOL(meminfo_free_in_K);
-
+#endif
 
 
 //static void *mm_mem_virt = NULL; /* virtual address of frame buffer 1 */
@@ -303,8 +269,7 @@ BEACH:
     mutex_unlock(&dmem_mutex);
     return err;
 }
-
-
+EXPORT_SYMBOL(msys_fix_dmem);
 
 int msys_unfix_dmem(char* name)
 {
@@ -340,6 +305,7 @@ int msys_unfix_dmem(char* name)
     return 0;
 
 }
+EXPORT_SYMBOL(msys_unfix_dmem);
 
 
 int msys_find_dmem_by_phys(unsigned long long phys,MSYS_DMEM_INFO *mem_info)
@@ -373,6 +339,7 @@ BEACH:
     mutex_unlock(&dmem_mutex);
     return res;
 }
+EXPORT_SYMBOL(msys_find_dmem_by_phys);
 
 int msys_find_dmem_by_name(const char *name, MSYS_DMEM_INFO *mem_info)
 {
@@ -501,6 +468,7 @@ BEACH:
     return 0;
 
 }
+EXPORT_SYMBOL(msys_release_dmem);
 
 int msys_request_dmem(MSYS_DMEM_INFO *mem_info)
 {
@@ -633,7 +601,9 @@ BEACH_ENTRY_FOUND:
     return err;
 
 }
+EXPORT_SYMBOL(msys_request_dmem);
 
+#ifdef CONFIG_MS_PIU_TICK_API
 unsigned int get_PIU_tick_count(void)
 {
     return ( INREG16(0x1F006050) | (INREG16(0x1F006054)<<16) );
@@ -641,6 +611,20 @@ unsigned int get_PIU_tick_count(void)
 
 EXPORT_SYMBOL(get_PIU_tick_count);
 
+static ssize_t PIU_T_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    char *str = buf;
+    char *end = buf + PAGE_SIZE;
+
+    str += scnprintf(str, end - str, "%X\n",get_PIU_tick_count());
+
+    return (str - buf);
+}
+
+DEVICE_ATTR(PIU_T, 0444, PIU_T_show, NULL);
+#endif
+
+#ifdef CONFIG_IOCTL_MSYS_USER_TO_PHYSICAL
 int msys_user_to_physical(unsigned long addr,unsigned long *phys)
 {
 
@@ -666,7 +650,10 @@ int msys_user_to_physical(unsigned long addr,unsigned long *phys)
 
 	return 0;
 }
+EXPORT_SYMBOL(msys_user_to_physical);
+#endif
 
+#ifdef CONFIG_IOCTL_MSYS_DMEM
 int msys_find_dmem_by_name_verchk(unsigned long arg)
 {
     MSYS_DMEM_INFO mem_info;
@@ -748,7 +735,7 @@ int msys_request_dmem_verchk(unsigned long arg)
 
 	if( (err=msys_request_dmem(&mem_info)) )
 	{
-		MSYS_ERROR("request direct memory failed!!\n" );
+		//MSYS_ERROR("request direct memory failed!!\n" );
 		return err;
 	}
 
@@ -795,7 +782,7 @@ int msys_release_dmem_verchk(unsigned long arg)
 	return msys_release_dmem(&mem_info);
 
 }
-
+#endif
 
 int msys_flush_cache(unsigned long arg)
 {
@@ -835,6 +822,7 @@ int msys_flush_cache(unsigned long arg)
     return 0;
 }
 
+#ifdef CONFIG_IOCTL_MSYS_ADDR_TRANS
 int msys_addr_translation_verchk(unsigned long arg, bool direction)
 {
     MSYS_ADDR_TRANSLATION_INFO addr_info;
@@ -881,6 +869,7 @@ int msys_addr_translation_verchk(unsigned long arg, bool direction)
 
     return 0;
 }
+#endif
 
 int msys_get_riu_map_verchk(unsigned long arg)
 {
@@ -925,7 +914,7 @@ int msys_get_riu_map_verchk(unsigned long arg)
     return 0;
 }
 
-
+#ifdef CONFIG_IOCTL_MSYS_DMEM
 int msys_fix_dmem_verchk(unsigned long arg)
 {
     MSYS_DMEM_INFO mem_info;
@@ -1008,7 +997,9 @@ int msys_unfix_dmem_verchk(unsigned long arg)
 
     return 0;
 }
+#endif
 
+#ifdef CONFIG_IOCTL_MSYS_MIU_PROTECT
 int msys_miu_protect_verchk(unsigned long arg)
 {
     MSYS_MIU_PROTECT_INFO protect_info;
@@ -1097,67 +1088,11 @@ int msys_miu_protect_verchk(unsigned long arg)
 
     return 0;
 }
-
-#if 0 // not test yet
-int msys_user_to_physical_verchk(unsigned long arg)
-{
-    MSYS_ADDR_TRANSLATION_INFO addr_info;
-    int res=0;
-    struct page *page;
-    int addr;
-
-    if ( CHK_VERCHK_HEADER(&(((MSYS_ADDR_TRANSLATION_INFO __user *)arg)->VerChk_Version)) )
-    {
-        if( CHK_VERCHK_VERSION_LESS(&(((MSYS_ADDR_TRANSLATION_INFO __user *)arg)->VerChk_Version), IOCTL_MSYS_VERSION) )
-        {
-            VERCHK_ERR("\n\33[1;31m[%s] verchk version (%04x) < ioctl verision (%04x) !!!\33[0m\n", __FUNCTION__,
-                ((MSYS_ADDR_TRANSLATION_INFO __user *)arg)->VerChk_Version & VERCHK_VERSION_MASK, IOCTL_MSYS_VERSION);
-            return -EINVAL;
-        }
-        else
-        {
-            if( CHK_VERCHK_SIZE(&(((MSYS_ADDR_TRANSLATION_INFO __user *)arg)->VerChk_Size), sizeof(MSYS_ADDR_TRANSLATION_INFO)) == 0 )
-            {
-                VERCHK_ERR("\n\33[1;31m[%s] struct size(%04x) != verchk size(%04x) !!!\33[0m\n", __FUNCTION__,
-                    sizeof(MSYS_ADDR_TRANSLATION_INFO), (((MSYS_ADDR_TRANSLATION_INFO __user *)arg)->VerChk_Size));
-
-                return -EINVAL;
-            }
-            else
-            {
-                if(copy_from_user((void*)&addr,  (void __user *)arg, sizeof(addr)))
-                {
-                    return -EFAULT;
-                }
-                down_read(&current->mm->mmap_sem);
-                res = get_user_pages(current, current->mm, addr, 1, 1, 0, &page, NULL);
-                if (res <= 0)
-                    return -EINVAL;
-                up_read(&current->mm->mmap_sem);
-                printk("vaddr=0x%08X\n", addr);
-                addr = page_to_phys(page);
-                printk("paddr=0x%08X\n\n", addr);
-                if(copy_to_user((void __user *)arg, (void*)&addr, sizeof(addr)))
-                {
-                    return -EFAULT;
-                }
-            }
-        }
-    }
-    else
-    {
-        VERCHK_ERR("\n\33[1;31m[%s] No verchk header !!!\33[0m\n", __FUNCTION__);
-        return -EFAULT;
-    }
-    return 0;
-}
 #endif
 
-
-
+#ifdef CONFIG_MS_SYSTEM_PART_STRING
 int msys_string_verchk(unsigned long arg, unsigned int op)
 {
-/*
 	MSYS_STRING_INFO info;
 
 	if(copy_from_user((void*)&info, (void __user *)arg, sizeof(MSYS_STRING_INFO)))
@@ -1224,60 +1159,22 @@ int msys_string_verchk(unsigned long arg, unsigned int op)
 		MSYS_ERROR("[%s] unsupport op=%d!!\n", __FUNCTION__, op);
 		return -EINVAL;
 	}
-*/
-    return 0;
-}
-
-
-extern int g_sCurrentTemp;
-
-int msys_get_temp_verchk(unsigned long arg)
-{
-	int temp;
-	MSYS_STRING_INFO info;
-
-	if(copy_from_user((void*)&info, (void __user *)arg, sizeof(MSYS_STRING_INFO)))
-	{
-		return -EFAULT;
-	}
-
-    if ( CHK_VERCHK_HEADER(&(info.VerChk_Version)) )
-    {
-        if( CHK_VERCHK_VERSION_LESS(&(info.VerChk_Version), IOCTL_MSYS_VERSION) )
-        {
-            VERCHK_ERR("\n\33[1;31m[%s] verchk version (%04x) < ioctl verision (%04x) !!!\33[0m\n", __FUNCTION__,
-                info.VerChk_Version & VERCHK_VERSION_MASK, IOCTL_MSYS_VERSION);
-            return -EINVAL;
-        }
-        else
-        {
-            if( CHK_VERCHK_SIZE(&(info.VerChk_Size), sizeof(MSYS_TEMP_INFO)) == 0 )
-            {
-                VERCHK_ERR("\n\33[1;31m[%s] struct size(%04x) != verchk size(%04x) !!!\33[0m\n", __FUNCTION__,
-                    sizeof(MSYS_TEMP_INFO), (info.VerChk_Size));
-
-                return -EINVAL;
-            }
-        }
-    }
-    else
-    {
-        VERCHK_ERR("\n\33[1;31m[%s] No verchk header !!!\33[0m\n", __FUNCTION__);
-        return -EINVAL;
-    }
-	temp = g_sCurrentTemp;
-	if(copy_to_user( &(((MSYS_TEMP_INFO __user *)arg)->temp), &temp, sizeof(temp) ))
-		return -EFAULT;;
 
     return 0;
 }
+#endif
 
 int msys_read_uuid(unsigned long long* udid)
 {
+
+#ifdef CONFIG_ARCH_INFINITY2
+    *udid = (u64)INREG16(BASE_REG_PMTOP_PA + REG_ID_00) ;
+#else
     CLRREG16(BASE_REG_EFUSE_PA + REG_ID_03, BIT8);  //reg_sel_read_256[8]=0 to read a/b/c/d
     *udid = (u64)INREG16(BASE_REG_EFUSE_PA + REG_ID_16) |
             ((u64)(INREG16(BASE_REG_EFUSE_PA + REG_ID_17)) << 16) |
             ((u64)INREG16(BASE_REG_EFUSE_PA + REG_ID_18) << 32);
+#endif
     return 0;
 }
 EXPORT_SYMBOL(msys_read_uuid);
@@ -1290,6 +1187,7 @@ CHIP_VERSION msys_get_chipVersion(void)
 }
 EXPORT_SYMBOL(msys_get_chipVersion);
 
+#ifdef CONFIG_IOCTL_IPCM_USELESS
 int msys_get_chipVersion_verchk(unsigned long arg)
 {
     MSYS_CHIPVER_INFO chipVer_info;
@@ -1333,7 +1231,8 @@ int msys_get_chipVersion_verchk(unsigned long arg)
 
     return 0;
 }
-
+#endif
+#ifdef CONFIG_IOCTL_MSYS_GET_UDID
 int msys_get_udid_verchk(unsigned long arg)
 {
     MSYS_UDID_INFO udid_info;
@@ -1376,7 +1275,8 @@ int msys_get_udid_verchk(unsigned long arg)
 
     return 0;
 }
-
+#endif
+#ifdef CONFIG_IOCTL_IPCM_USELESS
 static int msys_check_freq_cfg(unsigned long arg)
 {
     MSYS_FREQGEN_INFO freq_info;
@@ -1388,122 +1288,7 @@ static int msys_check_freq_cfg(unsigned long arg)
 
     return msys_request_freq(&freq_info);
 }
-
-#if 0
-#define CHK_NUM_WAITDONE     20000
-
-static int msys_dma_by_BDMA(unsigned long arg)
-{
-	MSYS_DMA_INFO mem_info;
-    U16 u16data;
-    U32 u32Timer = 0;
-
-	if ( CHK_VERCHK_HEADER(&(((MSYS_ADDR_TRANSLATION_INFO __user *)arg)->VerChk_Version)) )
-	{
-		if( CHK_VERCHK_VERSION_LESS(&(((MSYS_DMA_INFO __user *)arg)->VerChk_Version), IOCTL_MSYS_VERSION) )
-		{
-			VERCHK_ERR("\n\33[1;31m[%s] verchk version (%04x) < ioctl verision (%04x) !!!\33[0m\n", __FUNCTION__,
-				   ((MSYS_DMA_INFO __user *)arg)->VerChk_Version & VERCHK_VERSION_MASK, IOCTL_MSYS_VERSION);
-			return -EINVAL;
-		}
-		else
-		{
-			if( CHK_VERCHK_SIZE(&(((MSYS_DMA_INFO __user *)arg)->VerChk_Size), sizeof(MSYS_DMA_INFO)) == 0 )
-			{
-				VERCHK_ERR("\n\33[1;31m[%s] struct size(%04x) != verchk size(%04x) !!!\33[0m\n", __FUNCTION__,
-				sizeof(MSYS_DMA_INFO), (((MSYS_DMA_INFO __user *)arg)->VerChk_Size));
-				return -EINVAL;
-			}
-
-			if(copy_from_user((void*)&mem_info, (void __user *)arg, sizeof(MSYS_DMEM_INFO)))
-		   {
-			   return -EFAULT;
-		   }
-			//Set source and destination path
-			OUTREG16(BASE_REG_BDMA1_PA + REG_ID_00, 0x0000);
-			OUTREG16(BASE_REG_BDMA1_PA + REG_ID_02, 0x4040);
-			OUTREG16(BASE_REG_BDMA1_PA + REG_ID_04, (Chip_Phys_to_MIU(mem_info.kphy_src) & 0x0000FFFF));
-			OUTREG16(BASE_REG_BDMA1_PA + REG_ID_05, (Chip_Phys_to_MIU(mem_info.kphy_src)>>16));
-			// Set end address
-			OUTREG16(BASE_REG_BDMA1_PA + REG_ID_06, (Chip_Phys_to_MIU(mem_info.kphy_des) & 0x0000FFFF));
-			OUTREG16(BASE_REG_BDMA1_PA + REG_ID_07, (Chip_Phys_to_MIU(mem_info.kphy_des) >> 16));
-			//Set Size
-			OUTREG16(BASE_REG_BDMA1_PA + REG_ID_08, (mem_info.length & 0x0000FFFF));
-			OUTREG16(BASE_REG_BDMA1_PA + REG_ID_09, (mem_info.length >> 16));
-			OUTREG16(BASE_REG_BDMA1_PA + REG_ID_00, 0x1);
-
-			do
-			{
-				//check done
-				u16data = INREG16(BASE_REG_BDMA1_PA + REG_ID_01);
-				if(u16data & 0x8)
-				{
-					//clear done
-					OUTREG16(BASE_REG_BDMA1_PA + REG_ID_01, 0x8);
-					break;
-				}
-
-				if (++u32Timer%1000 == 0)
-					cond_resched();
-			}while(u32Timer < CHK_NUM_WAITDONE);
-			Chip_Flush_Memory();
-		}
-	}
-	return 0;
-}
-
-
-#include "halAESDMA.c"
-
-static int msys_dma_by_ADMA(unsigned long arg)
-{
-	MSYS_DMA_INFO mem_info;
-
-    if ( CHK_VERCHK_HEADER(&(((MSYS_ADDR_TRANSLATION_INFO __user *)arg)->VerChk_Version)) )
-    {
-        if( CHK_VERCHK_VERSION_LESS(&(((MSYS_DMA_INFO __user *)arg)->VerChk_Version), IOCTL_MSYS_VERSION) )
-        {
-            VERCHK_ERR("\n\33[1;31m[%s] verchk version (%04x) < ioctl verision (%04x) !!!\33[0m\n", __FUNCTION__,
-                ((MSYS_DMA_INFO __user *)arg)->VerChk_Version & VERCHK_VERSION_MASK, IOCTL_MSYS_VERSION);
-            return -EINVAL;
-        }
-        else
-        {
-            if( CHK_VERCHK_SIZE(&(((MSYS_DMA_INFO __user *)arg)->VerChk_Size), sizeof(MSYS_DMA_INFO)) == 0 )
-            {
-                VERCHK_ERR("\n\33[1;31m[%s] struct size(%04x) != verchk size(%04x) !!!\33[0m\n", __FUNCTION__,
-                    sizeof(MSYS_DMA_INFO), (((MSYS_DMA_INFO __user *)arg)->VerChk_Size));
-                return -EINVAL;
-            }
-
-
-		if(copy_from_user((void*)&mem_info, (void __user *)arg, sizeof(MSYS_DMA_INFO)))
-		{
-			return -EFAULT;
-		}
-
-		OUTREG16(BASE_REG_CLKGEN_PA + REG_ID_61, 0x14);
-		HAL_AESDMA_Enable(0);
-		HAL_AESDMA_Reset();
-		HAL_AESDMA_SetFileinAddr(Chip_Phys_to_MIU(mem_info.kphy_src));
-		HAL_AESDMA_SetXIULength(mem_info.length);
-		HAL_AESDMA_SetFileoutAddr(Chip_Phys_to_MIU(mem_info.kphy_des),(mem_info.length));
-		HAL_AESDMA_FileOutEnable(1);
-		HAL_AESDMA_Start(1);
-
-		while((HAL_AESDMA_GetStatus() & AESDMA_CTRL_DMA_DONE) != AESDMA_CTRL_DMA_DONE)
-		{
-		}
-
-		Chip_Flush_MIU_Pipe();
-		HAL_AESDMA_Reset();
-		}
-	}
-	return 0;
-}
-
 #endif
-
 static long msys_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
     int err= 0;
@@ -1528,6 +1313,7 @@ static long msys_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
     switch(cmd)
     {
+#ifdef CONFIG_IOCTL_MSYS_DMEM
         case IOCTL_MSYS_REQUEST_DMEM:
         {
             if((err=msys_request_dmem_verchk(arg)))
@@ -1541,35 +1327,6 @@ static long msys_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
                 MSYS_ERROR("IOCTL_MSYS_RELEASE_DMEM error!\n");
         }
         break;
-
-        case IOCTL_MSYS_FLUSH_CACHE:
-        {
-            if((err = msys_flush_cache(arg)))
-                MSYS_ERROR("IOCTL_MSYS_FLUSH_CACHE error!\n");
-        }
-        break;
-
-        case IOCTL_MSYS_PHYS_TO_MIU:
-        {
-            if((err=msys_addr_translation_verchk(arg, 0)))
-                MSYS_ERROR("IOCTL_MSYS_PHYS_TO_MIU error!\n");
-        }
-        break;
-
-        case IOCTL_MSYS_MIU_TO_PHYS:
-        {
-            if((err=msys_addr_translation_verchk(arg, 1)))
-                MSYS_ERROR("IOCTL_MSYS_MIU_TO_PHYS error!\n");
-        }
-        break;
-
-        case IOCTL_MSYS_GET_RIU_MAP:
-        {
-            if((err=msys_get_riu_map_verchk(arg)))
-                MSYS_ERROR("IOCTL_MSYS_GET_RIU_MAP error!\n");
-        }
-        break;
-
         case IOCTL_MSYS_FIX_DMEM:
         {
             if((err=msys_fix_dmem_verchk(arg)))
@@ -1586,20 +1343,44 @@ static long msys_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
         case IOCTL_MSYS_FIND_DMEM_BY_NAME:
         {
-//            if((err=msys_find_dmem_by_name_verchk(arg)))
-//                MSYS_ERROR("IOCTL_MSYS_FIND_DMEM_BY_NAME error!\n");
+              if((err=msys_find_dmem_by_name_verchk(arg)))
+                  MSYS_ERROR("IOCTL_MSYS_FIND_DMEM_BY_NAME error!\n");
             msys_find_dmem_by_name_verchk(arg);
             err=0;
         }
         break;
+#endif
 
+#ifdef CONFIG_IOCTL_MSYS_ADDR_TRANS
+        case IOCTL_MSYS_PHYS_TO_MIU:
+        {
+            if((err=msys_addr_translation_verchk(arg, 0)))
+                MSYS_ERROR("IOCTL_MSYS_PHYS_TO_MIU error!\n");
+        }
+        break;
+
+        case IOCTL_MSYS_MIU_TO_PHYS:
+        {
+            if((err=msys_addr_translation_verchk(arg, 1)))
+                MSYS_ERROR("IOCTL_MSYS_MIU_TO_PHYS error!\n");
+        }
+        break;
+#endif
+        case IOCTL_MSYS_GET_RIU_MAP:
+        {
+            if((err=msys_get_riu_map_verchk(arg)))
+                MSYS_ERROR("IOCTL_MSYS_GET_RIU_MAP error!\n");
+        }
+        break;
+#ifdef CONFIG_IOCTL_MSYS_MIU_PROTECT
         case IOCTL_MSYS_MIU_PROTECT:
         {
             if((err=msys_miu_protect_verchk(arg)))
                 MSYS_ERROR("IOCTL_MSYS_MIU_PROTECT error!\n");
         }
         break;
-
+#endif
+#ifdef CONFIG_IOCTL_MSYS_USER_TO_PHYSICAL
         case IOCTL_MSYS_USER_TO_PHYSICAL:
         {
             unsigned long addr,paddr;
@@ -1619,7 +1400,8 @@ static long msys_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             }
         }
         break;
-
+#endif
+#ifdef CONFIG_MS_SYSTEM_PART_STRING
         case IOCTL_MSYS_GET_SYSP_STRING:
         {
             if((err=msys_string_verchk(arg, 0)))
@@ -1647,66 +1429,48 @@ static long msys_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
                 MSYS_ERROR("IOCTL_MSYS_SET_PROPERTY_PATH error!\n");
         }
         break;
+#endif
 
+#ifdef CONFIG_MS_US_TICK_API
         case IOCTL_MSYS_GET_US_TICKS:
         {
 
-//	            u64 us_ticks=Chip_Get_US_Ticks();
-//
-//	            if(copy_to_user((void __user *)arg, (void*)&us_ticks, sizeof(us_ticks)))
-//	            {
-//	                return -EFAULT;
-//	            }
+            u64 us_ticks=Chip_Get_US_Ticks();
+            if(copy_to_user((void __user *)arg, (void*)&us_ticks, sizeof(us_ticks)))
+            {
+                return -EFAULT;
+            }
             return -EPERM;
         }
         break;
-
+#endif
+#ifdef CONFIG_IOCTL_MSYS_GET_UDID
         case IOCTL_MSYS_GET_UDID:
         {
             if((err=msys_get_udid_verchk(arg)))
                 MSYS_ERROR("IOCTL_MSYS_GET_UDID error!\n");
         }
         break;
-
+#endif
+#ifdef CONFIG_MS_PIU_TICK_API
         case IOCTL_MSYS_PRINT_PIU_TIMER_TICKS:
         {
             int id=arg;
             printk(KERN_WARNING"PIU_T:%X#%d#\n",get_PIU_tick_count(),id);
         }
         break;
-
+#endif
+#ifdef CONFIG_MSYS_BENCH_MEMORY_FUNC
         case IOCTL_MSYS_BENCH_MEMORY:
         {
-#if BENCH_MEMORY_FUNC==1
             int test_mem_size_in_MB=arg;
+            extern void msys_bench_memory(unsigned int uMemSize);
             msys_bench_memory((unsigned int)test_mem_size_in_MB);
+        }
+        break;
 #endif
-        }
-        break;
 
-        case IOCTL_MSYS_RESET_TO_UBOOT:
-        {
-            do
-            {
-                SETREG16(REG_ADDR_STATUS, FORCE_UBOOT_BIT);
-            } while(!(INREG16(REG_ADDR_STATUS) & FORCE_UBOOT_BIT));
-            OUTREG16(BASE_REG_PMSLEEP_PA + REG_ID_2E, 0x79);
-        }
-        break;
-
-        case IOCTL_MSYS_READ_PM_TSENSOR:
-        {
-#if 0
-            if((err=msys_get_temp_verchk(arg)))
-                MSYS_ERROR("IOCTL_MSYS_READ_PM_TSENSOR error!\n");
-#else
-            int temp = g_sCurrentTemp;
-            if(copy_to_user( (void __user *)arg, &temp, sizeof(temp) ))
-                return -EFAULT;
-#endif
-        }
-        break;
-
+#ifdef CONFIG_MSYS_REQUEST_PROC
         case IOCTL_MSYS_REQUEST_PROC_DEVICE:
         {
             MSYS_PROC_DEVICE proc_dev;
@@ -1775,12 +1539,31 @@ static long msys_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
                 BUG();
         }
         break;
+#endif
+#ifdef CONFIG_IOCTL_FLUSH_CACHE
+        case IOCTL_MSYS_FLUSH_CACHE:
+        {
+            if((err = msys_flush_cache(arg)))
+                MSYS_ERROR("IOCTL_MSYS_FLUSH_CACHE error!\n");
+        }
+        break;
 
 		case IOCTL_MSYS_FLUSH_MEMORY:
         {
 			 __cpuc_flush_kern_all();//L1
 			 Chip_Flush_Memory();//L3
         }
+#endif
+#ifdef CONFIG_IOCTL_IPCM_USELESS
+        case IOCTL_MSYS_RESET_TO_UBOOT:
+        {
+            do
+            {
+                SETREG16(REG_ADDR_STATUS, FORCE_UBOOT_BIT);
+            } while(!(INREG16(REG_ADDR_STATUS) & FORCE_UBOOT_BIT));
+            OUTREG16(BASE_REG_PMSLEEP_PA + REG_ID_2E, 0x79);
+        }
+        break;
 
         case IOCTL_MSYS_REQUEST_FREQUENCY:
         {
@@ -1795,21 +1578,16 @@ static long msys_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
                 MSYS_ERROR("IOCTL_MSYS_GET_CHIPVERSION error!\n");
         }
         break;
-#if 0
-		case IOCTL_MSYS_BDMA:
-        {
-			if((err = msys_dma_by_BDMA(arg)))
-                MSYS_ERROR("IOCTL_MSYS_BDMA error!\n");
-        }
-        break;
-
-		case IOCTL_MSYS_ADMA:
-        {
-			if((err = msys_dma_by_ADMA(arg)))
-                MSYS_ERROR("IOCTL_MSYS_ADMA error!\n");
-        }
-        break;
 #endif
+#ifdef CONFIG_MS_CPU_FREQ
+        case IOCTL_MSYS_READ_PM_TSENSOR:
+        {
+            int temp = ms_get_temp();
+            if(copy_to_user( (void __user *)arg, &temp, sizeof(temp) ))
+                return -EFAULT;
+        }
+#endif
+        break;
 
         default:
             MSYS_ERROR("Unknown IOCTL Command 0x%08X\n", cmd);
@@ -1820,383 +1598,7 @@ static long msys_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
     return err;
 }
 
-
-
-#if BENCH_MEMORY_FUNC==1
-typedef unsigned int volatile ulv;
-typedef unsigned long int volatile ullv;
-
-/******************************************
- * Function prototypes and Global variables
- ******************************************/
-//int TEST_SolidBitsComparison(ulv *pSrc, ulv *pDest, unsigned int nCount);
-
-
-/******************************************
- * Extern
- ******************************************/
-
-/******************************************
- * Functions
- ******************************************/
-
-static int TEST_Memwrite(ulv * pDest, unsigned int nCount)
-{
-    register unsigned int val = 0xA5A4B5B4;
-    ulv *p2 = NULL;
-    unsigned int    nTest, i;
-    for (nTest = 0; nTest < 10; nTest++)
-    {
-        p2 = (ulv *) pDest;
-        for (i = 0; i < nCount; i++)
-            *p2++ = val;
-    }
-    return nTest;
-}
-
-static int TEST_Memread(ulv * pSrc, unsigned int nCount)
-{
-    register unsigned int val;
-    ulv *p1 = NULL;
-    unsigned int    nTest, i;
-    for (nTest = 0; nTest < 10; nTest++)
-    {
-        p1 = (ulv *) pSrc;
-        for (i = 0; i < nCount; i++)
-            val = *p1++;
-    }
-    return nTest;
-}
-
-static int TEST_Memcpy_mips(ulv * pSrc, ulv * pDest, unsigned int nCount)
-{
-    int nTest = 0;
-//  for (nTest = 0; nTest < 10; nTest++)
-//      memcpy_MIPS((void*)pDest, (void*)pSrc, nCount*sizeof(unsigned int));
-    return nTest;
-}
-
-static int TEST_Memcpy(ulv * pSrc, ulv * pDest, unsigned int nCount)
-{
-    int nTest;
-    for (nTest = 0; nTest < 10; nTest++)
-        memcpy((void*)pDest, (void*)pSrc, nCount*sizeof(unsigned int));
-    return nTest;
-}
-
-static int TEST_MemBandWidth_long(ulv * pSrc, ulv * pDest, unsigned int nCount)
-{
-    ullv *p1 = NULL;
-    ullv *p2 = NULL;
-    unsigned int    i;
-    unsigned int    nTest;
-
-    for (nTest = 0; nTest < 10; nTest++)
-    {
-        p1 = (ullv *) pSrc;
-        p2 = (ullv *) pDest;
-
-        for (i = 0; i < nCount; i++)
-            *p2++ = *p1++;
-    }
-
-    return nTest;
-}
-
-int TEST_MemBandWidth(ulv * pSrc, ulv * pDest, unsigned int nCount)
-{
-    ulv *p1 = NULL;
-    ulv *p2 = NULL;
-    unsigned int    i;
-    unsigned int    nTest;
-
-    for (nTest = 0; nTest < 10; nTest++)
-    {
-        p1 = (ulv *) pSrc;
-        p2 = (ulv *) pDest;
-
-        for (i = 0; i < nCount; i++)
-            *p2++ = *p1++;
-    }
-
-    return nTest;
-}
-
-
-int TEST_MemBandWidthRW(ulv * pSrc, ulv * pDest, unsigned int nCount, unsigned int step_size)
-{
-    ulv *p1 = NULL;
-    ulv *p2 = NULL;
-    //unsigned int  i;
-    unsigned int    nTest;
-    int Count;
-
-    for (nTest = 0; nTest < 10 * step_size; nTest++)
-    {
-        p1 = (ulv *) pSrc;
-        p2 = (ulv *) pDest;
-        Count = nCount / step_size;
-        //memcpy((void*)p2, (void*)p1, nCount*4);
-        while(Count--)
-        {
-            *p2 = *p1;
-            p2 += step_size;
-            p1 += step_size;
-        }
-    }
-
-    return nTest;
-}
-
-static int TEST_MemBandWidthR(ulv * pSrc, ulv * pDest, unsigned int nCount, unsigned int step_size)
-{
-    ulv *p1 = NULL;
-    ulv *p2 = NULL;
-    //unsigned int  i;
-    unsigned int    nTest;
-    int Count;
-
-    for (nTest = 0; nTest < 10 * step_size; nTest++)
-    {
-        p1 = (ulv *) pSrc;
-        p2 = (ulv *) pDest;
-        Count = nCount / step_size;
-        //memcpy((void*)p2, (void*)p1, nCount*4);
-        while(Count--)
-        {
-            *p2 = *p1;
-            p1 += step_size;
-        }
-    }
-
-    return nTest;
-}
-
-static int TEST_MemBandWidthW(ulv * pSrc, ulv * pDest, unsigned int nCount, unsigned int step_size)
-{
-    ulv *p1 = NULL;
-    ulv *p2 = NULL;
-    //unsigned int  i;
-    unsigned int    nTest;
-    int Count;
-
-    for (nTest = 0; nTest < 10 * step_size; nTest++)
-    {
-        p1 = (ulv *) pSrc;
-        p2 = (ulv *) pDest;
-        Count = nCount / step_size;
-        //memcpy((void*)p2, (void*)p1, nCount*4);
-        while(Count--)
-        {
-            *p2 = *p1;
-            p2 += step_size;
-        }
-    }
-
-    return nTest;
-}
-
-
-
-static void msys_bench_memory(unsigned int uMemSize)
-{
-    unsigned int    nLoop = 0;
-    unsigned int    nAllocBytes;
-    unsigned int    nBufSize;
-    unsigned int    nCount;
-    unsigned int    PAGE_MASK1 = 0x0FFF;
-    void *pBuf = NULL;
-    volatile void *pAlignedBuf = NULL;
-    volatile unsigned int *pSrc;
-    volatile unsigned int *pDest;
-    unsigned int bus_addr;
-    struct timespec tss, tse;
-    int             nDelay;
-    int             nTestCount = 0;
-    int             nSize;
-    int i = 0;
-
-    nBufSize    = (unsigned int) (uMemSize << 20);
-    nAllocBytes = nBufSize + 4096;
-
-    MSYS_WARNING("\n>>>> sys_memory_benchmark0\n");
-    pBuf=dma_alloc_coherent(sys_dev.this_device, PAGE_ALIGN(nAllocBytes), &bus_addr, GFP_KERNEL);
-
-    if(pBuf==NULL)
-    {
-        MSYS_ERROR("error while allocating DMA buffer for benchmark...\n");
-        return;
-    }
-
-    MSYS_WARNING(" Allocated %d bytes at 0x%08x\n", nAllocBytes, (unsigned int) pBuf);
-
-    if ((unsigned int) pBuf % 4096) {
-        pAlignedBuf = (void volatile *) (((unsigned int) pBuf + 4096)
-                & PAGE_MASK1);
-        MSYS_WARNING(" Aligned at 0x%08x\n", (unsigned int) pAlignedBuf);
-    } else {
-        pAlignedBuf = pBuf;
-    }
-
-    /* Show information */
-    nCount = (nBufSize / 2) / sizeof(unsigned int);
-
-    pSrc = (ulv *) pAlignedBuf;
-    pDest = (ulv *) ((unsigned int) pAlignedBuf + (nBufSize / 2));
-
-    MSYS_WARNING(" Read from : %p\n", pSrc);
-    MSYS_WARNING(" Write to  : %p\n", pDest);
-
-    nSize = nCount * sizeof(unsigned int);
-
-    MSYS_WARNING(" Size : %x\n", nSize);
-
-    MSYS_WARNING("\nMemory read/write test\n");
-    nLoop = 0;
-
-    MSYS_WARNING("\n(1) Memory read/write test through 32-bit pointer access\n");
-
-    tss = CURRENT_TIME;
-    nTestCount = TEST_MemBandWidth(pSrc, pDest, nCount);
-    tse = CURRENT_TIME;
-
-    nDelay = (tse.tv_sec - tss.tv_sec) * 1000 + tse.tv_nsec / 1000000
-            - tss.tv_nsec / 1000000;
-
-    MSYS_WARNING("Read/Write %3d: %d times, %8MSYS_WARNINGs, %4d msec => %6d KB/sec\n",
-            nLoop, nTestCount, nSize, nDelay,
-            (((nSize * nTestCount) / 1024) * 1000) / nDelay);
-
-    MSYS_WARNING("\n(2) Memory read/write test through 32-bit pointer access\n");
-
-    tss = CURRENT_TIME;
-    nTestCount = TEST_MemBandWidth_long(pSrc, pDest, nCount);
-    tse = CURRENT_TIME;
-
-    nDelay = (tse.tv_sec - tss.tv_sec) * 1000 + tse.tv_nsec / 1000000
-            - tss.tv_nsec / 1000000;
-
-    MSYS_WARNING("Read/Write %3d: %d times, %8d bytes, %4d msec => %6d KB/sec\n",
-            nLoop, nTestCount, nSize, nDelay,
-            (((nSize * nTestCount) / 1024) * 1000) / nDelay);
-
-    MSYS_WARNING("\n(3) Memory read/write test through memcpy()\n");
-
-    tss = CURRENT_TIME;
-    nTestCount = TEST_Memcpy(pSrc, pDest, nCount);
-    tse = CURRENT_TIME;
-
-    nDelay = (tse.tv_sec - tss.tv_sec) * 1000 + tse.tv_nsec / 1000000
-            - tss.tv_nsec / 1000000;
-
-    MSYS_WARNING("Read/Write %3d: %d times, %8d bytes, %4d msec => %6d KB/sec\n",
-            nLoop, nTestCount, nSize, nDelay,
-            (((nSize * nTestCount) / 1024) * 1000) / nDelay);
-
-    MSYS_WARNING("\n(4) Memory read/write test through memcpy(prefetch version)\n");
-
-    tss = CURRENT_TIME;
-    nTestCount = TEST_Memcpy_mips(pSrc, pDest, nCount);
-    tse = CURRENT_TIME;
-
-    nDelay = (tse.tv_sec - tss.tv_sec) * 1000 + tse.tv_nsec / 1000000
-            - tss.tv_nsec / 1000000;
-
-    MSYS_WARNING("Read/Write %3d: %d times, %8d bytes, %4d msec => %6d KB/sec\n",
-            nLoop, nTestCount, nSize, nDelay,
-            (((nSize * nTestCount) / 1024) * 1000) / nDelay);
-
-    MSYS_WARNING("\n(5) Memory read test\n");
-
-    tss = CURRENT_TIME;
-    nTestCount = TEST_Memread(pSrc, nCount);
-    tse = CURRENT_TIME;
-
-    nDelay = (tse.tv_sec - tss.tv_sec) * 1000 + tse.tv_nsec / 1000000
-            - tss.tv_nsec / 1000000;
-
-    MSYS_WARNING("Read  %3d: %d times, %8d bytes, %4d msec => %6d KB/sec\n", nLoop,
-            nTestCount, nSize, nDelay,
-            (((nSize * nTestCount) / 1024) * 1000) / nDelay);
-
-    MSYS_WARNING("\n(6) Memory write test\n");
-
-    tss = CURRENT_TIME;
-    nTestCount = TEST_Memwrite(pDest, nCount);
-    tse = CURRENT_TIME;
-
-    nDelay = (tse.tv_sec - tss.tv_sec) * 1000 + tse.tv_nsec / 1000000
-            - tss.tv_nsec / 1000000;
-
-    MSYS_WARNING("Write %3d: %d times, %8d bytes, %4d msec => %6d KB/sec\n", nLoop,
-            nTestCount, nSize, nDelay,
-            (((nSize * nTestCount) / 1024) * 1000) / nDelay);
-
-    //=============================
-
-    MSYS_WARNING("\n(7) Memory read/write test\n");
-
-    for (i = 1; i < 513; i = i << 1)
-    {
-        tss = CURRENT_TIME;
-
-        nTestCount = TEST_MemBandWidthRW(pSrc, pDest, nCount, i);
-
-        tse = CURRENT_TIME;
-
-        nDelay = (tse.tv_sec - tss.tv_sec) * 1000 + tse.tv_nsec / 1000000
-                - tss.tv_nsec / 1000000;
-
-        MSYS_WARNING("Read/Write  %8d bytes, skip %4d bytes %4d msec => %6d KB/sec\n",
-                nSize, i * 4, nDelay,
-                ((((nSize / i) * nTestCount) / 1024) * 1000) / nDelay);
-    }
-
-    MSYS_WARNING("\n(8) Memory read test\n");
-
-    for (i = 1; i < 513; i = i << 1)
-    {
-        tss = CURRENT_TIME;
-
-        nTestCount = TEST_MemBandWidthR(pSrc, pDest, nCount, i);
-
-        tse = CURRENT_TIME;
-
-        nDelay = (tse.tv_sec - tss.tv_sec) * 1000 + tse.tv_nsec / 1000000
-                - tss.tv_nsec / 1000000;
-
-        MSYS_WARNING("Read  %8d bytes, skip %4d bytes %4d msec => %6d KB/sec\n",
-                nSize, i * 4, nDelay,
-                ((((nSize / i) * nTestCount) / 1024) * 1000) / nDelay);
-    }
-
-    MSYS_WARNING("\n(9) Memory write test\n");
-
-    for (i = 1; i < 513; i = i << 1)
-    {
-        tss = CURRENT_TIME;
-
-        nTestCount = TEST_MemBandWidthW(pSrc, pDest, nCount, i);
-
-        tse = CURRENT_TIME;
-
-        nDelay = (tse.tv_sec - tss.tv_sec) * 1000 + tse.tv_nsec / 1000000
-                - tss.tv_nsec / 1000000;
-
-        MSYS_WARNING("Write  %8d bytes, skip %4d bytes %4d msec => %6d KB/sec\n",
-                nSize, i * 4, nDelay,
-                ((((nSize / i) * nTestCount) / 1024) * 1000) / nDelay);
-    }
-
-
-    MSYS_WARNING("\n<<<< sys_memory_benchmark0\n");
-    dma_free_coherent(sys_dev.this_device, nAllocBytes,pBuf,bus_addr);
-    //  munlock((void *) pBuf, nAllocBytes);
-    //  free((void *) pBuf);
-}
-
-#endif
-
+#ifdef CONFIG_MS_SYSTEM_PART_STRING
 static int __init setup_system_part_string(char *arg)
 {
     memcpy(system_part_string,(arg+1),strlen(arg)<sizeof(system_part_string)?strlen(arg):(sizeof(system_part_string)-1));
@@ -2213,8 +1615,9 @@ static int __init setup_data_part_string(char *arg)
 
 __setup("sysp",setup_system_part_string);
 __setup("datap",setup_data_part_string);
+#endif
 
-
+#ifdef CONFIG_MS_US_TICK_API
 static ssize_t us_ticks_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
     char *str = buf;
@@ -2224,9 +1627,8 @@ static ssize_t us_ticks_show(struct device *dev, struct device_attribute *attr, 
 
     return (str - buf);
 }
-
 DEVICE_ATTR(us_ticks, 0444, us_ticks_show, NULL);
-
+#endif
 
 static ssize_t alloc_dmem(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
 {
@@ -2243,9 +1645,6 @@ static ssize_t alloc_dmem(struct device *dev, struct device_attribute *attr, con
         /* parsing input data */
         sscanf(buf, "%s %d", name, &size);
 
-        printk("%s\n", name);
-        printk("%d\n", size);
-
         while (*str && !isspace(*str)) str++;
 
         len = str - buf;
@@ -2261,7 +1660,7 @@ static ssize_t alloc_dmem(struct device *dev, struct device_attribute *attr, con
         }
         else
         {
-            printk("Error size is NULL\n");
+            //MSYS_ERROR("Error size is NULL\n");
             return -EINVAL;
         }
         // for MIU BIST only
@@ -2277,7 +1676,6 @@ static ssize_t alloc_dmem(struct device *dev, struct device_attribute *attr, con
     }
     return n;
 }
-
 DEVICE_ATTR(dmem_alloc, 0200, NULL, alloc_dmem);
 
 static ssize_t dmem_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -2302,9 +1700,7 @@ static ssize_t dmem_show(struct device *dev, struct device_attribute *attr, char
 
     return (str - buf);
 }
-
 DEVICE_ATTR(dmem, 0444, dmem_show, NULL);
-
 
 static ssize_t release_dmem_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
 {
@@ -2331,9 +1727,9 @@ static ssize_t release_dmem_store(struct device *dev, struct device_attribute *a
 
     return 0;
 }
-
 DEVICE_ATTR(release_dmem, 0200, NULL, release_dmem_store);
 
+#ifdef CONFIG_MSYS_DMEM_SYSFS_ALL
 static ssize_t dmem_realloc_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
     char *str = buf;
@@ -2371,7 +1767,6 @@ static ssize_t dmem_realloc_store(struct device *dev, struct device_attribute *a
     }
     return -EINVAL;
 }
-
 DEVICE_ATTR(dmem_realloc, 0644, dmem_realloc_show, dmem_realloc_store);
 
 static ssize_t unfix_dmem_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
@@ -2397,7 +1792,6 @@ static ssize_t unfix_dmem_store(struct device *dev, struct device_attribute *att
 
     return 0;
 }
-
 DEVICE_ATTR(unfix_dmem, 0200, NULL, unfix_dmem_store);
 
 static ssize_t fixed_dmem_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
@@ -2457,87 +1851,6 @@ static ssize_t fixed_dmem_show(struct device *dev, struct device_attribute *attr
 
 DEVICE_ATTR(fixed_dmem, 0644, fixed_dmem_show, fixed_dmem_store);
 
-static ssize_t PIU_T_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-    char *str = buf;
-    char *end = buf + PAGE_SIZE;
-
-    str += scnprintf(str, end - str, "%X\n",get_PIU_tick_count());
-
-    return (str - buf);
-}
-
-DEVICE_ATTR(PIU_T, 0444, PIU_T_show, NULL);
-
-static ssize_t TEMP_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-    char *str = buf;
-    char *end = buf + PAGE_SIZE;
-
-    str += scnprintf(str, end - str, "Temperature %d\n", g_sCurrentTemp);
-
-    return (str - buf);
-}
-
-DEVICE_ATTR(TEMP_R, 0444, TEMP_show, NULL);
-static ssize_t ms_dump_chip_version(struct device *dev, struct device_attribute *attr, char *buf)
-{
-    char *str = buf;
-    char *end = buf + PAGE_SIZE;
-
-    str += scnprintf(str, end - str, "Chip_Version: %d\n", msys_get_chipVersion());
-
-    return (str - buf);
-}
-
-DEVICE_ATTR(CHIP_VERSION, 0444, ms_dump_chip_version, NULL);
-
-static ssize_t dmem_retry_interval_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
-{
-    if(NULL!=buf)
-    {
-        size_t len;
-        const char *str = buf;
-        while (*str && !isspace(*str)) str++;
-        len = str - buf;
-        if(len)
-        {
-            dmem_retry_interval = simple_strtoul(buf, NULL, 10);
-            MSYS_ERROR("dmem_retry_interval=%d\n", dmem_retry_interval);
-            return n;
-
-            /*
-            if('0'==buf[0])
-            {
-                cma_monitor_enabled=0;
-                return n;
-            }
-            else if('1'==buf[0])
-            {
-                cma_monitor_enabled=1;
-                return n;
-            }
-            else
-            {
-                return -EINVAL;
-            }*/
-        }
-        return -EINVAL;
-    }
-    return -EINVAL;
-}
-
-static ssize_t dmem_retry_interval_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-    char *str = buf;
-    char *end = buf + PAGE_SIZE;
-
-    str += scnprintf(str, end - str, "%d\n", dmem_retry_interval);
-    return (str - buf);
-}
-
-DEVICE_ATTR(dmem_retry_interval, 0644, dmem_retry_interval_show, dmem_retry_interval_store);
-
 static ssize_t dmem_retry_count_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
 {
     if(NULL!=buf)
@@ -2549,7 +1862,7 @@ static ssize_t dmem_retry_count_store(struct device *dev, struct device_attribut
         if(len)
         {
             dmem_retry_count = simple_strtoul(buf, NULL, 10);
-            MSYS_ERROR("dmem_retry_count=%d\n", dmem_retry_count);
+            //MSYS_ERROR("dmem_retry_count=%d\n", dmem_retry_count);
             return n;
             /*
             if('0'==buf[0])
@@ -2581,6 +1894,33 @@ static ssize_t dmem_retry_count_show(struct device *dev, struct device_attribute
     return (str - buf);
 }
 DEVICE_ATTR(dmem_retry_count, 0644, dmem_retry_count_show, dmem_retry_count_store);
+#endif //END of CONFIG_MSYS_DMEM_SYSFS_ALL
+
+#ifdef CONFIG_MS_CPU_FREQ
+static ssize_t TEMP_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    char *str = buf;
+    char *end = buf + PAGE_SIZE;
+
+    str += scnprintf(str, end - str, "Temperature %d\n", ms_get_temp());
+
+    return (str - buf);
+}
+
+DEVICE_ATTR(TEMP_R, 0444, TEMP_show, NULL);
+#endif
+
+static ssize_t ms_dump_chip_version(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    char *str = buf;
+    char *end = buf + PAGE_SIZE;
+
+    str += scnprintf(str, end - str, "Chip_Version: %d\n", msys_get_chipVersion());
+
+    return (str - buf);
+}
+
+DEVICE_ATTR(CHIP_VERSION, 0444, ms_dump_chip_version, NULL);
 
 
 #ifdef CONFIG_SS_PROFILING_TIME
@@ -2617,912 +1957,8 @@ static ssize_t profiling_booting_show(struct device *dev, struct device_attribut
 DEVICE_ATTR(booting_time, 0644, profiling_booting_show, profiling_booting_store);
 #endif
 
-#if MSYS_PERF_TEST
-static char* _perf_fileBuf = NULL;
-static char* _perf_fileptr_write = NULL;
-static char* _perf_fileptr_read = NULL;
-static struct file *_fp = NULL;
-#define FILEBUF_SIZE        8192
 
-//////////////////////////////////////////////////////////////////
-/// performance test file buffer
-//////////////////////////////////////////////////////////////////
-#define PERF_BUF_ALLOC() \
-({ \
-    _perf_fileptr_read = _perf_fileptr_write = _perf_fileBuf = kzalloc(FILEBUF_SIZE, GFP_KERNEL); \
-    (_perf_fileBuf); \
-})
-
-#define PERF_BUF_FREE() \
-{ \
-    if (_perf_fileBuf) \
-    { \
-        kfree(_perf_fileBuf); \
-        _perf_fileptr_read = _perf_fileptr_write = _perf_fileBuf = NULL; \
-    } \
-}
-
-
-#if 0
-
-#define PERF_BUF_SYNC() \
-{ \
-    if ((_perf_fileptr_read) && (_perf_fileptr_read != _perf_fileptr_write) && (_fp)) \
-    { \
-        _fp->f_op->write(_fp, _perf_fileptr_read, strlen(_perf_fileptr_read), &_fp->f_pos); \
-        _perf_fileptr_read = _perf_fileptr_write; \
-    } \
-}
-
-#else
-
-#define PERF_BUF_SYNC() \
-{ \
-    if ((_perf_fileptr_read) && (_perf_fileptr_read != _perf_fileptr_write) && (_fp)) \
-    { \
-        vfs_write(_fp, _perf_fileptr_read, strlen(_perf_fileptr_read), &_fp->f_pos); \
-        _perf_fileptr_read = _perf_fileptr_write; \
-    } \
-}
-
-#endif
-
-#define PERF_BUF_RESET()        { _perf_fileptr_read = _perf_fileptr_write = _perf_fileBuf; memset(_perf_fileBuf, 0, FILEBUF_SIZE); }
-
-#define PERF_BUF_PUT(format, ...) \
-{ \
-    if (_perf_fileptr_write) \
-    { \
-        _perf_fileptr_write += sprintf(_perf_fileptr_write, format, ##__VA_ARGS__); \
-    } \
-}
-
-//////////////////////////////////////////////////////////////////
-/// performance test command maker
-//////////////////////////////////////////////////////////////////
-#define PERF_TEST_CMD_MAKE_CPUINFO(cmdBuf) \
-                sprintf((cmdBuf), "%s", STR_CPUINFO)
-#define PERF_TEST_CMD_MAKE_CACHE(cmdBuf, size, loop) \
-                sprintf((cmdBuf), "%s %d %d", STR_CACHE, (size), (loop))
-#define PERF_TEST_CMD_MAKE_MIU(cmdBuf, cache, size, loop, scheme) \
-                sprintf((cmdBuf), "%s %d %s %d %d %d %d", STR_MIU, (cache), STR_MIU, (cache), (loop), (size), (scheme))
-#define PERF_TEST_CMD_MAKE_IMI(cmdBuf, cache, size, loop, scheme) \
-                sprintf((cmdBuf), "%s %d %s %d %d %d %d", STR_IMI, (cache), STR_IMI, (cache), (loop), (size), (scheme))
-
-//////////////////////////////////////////////////////////////////
-/// performance test file
-//////////////////////////////////////////////////////////////////
-#define PERF_TEST_FILENAME_MAKE(prefix, pattern, postfix) \
-{ \
-    strcat((prefix), "_"); \
-    strcat((prefix), (pattern)); \
-    strcat((prefix), (postfix)); \
-}
-
-#define PERF_TEST_FILE_OPEN(filename) \
-({ \
-    _fp = filp_open((filename), O_CREAT|O_RDWR|O_TRUNC, 0777); \
-    (_fp); \
-})
-
-#define PERF_TEST_FILE_CLOSE() \
-{ \
-    if (_fp) \
-    { \
-        filp_close(_fp, NULL); \
-        _fp = NULL; \
-    } \
-}
-
-static struct timespec time_start;
-static void _time_start(void)
-{
-    getnstimeofday(&time_start);
-}
-
-static unsigned long _time_end(void)
-{
-    unsigned long delta;
-    struct timespec ct;
-
-    getnstimeofday(&ct);
-    // delta = ct.tv_nsec + ((time_start.tv_sec != ct.tv_sec) ? NSEC_PER_SEC : 0) - time_start.tv_nsec;
-    // delta = (ct.tv_sec - time_start.tv_sec)*1000000 + (ct.tv_nsec - time_start.tv_nsec)/1000;
-    delta = (ct.tv_sec - time_start.tv_sec)*1000 + (ct.tv_nsec - time_start.tv_nsec)/1000000;
-    // printk("[%s][%d] (start, end, delta) = (%d, %d) (%d, %d) %d\n", __FUNCTION__, __LINE__, (int)time_start.tv_sec, (int)time_start.tv_nsec, (int)ct.tv_sec, (int)ct.tv_nsec, (int)delta);
-    return delta;
-}
-
-static unsigned long _time_end_ns(void)
-{
-    unsigned long delta;
-    struct timespec ct;
-
-    getnstimeofday(&ct);
-    delta = (ct.tv_sec - time_start.tv_sec)*1000000000 + (ct.tv_nsec - time_start.tv_nsec);
-    // printk("[%s][%d] (start, end, delta) = (%d, %d) (%d, %d) %d\n", __FUNCTION__, __LINE__, (int)time_start.tv_sec, (int)time_start.tv_nsec, (int)ct.tv_sec, (int)ct.tv_nsec, (int)delta);
-    return delta;
-}
-
-#if 0
-static void hex_dump(char* pBuf, int size)
-{
-    int i;
-
-    for (i = 0; i < size; i++)
-    {
-        if ((i&0xF) == 0x0)
-        {
-            printk("\n");
-        }
-        printk("%02x ", pBuf[i]);
-    }
-    printk("\n");
-}
-#endif
-
-static int perf_test_malloc(void** ppBuf, dma_addr_t* pPhys_addr, int size, int bCache)
-{
-    void* pBuf = NULL;
-    dma_addr_t phys_addr = 0;
-    int i;
-
-    for (i = 0; i < dmem_retry_count; i++)
-    {
-        if (bCache)
-        {
-            pBuf = (void*)__get_free_pages(GFP_KERNEL, get_order(size));
-            phys_addr = __pa(pBuf);
-        }
-        else
-        {
-            // pBuf = (void*)dma_alloc_coherent(sys_dev.this_device, PAGE_ALIGN(size), &phys_addr, GFP_DMA);
-            pBuf = (void*)dma_alloc_coherent(sys_dev.this_device, PAGE_ALIGN(size), &phys_addr, GFP_KERNEL);
-        }
-        if (pBuf)
-        {
-            break;
-        }
-        sysctl_compaction_handler(NULL, 1, NULL, NULL, NULL);
-        msleep(1000);
-    }
-    if (NULL == pBuf)
-    {
-        return 0;
-    }
-    *ppBuf = pBuf;
-    *pPhys_addr = phys_addr;
-    return 1;
-}
-
-static void perf_test_mfree(void* pBuf, dma_addr_t phys_addr, int size, int bCache)
-{
-    if (NULL == pBuf)
-    {
-        return;
-    }
-    if (bCache)
-    {
-        free_pages((long)pBuf, get_order(size));
-    }
-    else
-    {
-        pBuf = (void*)dma_alloc_coherent(sys_dev.this_device, PAGE_ALIGN(size), &phys_addr, GFP_DMA);
-        dma_free_coherent(sys_dev.this_device, PAGE_ALIGN(size), pBuf, phys_addr);
-    }
-}
-
-typedef struct
-{
-    int bCache;
-    int bIMI;
-    void* pBuf;
-    dma_addr_t phys_addr;
-} bufInfo;
-
-void _bench_neon_memcpy(void*, void*, unsigned int);
-void _bench_memcpy(void*, void*, unsigned int);
-typedef enum {
-    PERF_TEST_SCHEME_CRT_MEMCPY,
-    PERF_TEST_SCHEME_BENCH_MEMCPY,
-    PERF_TEST_SCHEME_BENCH_NEON_MEMCPY,
-    PERF_TEST_SCHEME_ASSIGN_WRITE_ONLY,
-    PERF_TEST_SCHEME_ASSIGN_READ_ONLY,
-} perf_test_scheme_t;
-
-static ssize_t perf_test_memcpy(const char* buf, size_t n)
-{
-    int i;
-    unsigned long duration = 0;
-    int bitrate;
-    unsigned char dst[16];
-    unsigned char src[16];
-    int iteration, size;
-    unsigned int scheme = 0; // 0: CRT memcpy, 1: _bench_memcpy, 2: _bench_neon_memcpy
-
-    bufInfo bufInfoDst = {0} , bufInfoSrc = {0};
-
-    sscanf(buf, "%s %d %s %d %d %d %d", dst, &bufInfoDst.bCache, src, &bufInfoSrc.bCache, &iteration, &size, &scheme);
-    printk("INPUT: %s %d %s %d %d %d %d\n", dst, bufInfoDst.bCache, src, bufInfoSrc.bCache, iteration, size, scheme);
-
-    if (0 == strcasecmp(dst, STR_IMI))
-    {
-        bufInfoDst.bIMI = 1;
-        if ((IMI_ADDR_PHYS_1 == IMI_ADDR_INVALID) || (IMI_SIZE_1 == IMI_SIZE_INVALID))
-        {
-            printk("[%s][%d] invalid IMI address, size 0x%08x, 0x%08x\n", __FUNCTION__, __LINE__, IMI_ADDR_PHYS_1, IMI_SIZE_1);
-            goto jump_fail;
-        }
-        if (bufInfoDst.bCache)
-        {
-            bufInfoDst.pBuf = (void*)ioremap_cache(IMI_ADDR_PHYS_1, IMI_SIZE_1);
-        }
-        else
-        {
-            bufInfoDst.pBuf = (void*)ioremap_nocache(IMI_ADDR_PHYS_1, IMI_SIZE_1);
-        }
-    }
-    else
-    {
-        bufInfoDst.bIMI = 0;
-        perf_test_malloc(&(bufInfoDst.pBuf), &(bufInfoDst.phys_addr), size, bufInfoDst.bCache);
-    }
-    if (0 == strcasecmp(src, STR_IMI))
-    {
-        bufInfoSrc.bIMI = 1;
-        if ((IMI_ADDR_PHYS_2 == IMI_ADDR_INVALID) || (IMI_SIZE_2 == IMI_SIZE_INVALID))
-        {
-            printk("[%s][%d] invalid IMI address, size 0x%08x, 0x%08x\n", __FUNCTION__, __LINE__, IMI_ADDR_PHYS_2, IMI_SIZE_2);
-            goto jump_fail;
-        }
-        if (bufInfoSrc.bCache)
-        {
-            bufInfoSrc.pBuf = (void*)ioremap_cache(IMI_ADDR_PHYS_2, IMI_SIZE_2);
-        }
-        else
-        {
-            bufInfoSrc.pBuf = (void*)ioremap_nocache(IMI_ADDR_PHYS_2, IMI_SIZE_2);
-        }
-    }
-    else
-    {
-        bufInfoSrc.bIMI = 0;
-        perf_test_malloc(&(bufInfoSrc.pBuf), &(bufInfoSrc.phys_addr), size, bufInfoSrc.bCache);
-    }
-    if ((NULL == bufInfoSrc.pBuf) || (NULL == bufInfoDst.pBuf))
-    {
-        printk("[%s][%d] alloc/ioremap fail\n", __FUNCTION__, __LINE__);
-        goto jump_fail;
-    }
-    printk("[%s][%d] ==============================================\n", __FUNCTION__, __LINE__);
-    printk("[%s][%d] dst (tag, cache, addr) = (%s, %d, 0x%08x)\n", __FUNCTION__, __LINE__, dst, bufInfoDst.bCache, (int)bufInfoDst.pBuf);
-    printk("[%s][%d] src (tag, cache, addr) = (%s, %d, 0x%08x)\n", __FUNCTION__, __LINE__, src, bufInfoSrc.bCache, (int)bufInfoSrc.pBuf);
-    _time_start();
-    for (i= 0; i< iteration; i++)
-    {
-        switch(scheme) {
-            case PERF_TEST_SCHEME_CRT_MEMCPY:
-                memcpy((void*)bufInfoDst.pBuf, (void*)bufInfoSrc.pBuf, size);
-                break;
-            case PERF_TEST_SCHEME_BENCH_MEMCPY:
-            // _bench_memcpy((void*)bufInfoDst.pBuf, (void*)bufInfoSrc.pBuf, size);
-                break;
-            case PERF_TEST_SCHEME_BENCH_NEON_MEMCPY:
-            // _bench_neon_memcpy((void*)bufInfoDst.pBuf, (void*)bufInfoSrc.pBuf, size);
-                break;
-            case PERF_TEST_SCHEME_ASSIGN_WRITE_ONLY:
-                {
-                    register unsigned int j = 0;
-                    unsigned int v = 0x55;
-                    for(j=0;j<size/4;j++) {
-                        ((unsigned int*)bufInfoDst.pBuf)[j] = v;
-                    }
-                }
-                break;
-            case PERF_TEST_SCHEME_ASSIGN_READ_ONLY:
-                {
-                    register unsigned int j = 0;
-                    unsigned int v = 0x55;
-                    for(j=0;j<size/4;j++) {
-                        v  = ((unsigned int*)bufInfoDst.pBuf)[j] ;
-                    }
-                }
-                break;
-            default:
-                printk("[%s][%d] invalid scheme(%d)\n", __FUNCTION__, __LINE__, scheme);
-                goto jump_fail;
-                break;
-        }
-    }
-    duration = _time_end();
-    iteration /= 1000;
-    printk("[%s][%d] (iteration, iteration*size) = (%d, %d) time = %d\n", __FUNCTION__, __LINE__, iteration, iteration*size, (int)duration);
-    bitrate = ((iteration*size)/duration);
-    printk("[%s][%d] bit rate = %d\n", __FUNCTION__, __LINE__, bitrate);
-    PERF_BUF_PUT("%d,", bitrate);
-jump_fail:
-    if (bufInfoDst.pBuf)
-    {
-        if (bufInfoDst.bIMI)
-        {
-            iounmap(bufInfoDst.pBuf);
-        }
-        else
-        {
-            perf_test_mfree(bufInfoDst.pBuf, bufInfoDst.phys_addr, size, bufInfoDst.bCache);
-        }
-    }
-    if (bufInfoSrc.pBuf)
-    {
-        if (bufInfoSrc.bIMI)
-        {
-            iounmap(bufInfoSrc.pBuf);
-        }
-        else
-        {
-            perf_test_mfree(bufInfoSrc.pBuf, bufInfoSrc.phys_addr, size, bufInfoSrc.bCache);
-        }
-    }
-    return n;
-}
-
-#define INNER_CLEAN(buf, size)          dmac_map_area((buf), (size), DMA_TO_DEVICE)
-#define INNER_INV(buf, size)            dmac_map_area((buf), (size), DMA_FROM_DEVICE)
-// cache 32768 100000 // cache size loop
-static ssize_t perf_test_cache(const char* buf, size_t n)
-{
-    unsigned char t1[16];
-    int s32BufSize = 0;
-    int max_loop = 10000;
-    unsigned long int delta1 = 0;
-    unsigned long int delta2 = 0;
-    int i;
-    void* pBuf;
-    dma_addr_t phys_addr;
-
-    sscanf(buf, "%s %d %d", t1, &s32BufSize, &max_loop);
-    perf_test_malloc(&pBuf, &phys_addr, s32BufSize, 1);
-    if (NULL == pBuf)
-    {
-        printk("[%s][%d] fail allocating memory with size %d)\n", __FUNCTION__, __LINE__, s32BufSize);
-        return n;
-    }
-    PERF_BUF_PUT("%d,", s32BufSize);
-    // invalidate cache without memset
-    delta1 = delta2 = 0;
-    for (i = 0; i < max_loop; i++)
-    {
-        _time_start();
-        INNER_INV(pBuf, s32BufSize); // dmac_map_area(pBuf, s32BufSize, DMA_FROM_DEVICE);
-        delta1 += _time_end_ns();
-        _time_start();
-        outer_inv_range(phys_addr, phys_addr + s32BufSize);
-        delta2 += _time_end_ns();
-    }
-    printk("[%s][%d] Invalidate without dirty : (delta1, delta2) = (%d, %d)\n", __FUNCTION__, __LINE__, (int)(delta1/max_loop), (int)(delta2/max_loop));
-    PERF_BUF_PUT("%d,%d,", (int)(delta1/max_loop), (int)(delta2/max_loop));
-
-    // clean cache without memset
-    delta1 = delta2 = 0;
-    for (i = 0; i < max_loop; i++)
-    {
-        _time_start();
-        INNER_CLEAN(pBuf, s32BufSize); // dmac_map_area(pBuf, s32BufSize, DMA_TO_DEVICE);
-        delta1 += _time_end_ns();
-        _time_start();
-        outer_clean_range(phys_addr, phys_addr + s32BufSize);
-        delta2 += _time_end_ns();
-    }
-    printk("[%s][%d] clean without dirty : (delta1, delta2) = (%d, %d)\n", __FUNCTION__, __LINE__, (int)(delta1/max_loop), (int)(delta2/max_loop));
-    PERF_BUF_PUT("%d,%d,", (int)(delta1/max_loop), (int)(delta2/max_loop));
-
-    // printk("[%s][%d] ==========================================================\n", __FUNCTION__, __LINE__);
-    // invalidate cache with memset
-    delta1 = delta2 = 0;
-    for (i = 0; i < max_loop; i++)
-    {
-        memset(pBuf, 0x00, s32BufSize);
-        _time_start();
-        INNER_INV(pBuf, s32BufSize); // dmac_map_area(pBuf, s32BufSize, DMA_FROM_DEVICE);
-        delta1 += _time_end_ns();
-        _time_start();
-        outer_inv_range(phys_addr, phys_addr + s32BufSize);
-        delta2 += _time_end_ns();
-    }
-    printk("[%s][%d] Invalidate with dirty : (delta1, delta2) = (%d, %d)\n", __FUNCTION__, __LINE__, (int)(delta1/max_loop), (int)(delta2/max_loop));
-    PERF_BUF_PUT("%d,%d,", (int)(delta1/max_loop), (int)(delta2/max_loop));
-
-    // clean cache with memset
-    delta1 = delta2 = 0;
-    for (i = 0; i < max_loop; i++)
-    {
-        memset(pBuf, 0x00, s32BufSize);
-        _time_start();
-        INNER_CLEAN(pBuf, s32BufSize); // dmac_map_area(pBuf, s32BufSize, DMA_TO_DEVICE);
-        delta1 += _time_end_ns();
-        _time_start();
-        outer_clean_range(phys_addr, phys_addr + s32BufSize);
-        delta2 += _time_end_ns();
-    }
-    printk("[%s][%d] clean with dirty : (delta1, delta2) = (%d, %d)\n", __FUNCTION__, __LINE__, (int)(delta1/max_loop), (int)(delta2/max_loop));
-    PERF_BUF_PUT("%d,%d,", (int)(delta1/max_loop), (int)(delta2/max_loop));
-    PERF_BUF_PUT("\n");
-    perf_test_mfree(pBuf, phys_addr, s32BufSize, 1);
-    return n;
-}
-
-// MIDR
-#define ARM_MIDR_READ() \
-    ({ \
-        int val; \
-        asm("mrc p15, 0, r0, c0, c0, 0\n"); \
-        asm("str r0, %[reg]\n" : [reg]"=m"(val)); \
-        val; \
-    })
-#define ARM_MIDR_WRITE(val) \
-    { \
-        asm("ldr r0, %[reg]\n" : :[reg]"m"((val))); \
-        asm("mcr p15, 0, r0, c0, c0, 0\n"); \
-    }
-
-// TLBTR
-#define ARM_TLBTR_READ() \
-    ({ \
-        int val; \
-        asm("mrc p15, 0, r0, c0, c0, 3\n"); \
-        asm("str r0, %[reg]\n" : [reg]"=m"(val)); \
-        val; \
-    })
-
-// MPIDR
-#define ARM_MPIDR_READ() \
-    ({ \
-        int val; \
-        asm("mrc p15, 0, r0, c0, c0, 5\n"); \
-        asm("str r0, %[reg]\n" : [reg]"=m"(val)); \
-        val; \
-    })
-
-// CSSELR
-#define ARM_CSSELR_READ() \
-    ({ \
-        int val; \
-        asm("mrc p15, 2, r0, c0, c0, 0\n"); \
-        asm("str r0, %[reg]\n" : [reg]"=m"(val)); \
-        val; \
-    })
-#define ARM_CSSELR_WRITE(val) \
-    { \
-        asm("ldr r0, %[reg]\n" : :[reg]"m"((val))); \
-        asm("mcr p15, 2, r0, c0, c0, 0\n"); \
-    }
-
-// CCSIDR_L1_I
-#define ARM_CCSIDR_L1_I_READ() \
-    ({ \
-        int val; \
-        val = ARM_CSSELR_READ(); \
-        val &= 0xFFFFFFF0; \
-        val |= 0x00000001; \
-        ARM_CSSELR_WRITE(val); \
-        asm("mrc p15, 1, r0, c0, c0, 0\n"); \
-        asm("str r0, %[reg]\n" : [reg]"=m"(val)); \
-        val; \
-    })
-
-// CCSIDR_L1_D
-#define ARM_CCSIDR_L1_D_READ() \
-    ({ \
-        int val; \
-        val = ARM_CSSELR_READ(); \
-        val &= 0xFFFFFFF0; \
-        val |= 0x00000000; \
-        ARM_CSSELR_WRITE(val); \
-        asm("mrc p15, 1, r0, c0, c0, 0\n"); \
-        asm("str r0, %[reg]\n" : [reg]"=m"(val)); \
-        val; \
-    })
-
-// CCSIDR_L2
-#define ARM_CCSIDR_L2_READ() \
-    ({ \
-        int val; \
-        val = ARM_CSSELR_READ(); \
-        val &= 0xFFFFFFF0; \
-        val |= 0x00000002; \
-        ARM_CSSELR_WRITE(val); \
-        asm("mrc p15, 1, r0, c0, c0, 0\n"); \
-        asm("str r0, %[reg]\n" : [reg]"=m"(val)); \
-        val; \
-    })
-
-// CLIDR
-#define ARM_CLIDR_READ() \
-    ({ \
-        int val; \
-        asm("mrc p15, 1, r0, c0, c0, 1\n"); \
-        asm("str r0, %[reg]\n" : [reg]"=m"(val)); \
-        val; \
-    })
-
-
-#define ARM_CTR_READ() \
-    ({ \
-        int val; \
-        asm("mrc p15, 0, r0, c0, c0, 1\n"); \
-        asm("str r0, %[reg]\n" : [reg]"=m"(val)); \
-        val; \
-    })
-
-#define CCSIDR_DECODE(CCSIDR, WT, WB, RA, WA, NumSet, Associate, LineSize) \
-    { \
-        (WT) = ((CCSIDR) >> 31) & 0x00000001; \
-        (WB) = ((CCSIDR) >> 30) & 0x00000001; \
-        (RA) = ((CCSIDR) >> 29) & 0x00000001; \
-        (WA) = ((CCSIDR) >> 28) & 0x00000001; \
-        (NumSet) = ((CCSIDR) >> 13) & 0x00007FFF; \
-        (Associate) = ((CCSIDR) >>  3) & 0x000003FF; \
-        (LineSize) = ((CCSIDR) >>  0) & 0x00000007; \
-    }
-#define CACHE_SIZE(NumSet, Associate, LineSize)         (((((NumSet)+1) * (LineSize))*((Associate)+1))>>5)
-#define CCSIDR_DUMP(str, WT, WB, RA, WA, NumSet, Associate, LineSize) \
-    { \
-        printk("[%s][%d] %s\n", __FUNCTION__, __LINE__, (str)); \
-        PERF_BUF_PUT("%s\n", (str)); \
-        printk("[%s][%d]         (WT, WB, RA, WA) = (%d, %d, %d, %d)\n", __FUNCTION__, __LINE__, (WT), (WB), (RA), (WA)); \
-        PERF_BUF_PUT(",Write through, %d\n", (WT)); \
-        PERF_BUF_PUT(",Write back, %d\n", (WB)); \
-        PERF_BUF_PUT(",Read allocate, %d\n", (RA)); \
-        PERF_BUF_PUT(",Write allocate, %d\n", (WA)); \
-        printk("[%s][%d]         %d NumSet\n", __FUNCTION__, __LINE__, ((NumSet)+1)); \
-        PERF_BUF_PUT(",NumSet, %d\n", ((NumSet)+1)); \
-        printk("[%s][%d]         %d ways\n", __FUNCTION__, __LINE__, ((Associate)+1)); \
-        PERF_BUF_PUT(",Ways, %d\n", ((Associate)+1)); \
-        printk("[%s][%d]         line size = %d bytes\n", __FUNCTION__, __LINE__, ((LineSize)<<5) ); \
-        PERF_BUF_PUT(",Line size (Bytes), %d\n", ((LineSize)<<5) ); \
-        printk("[%s][%d]         cache size = %d KB\n", __FUNCTION__, __LINE__, CACHE_SIZE((NumSet), (Associate), (LineSize))); \
-        PERF_BUF_PUT(",Cache size (KBytes), %d\n", CACHE_SIZE((NumSet), (Associate), (LineSize))); \
-    }
-
-u32 msys_l2x0_size = 0;
-u32 msys_l2x0_ways = 0;
-u32 msys_l2x0_linesize = 32; // constant for PL310
-
-static ssize_t perf_test_cpuinfo(const char* buf, size_t n)
-{
-    unsigned int MIDR = 0;
-    unsigned int MPIDR = 0;
-    unsigned int CCSIDR_L1_I = 0;
-    unsigned int CCSIDR_L1_D = 0;
-    unsigned int CCSIDR_L2 = 0;
-    unsigned int CTR = 0;
-    unsigned int cpuPart = 0;
-    char* strCPU = STR_CPUINFO_NULL;
-    int WT, WB, RA, WA, NumSet, Associate, LineSize;
-    int cpu;
-    int cpuNR = 0;
-    unsigned int CLIDR = ARM_CLIDR_READ();
-
-    for_each_online_cpu(cpu)
-    {
-        cpuNR++;
-    }
-    MIDR = ARM_MIDR_READ();
-    MPIDR = ARM_MPIDR_READ();
-    CCSIDR_L1_I = ARM_CCSIDR_L1_I_READ();
-    CCSIDR_L1_D = ARM_CCSIDR_L1_D_READ();
-    CCSIDR_L2 = 0;
-    if (CLIDR & 0x00000038)
-        CCSIDR_L2 = ARM_CCSIDR_L2_READ();
-    // CCSIDR_L2 = ARM_CCSIDR_L2_READ();
-    CTR = ARM_CTR_READ();
-    cpuPart = ((MIDR >> 4) & 0x00000FFF);
-    switch (cpuPart)
-    {
-    case CPU_PART_CA7:
-        strCPU = STR_CPUINFO_CA7;
-        break;
-    case CPU_PART_CA9:
-        strCPU = STR_CPUINFO_CA9;
-        break;
-    case CPU_PART_CA53:
-        strCPU = STR_CPUINFO_CA53;
-        break;
-    default:
-        break;
-    }
-    // printk("[%s][%d] (MIDR, MPIDR) = (0x%08x, 0x%08x)\n", __FUNCTION__, __LINE__, MIDR, MPIDR);
-    printk("[%s][%d] (CPU type, core) = (%s, %d)\n", __FUNCTION__, __LINE__, strCPU, cpuNR);
-    PERF_BUF_PUT("CPU,%s\n", strCPU);
-    PERF_BUF_PUT("Core number,%d\n", cpuNR);
-    CCSIDR_DECODE(CCSIDR_L1_I, WT, WB, RA, WA, NumSet, Associate, LineSize);
-    CCSIDR_DUMP("L1 instruction cache information", WT, WB, RA, WA, NumSet, Associate, LineSize);
-    CCSIDR_DECODE(CCSIDR_L1_D, WT, WB, RA, WA, NumSet, Associate, LineSize);
-    CCSIDR_DUMP("L1 data cache information", WT, WB, RA, WA, NumSet, Associate, LineSize);
-    if (CPU_PART_CA9 != cpuPart)
-    {
-        CCSIDR_DECODE(CCSIDR_L2, WT, WB, RA, WA, NumSet, Associate, LineSize);
-        CCSIDR_DUMP("L2 cache information", WT, WB, RA, WA, NumSet, Associate, LineSize);
-    }
-    else
-    {
-        printk("[%s][%d] %s\n", __FUNCTION__, __LINE__, "L2 cache information");
-        PERF_BUF_PUT("%s\n", "L2 cache information");
-        printk("[%s][%d]         %d ways\n", __FUNCTION__, __LINE__, msys_l2x0_ways);
-        PERF_BUF_PUT(",Ways,%d\n", msys_l2x0_ways);
-        printk("[%s][%d]         line size = %d bytes\n", __FUNCTION__, __LINE__, msys_l2x0_linesize);
-        PERF_BUF_PUT(",Line size (Bytes), %d\n", msys_l2x0_linesize);
-        printk("[%s][%d]         cache size = %d KB\n", __FUNCTION__, __LINE__, (msys_l2x0_size >> 10));
-        PERF_BUF_PUT(",Cache size(KBytes), %d\n", (msys_l2x0_size >> 10));
-    }
-
-    {
-        unsigned int CLIDR = ARM_CLIDR_READ();
-        printk("[%s][%d]         CLIDR = 0x%08x\n", __FUNCTION__, __LINE__, CLIDR);
-    }
-
-
-    return n;
-}
-
-
-// all /vendor/2222.txt
-// cpuinfo
-// MIU 1 MIU 1 10000 65536 0
-// IMI 1 IMI 1 10000 65536 0
-// cache 32768 100000
-
-char cmdBuf[128] = { 0 };
-
-static ssize_t perf_test_all(const char* buf, size_t n)
-{
-    // char buf[100];
-    char temp[8];
-    char filename[128];
-    char filename_org[128];
-    mm_segment_t old_fs;
-
-    if (NULL == PERF_BUF_ALLOC())
-    {
-        printk("[%s][%d] kzalloc fail with size %d\n", __FUNCTION__, __LINE__, FILEBUF_SIZE);
-        return n;
-    }
-    sscanf(buf, "%s %s", temp, filename_org);
-#if 1
-    // cpu information
-    strcpy(filename, filename_org);
-    PERF_TEST_FILENAME_MAKE(filename, STR_CPUINFO, ".csv");
-    if (PERF_TEST_FILE_OPEN(filename))
-    {
-        old_fs = get_fs();
-        set_fs(get_ds());
-        PERF_TEST_CMD_MAKE_CPUINFO(cmdBuf);
-        perf_test_cpuinfo(cmdBuf, strlen(cmdBuf));
-        PERF_BUF_SYNC();
-        PERF_BUF_RESET();
-        PERF_TEST_FILE_CLOSE(); // filp_close(fp, NULL);
-        set_fs(old_fs);
-    }
-    // cache testing
-    strcpy(filename, filename_org);
-    PERF_TEST_FILENAME_MAKE(filename, STR_CACHE, ".csv");
-    if (PERF_TEST_FILE_OPEN(filename))
-    {
-        int size[] = { 4096, 8192, 16394, 32768, 65536, 131072 };
-        int i = 0;
-        int iteration = 10000;
-
-        old_fs = get_fs();
-        set_fs(get_ds());
-        PERF_BUF_PUT("Size,Bytes\n");
-        PERF_BUF_PUT("Iteration,%d\n", iteration);
-        PERF_BUF_PUT("Time,Nanoseconds\n");
-        PERF_BUF_PUT("Size,L1(Inv),L2(Inv),L1(Clean),L2(Clean),L1(Inv dirty),L2(Inv dirty),L1(Clean dirty),L2(Clean dirty)\n");
-        for (i = 0 ; i < sizeof(size)/sizeof(size[0]); i++)
-        {
-            PERF_TEST_CMD_MAKE_CACHE(cmdBuf, size[i], iteration);
-            perf_test_cache(cmdBuf, strlen(cmdBuf));
-        }
-        PERF_BUF_SYNC();
-        PERF_BUF_RESET();
-        PERF_TEST_FILE_CLOSE(); // filp_close(fp, NULL);
-        set_fs(old_fs);
-    }
-    // MIU testing
-    strcpy(filename, filename_org);
-    PERF_TEST_FILENAME_MAKE(filename, STR_MIU, ".csv");
-    if (PERF_TEST_FILE_OPEN(filename))
-    {
-        // int size[] = { 32768, 65536, 131072, 262144, 524288, 1048576, 2097152 };
-        int size[] = { 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152 };
-        int iter[] = { 1000000, 1000000, 100000, 10000, 10000, 10000, 10000, 10000, 10000, 10000};
-        int i = 0;
-        int iteration = 10000;
-
-        old_fs = get_fs();
-        set_fs(get_ds());
-        PERF_BUF_PUT("Size,Bytes\n");
-        PERF_BUF_PUT("Iteration,%d\n", iteration);
-        PERF_BUF_PUT("Bit rate,MBytes/Sec\n\n\n\n");
-        // non-cache
-        PERF_BUF_PUT("%s noncache\n", STR_MIU);
-        PERF_BUF_PUT("Size,");
-        for (i = 0 ; i < sizeof(size)/sizeof(size[0]); i++)
-        {
-            PERF_BUF_PUT("%d,", size[i]);
-        }
-        PERF_BUF_PUT("\n");
-        PERF_BUF_PUT("Bit rate,");
-        for (i = 0 ; i < sizeof(size)/sizeof(size[0]); i++)
-        {
-            PERF_TEST_CMD_MAKE_MIU(cmdBuf, 0, size[i], iteration, 0);
-            perf_test_memcpy(cmdBuf, strlen(cmdBuf));
-        }
-        PERF_BUF_PUT("\n");
-        PERF_BUF_PUT("\n");
-        // cache
-        PERF_BUF_PUT("%s cache\n", STR_MIU);
-        PERF_BUF_PUT("Size,");
-        for (i = 0 ; i < sizeof(size)/sizeof(size[0]); i++)
-        {
-            PERF_BUF_PUT("%d,", size[i]);
-        }
-        PERF_BUF_PUT("\n");
-        PERF_BUF_PUT("Bit rate,");
-        for (i = 0 ; i < sizeof(size)/sizeof(size[0]); i++)
-        {
-            PERF_TEST_CMD_MAKE_MIU(cmdBuf, 1, size[i], iter[i], 0);
-            perf_test_memcpy(cmdBuf, strlen(cmdBuf));
-        }
-        PERF_BUF_PUT("\n");
-        PERF_BUF_SYNC();
-        PERF_BUF_RESET();
-        PERF_TEST_FILE_CLOSE(); // filp_close(fp, NULL);
-        set_fs(old_fs);
-    }
-    // IMI testing
-    strcpy(filename, filename_org);
-    PERF_TEST_FILENAME_MAKE(filename, STR_IMI, ".csv");
-    if (PERF_TEST_FILE_OPEN(filename))
-    {
-        int size[] = { 32768}; // , 65536, 131072, 262144, 524288, 1048576, 2097152 };
-        int i = 0;
-        int iteration = 10000;
-
-        old_fs = get_fs();
-        set_fs(get_ds());
-
-        PERF_BUF_PUT("Size,Bytes\n");
-        PERF_BUF_PUT("Iteration,%d\n", iteration);
-        PERF_BUF_PUT("Bit rate,MBytes/Sec\n\n\n\n");
-        // non-cache
-        PERF_BUF_PUT("%s noncache\n", STR_IMI);
-        PERF_BUF_PUT("Size,");
-        for (i = 0 ; i < sizeof(size)/sizeof(size[0]); i++)
-        {
-            PERF_BUF_PUT("%d,", size[i]);
-        }
-        PERF_BUF_PUT("\n");
-        PERF_BUF_PUT("Bit rate,");
-        for (i = 0 ; i < sizeof(size)/sizeof(size[0]); i++)
-        {
-            PERF_TEST_CMD_MAKE_IMI(cmdBuf, 0, size[i], 10000, 0);
-            perf_test_memcpy(cmdBuf, strlen(cmdBuf));
-        }
-        PERF_BUF_PUT("\n");
-        PERF_BUF_SYNC();
-        PERF_BUF_RESET();
-        PERF_TEST_FILE_CLOSE(); // filp_close(fp, NULL);
-        set_fs(old_fs);
-    }
-#endif
-    PERF_BUF_FREE();
-    return n;
-}
-
-static ssize_t perf_test_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-    char *str = buf;
-    int n;
-
-    n = sprintf(str, "[%s][%d] this is a perf_test_show\n", __FUNCTION__, __LINE__);
-    return n;
-}
-
-static ssize_t perf_test_entry(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
-{
-    unsigned char token[16];
-    sscanf(buf, "%s", token);
-    if (0 == strcasecmp(token, STR_CPUINFO))
-    {
-        return perf_test_cpuinfo(buf, n);
-    }
-    else if (0 == strcasecmp(token, STR_IMI))
-    {
-        return perf_test_memcpy(buf, n);
-    }
-    else if (0 == strcasecmp(token, STR_MIU))
-    {
-        return perf_test_memcpy(buf, n);
-    }
-    else if (0 == strcasecmp(token, STR_CACHE))
-    {
-        return perf_test_cache(buf, n);
-    }
-    else if (0 == strcasecmp(token, STR_ALL))
-    {
-        return perf_test_all(buf, n);
-    }
-    return n;
-}
-DEVICE_ATTR(perf_test, 0644, perf_test_show, perf_test_entry);
-
-#endif // #if MSYS_PERF_TEST
-
-#if MSYS_MIU_PROTECT
-static ssize_t miu_protect_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-    char *str = buf;
-    int n;
-
-    n = sprintf(str, "[%s][%d]: OK!\n", __FUNCTION__, __LINE__);
-    return n;
-}
-
-static ssize_t miu_protect_entry(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
-{
-    unsigned char Result = FALSE;
-    unsigned char u8Blockx;
-    unsigned short u8ProtectId[16] = {0};
-    unsigned long long u64BusStart;
-    unsigned long long u64BusEnd;
-    unsigned char  bSetFlag;
-
-    unsigned char token[16];
-
-    sscanf(buf, "%s", token);
-    if (0 == strcasecmp(token, "set"))
-    {
-        sscanf(buf, "%s %hhu %hu %llx %llx %hhu", token, &u8Blockx, &u8ProtectId[0], &u64BusStart, &u64BusEnd, &bSetFlag);
-
-        printk("%s(%d) INPUT: (u8Blockx,u8ProtectId,u64BusStart,u64BusEnd,bSetFlag)=(%hhu,%hu,0x%08llx,0x%08llx,%hhu)\n", __FUNCTION__, __LINE__, u8Blockx, u8ProtectId[0], u64BusStart, u64BusEnd, bSetFlag);
-
-        Result = MDrv_MIU_Protect(u8Blockx, &u8ProtectId[0], u64BusStart, u64BusEnd, bSetFlag);
-
-        if(Result == FALSE ) {
-            printk("ERR: Result = %d", Result);
-        }
-    }
-    else if (0 == strcasecmp(token, "test"))
-    {
-        unsigned int* _va;
-        sscanf(buf, "%s %llx", token, &u64BusStart);
-
-        _va = ioremap((unsigned int)u64BusStart, 0x1000);
-        printk("%s(%d) Write: MIU @ 0x%08llx, VA @ 0x%08x\n", __FUNCTION__, __LINE__, u64BusStart, (unsigned int)_va);
-
-        *(_va) = 0xDEADBEEF;
-    }
-    else if (0 == strcasecmp(token, "test1"))
-    {
-        sscanf(buf, "%s %llx", token, &u64BusStart);
-
-        printk("%s(%d) Write: MIU @ 0x%08llx\n", __FUNCTION__, __LINE__, u64BusStart);
-
-        *(unsigned int*)((void*)(unsigned int)u64BusStart) = 0xDEADBEEF;
-    }
-    else
-    {
-         printk("%s(%d) Wrong parameter:\n", __FUNCTION__, __LINE__);
-         printk("%s(%d) Usage: echo [CMD] [miublk] [client id] [start addr] [end addr] [enable] > miu_protect\n", __FUNCTION__, __LINE__);
-         printk("%s(%d) Ex: echo set 0 1 0x20000000 0x20100000 1 > miu_protect\n", __FUNCTION__, __LINE__);
-    }
-
-    return n;
-}
-DEVICE_ATTR(miu_protect, 0644, miu_protect_show, miu_protect_entry);
-#endif
-
+#ifdef CONFIG_MSYS_REQUEST_PROC
 struct list_head proc_info_head;
 static struct mutex proc_info_mutex;
 static struct proc_dir_entry* proc_class=NULL;
@@ -3537,6 +1973,7 @@ struct proc_dir_entry* msys_get_proc_zen_kernel(void)
 {
 	return proc_zen_kernel;
 }
+EXPORT_SYMBOL(msys_get_proc_class);
 
 static int msys_seq_show(struct seq_file*m, void *p)
 {
@@ -3627,6 +2064,7 @@ static int msys_proc_mmap(struct file *file, struct vm_area_struct *vma)
 	return 0 ;
 }
 
+
 static const struct file_operations msys_proc_fops = {
  .owner = THIS_MODULE,
  .open  = msys_proc_open,
@@ -3672,6 +2110,7 @@ static PROC_INFO_LIST *msys_get_child_proc_info(PROC_INFO_LIST *parent_proc_info
     }
     return NULL;
 }
+
 
 static int msys_request_proc_attr(MSYS_PROC_ATTRIBUTE* proc_attr)
 {
@@ -3811,7 +2250,7 @@ static int msys_release_proc_dev(MSYS_PROC_DEVICE* proc_dev)
     mutex_unlock(&proc_info_mutex);
     return err;
 }
-
+#endif
 static struct class *msys_sysfs_class = NULL;
 
 struct class *msys_get_sysfs_class(void)
@@ -3824,7 +2263,87 @@ struct class *msys_get_sysfs_class(void)
   }
   return msys_sysfs_class;
 }
+EXPORT_SYMBOL(msys_get_sysfs_class);
+#if defined(CONFIG_ARCH_INFINITY2)
+extern int  msys_dma_copy(MSYS_DMA_COPY *cfg);
+extern int msys_dma_fill(MSYS_DMA_FILL *pstDmaCfg);
+extern int msys_dma_blit(MSYS_DMA_BLIT *pstMdmaCfg);
 
+#if defined(CONFIG_MS_MOVE_DMA)
+static ssize_t movedma(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
+{
+	if(NULL!=buf)
+	{
+            unsigned long long phyaddr_src; // MIU address of source
+            unsigned long long phyaddr_dst; // MIU address of destination
+            unsigned int lineofst_src;      // line-offset of source, set 0 to disable line offset
+            unsigned int lineofst_dst;      // line-offset of destination, set 0 to disable line offset
+            unsigned int width_src;         // width of source, set 0 to disable line offset
+            unsigned int width_dst;         // width of destination, set 0 to disable line offset
+            unsigned int length;            // total size (bytes)
+            MSYS_DMA_BLIT dmaBlit_info;
+            /* parsing input data */
+            sscanf(buf, "%llu %llu %d %d %d %d %d", &phyaddr_src, &phyaddr_dst, &lineofst_src, &lineofst_dst, &width_src, &width_dst, &length);
+
+            dmaBlit_info.phyaddr_src=phyaddr_src;
+            dmaBlit_info.phyaddr_dst=phyaddr_dst;
+            dmaBlit_info.lineofst_src=lineofst_src;
+            dmaBlit_info.lineofst_dst=lineofst_dst;
+            dmaBlit_info.width_src=width_src;
+            dmaBlit_info.width_dst=width_dst;
+            dmaBlit_info.length=length;
+            msys_dma_blit(&dmaBlit_info);
+            printk("msys_dma_blit end \n");
+	}
+	return n;
+}
+DEVICE_ATTR(movedma, 0200, NULL, movedma);
+#endif
+
+static ssize_t bytedmacp(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
+{
+	if(NULL!=buf)
+	{
+            unsigned long long phyaddr; // MIU address of source
+            unsigned long long desaddr; // MIU address of source
+//            unsigned int pattern;         // width of destination, set 0 to disable line offset
+            unsigned int length;            // total size (bytes)
+            MSYS_DMA_COPY dmaCopy_info;
+            /* parsing input data */
+            sscanf(buf, "%llu %d %llu", &phyaddr, &length, &desaddr);
+            printk("phyaddr=%llu length=%x desaddr=%llu\n", phyaddr, length, desaddr);
+            dmaCopy_info.phyaddr_src=phyaddr;
+            dmaCopy_info.length=length;
+            dmaCopy_info.phyaddr_dst=desaddr;
+            msys_dma_copy(&dmaCopy_info);
+            printk("msys_dma_copy end \n");
+	}
+	return n;
+}
+DEVICE_ATTR(bytedmacp, 0200, NULL, bytedmacp);
+
+static ssize_t bytedma(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
+{
+	if(NULL!=buf)
+	{
+            unsigned long long phyaddr; // MIU address of source
+            unsigned int pattern;         // width of destination, set 0 to disable line offset
+            unsigned int length;            // total size (bytes)
+            MSYS_DMA_FILL dmaFill_info;
+            /* parsing input data */
+            sscanf(buf, "%llu %d %d", &phyaddr, &length, &pattern);
+            printk("phyaddr=%llu length=%x pattern=%x\n", phyaddr, length, pattern);
+            dmaFill_info.phyaddr=phyaddr;
+            dmaFill_info.length=length;
+            dmaFill_info.pattern=pattern;
+            msys_dma_fill(&dmaFill_info);
+            printk("msys_dma_fill end \n");
+	}
+	return n;
+}
+DEVICE_ATTR(bytedma, 0200, NULL, bytedma);
+
+#endif
 static int __init msys_init(void)
 {
     int ret;
@@ -3832,7 +2351,7 @@ static int __init msys_init(void)
     //ret = misc_register(&sys_dev);
     ret = register_chrdev(MAJOR_SYS_NUM, "msys", &msys_fops);
     if (ret != 0) {
-        MSYS_ERROR("cannot register msys on minor=11 (err=%d)\n", ret);
+        MSYS_ERROR("cannot register msys  (err=%d)\n", ret);
     }
 
     sys_dev.this_device = device_create(msys_get_sysfs_class(), NULL,
@@ -3842,63 +2361,54 @@ static int __init msys_init(void)
     sys_dev.this_device->coherent_dma_mask=sys_dma_mask;
 
     mutex_init(&dmem_mutex);
-#if defined(CONFIG_MS_MOVE_DMA)
-    CamOsTsemInit(&m_stMdmaDoneSem, 0);
-
-    HalMoveDma_Initialize();
-#endif
-#if defined(CONFIG_MS_BDMA)
-    CamOsTsemInit(&m_stBdmaDoneSem[0], 0);
-    CamOsTsemInit(&m_stBdmaDoneSem[1], 0);
-    CamOsTsemInit(&m_stBdmaDoneSem[2], 0);
-    CamOsTsemInit(&m_stBdmaDoneSem[3], 0);
-
-    //HalBdma_Initialize(0);
-    HalBdma_Initialize(1);
-    HalBdma_Initialize(2);
-    HalBdma_Initialize(3);
-#endif
     INIT_LIST_HEAD(&kept_mem_head);
     INIT_LIST_HEAD(&fixed_mem_head);
 
     device_create_file(sys_dev.this_device, &dev_attr_dmem);
+    device_create_file(sys_dev.this_device, &dev_attr_dmem_alloc);
+    device_create_file(sys_dev.this_device, &dev_attr_release_dmem);
+#ifdef CONFIG_MSYS_DMEM_SYSFS_ALL
     device_create_file(sys_dev.this_device, &dev_attr_fixed_dmem);
     device_create_file(sys_dev.this_device, &dev_attr_unfix_dmem);
-    device_create_file(sys_dev.this_device, &dev_attr_release_dmem);
-    device_create_file(sys_dev.this_device, &dev_attr_PIU_T);
-    device_create_file(sys_dev.this_device, &dev_attr_dmem_retry_interval);
     device_create_file(sys_dev.this_device, &dev_attr_dmem_retry_count);
-    device_create_file(sys_dev.this_device, &dev_attr_us_ticks);
     device_create_file(sys_dev.this_device, &dev_attr_dmem_realloc);
-    device_create_file(sys_dev.this_device, &dev_attr_dmem_alloc);
+#endif
+
+#ifdef CONFIG_MS_PIU_TICK_API
+    device_create_file(sys_dev.this_device, &dev_attr_PIU_T);
+#endif
+
+#ifdef CONFIG_MS_CPU_FREQ
     device_create_file(sys_dev.this_device, &dev_attr_TEMP_R);
+#endif
+
     device_create_file(sys_dev.this_device, &dev_attr_CHIP_VERSION);
+
+#ifdef CONFIG_MS_US_TICK_API
+    device_create_file(sys_dev.this_device, &dev_attr_us_ticks);
+#endif
+
 #ifdef CONFIG_SS_PROFILING_TIME
     device_create_file(sys_dev.this_device, &dev_attr_booting_time);
 #endif
-#if MSYS_PERF_TEST
-    device_create_file(sys_dev.this_device, &dev_attr_perf_test);
-#endif // #if MSYS_PERF_TEST
-#if MSYS_MIU_PROTECT
-    device_create_file(sys_dev.this_device, &dev_attr_miu_protect);
+#if defined(CONFIG_ARCH_INFINITY2)
+#if defined(CONFIG_MS_MOVE_DMA)
+    device_create_file(sys_dev.this_device, &dev_attr_movedma);
 #endif
-//    ret = device_create_file(sys_dev.this_device, &dev_attr_dmem);
-
-//    if (ret != 0)printk("Failed to create sysfs files: %d\n", ret);
-
-
-#if defined(CONFIG_PROC_FS)
+    device_create_file(sys_dev.this_device, &dev_attr_bytedma);
+    device_create_file(sys_dev.this_device, &dev_attr_bytedmacp);
+#endif
+#if defined(CONFIG_PROC_FS) && defined(CONFIG_MSYS_REQUEST_PROC)
     mutex_init(&proc_info_mutex);
     INIT_LIST_HEAD(&proc_info_head);
     proc_class=proc_mkdir("mstar",NULL);
     proc_zen_kernel=proc_mkdir("kernel",proc_class);
 #endif
 
-    MSYS_WARN(" INIT DONE. TICK=0x%08X\n",get_PIU_tick_count());
-
     return 0;
 }
 
+#ifdef CONFIG_MSYS_KFILE_API
 //!!!! msys_kfile_* API has not been tested as they are not used. 2016/07/18
 struct file* msys_kfile_open(const char* path, int flags, int rights)
 {
@@ -3916,6 +2426,7 @@ struct file* msys_kfile_open(const char* path, int flags, int rights)
     }
     return filp;
 }
+EXPORT_SYMBOL(msys_kfile_open);
 
 void msys_kfile_close(struct file* fp)
 {
@@ -3924,6 +2435,7 @@ void msys_kfile_close(struct file* fp)
         filp_close(fp,NULL);
     }
 }
+EXPORT_SYMBOL(msys_kfile_close);
 
 int msys_kfile_write(struct file* fp, unsigned long long offset, unsigned char* data, unsigned int size)
 {
@@ -3939,6 +2451,7 @@ int msys_kfile_write(struct file* fp, unsigned long long offset, unsigned char* 
     }
     return ret;
 }
+EXPORT_SYMBOL(msys_kfile_write);
 
 int msys_kfile_read(struct file* fp, unsigned long long offset, unsigned char* data, unsigned int size)
 {
@@ -3953,130 +2466,18 @@ int msys_kfile_read(struct file* fp, unsigned long long offset, unsigned char* d
     set_fs(oldfs);
     return ret;
 }
-
-#if defined(CONFIG_MS_MOVE_DMA)
-void msys_mdma_done(u32 argu)
-{
-    CamOsTsemUp(&m_stMdmaDoneSem);
-}
-
-int msys_dma_blit(MSYS_DMA_BLIT *pstMdmaCfg)
-{
-    HalMoveDmaParam_t       tMoveDmaParam;
-    HalMoveDmaLineOfst_t    tMoveDmaLineOfst;
-
-    tMoveDmaParam.u32SrcAddr    = pstMdmaCfg->phyaddr_src;
-    tMoveDmaParam.u32SrcMiuSel  = (pstMdmaCfg->phyaddr_src < ARM_MIU1_BASE_ADDR) ? (0) : (1);
-    tMoveDmaParam.u32DstAddr    = pstMdmaCfg->phyaddr_dst;
-    tMoveDmaParam.u32DstMiuSel  = (pstMdmaCfg->phyaddr_dst < ARM_MIU1_BASE_ADDR) ? (0) : (1);
-    tMoveDmaParam.u32Count      = pstMdmaCfg->length;
-    tMoveDmaParam.CallBackFunc  = msys_mdma_done;
-    tMoveDmaParam.CallBackArg   = 0;
-
-    if (pstMdmaCfg->lineofst_src && pstMdmaCfg->lineofst_dst) {
-        tMoveDmaLineOfst.u32SrcWidth    = pstMdmaCfg->width_src;
-        tMoveDmaLineOfst.u32SrcOffset   = pstMdmaCfg->lineofst_src;
-        tMoveDmaLineOfst.u32DstWidth    = pstMdmaCfg->width_dst;
-        tMoveDmaLineOfst.u32DstOffset   = pstMdmaCfg->lineofst_dst;
-
-        tMoveDmaParam.bEnLineOfst       = 1;
-        tMoveDmaParam.pstLineOfst       = &tMoveDmaLineOfst;
-    }
-    else {
-        tMoveDmaParam.bEnLineOfst       = 0;
-        tMoveDmaParam.pstLineOfst       = NULL;
-    }
-
-    if (HAL_MOVEDMA_NO_ERR != HalMoveDma_MoveData(&tMoveDmaParam)) {
-        return -1;
-    }
-
-    CamOsTsemDownInterruptible(&m_stMdmaDoneSem);
-
-    return 0;
-}
-EXPORT_SYMBOL(msys_dma_blit);
-#endif
-#if defined(CONFIG_MS_BDMA)
-static void msys_bdma_done(u32 u32DmaCh)
-{
-    CamOsTsemUp(&m_stBdmaDoneSem[u32DmaCh]);
-}
-
-int msys_dma_fill(MSYS_DMA_FILL *pstDmaCfg)
-{
-    HalBdmaParam_t  tBdmaParam;
-    u8              u8DmaCh = HAL_BDMA_CH1;
-    tBdmaParam.ePathSel     = (pstDmaCfg->phyaddr < ARM_MIU1_BASE_ADDR) ? (HAL_BDMA_MEM_TO_MIU0) : (HAL_BDMA_MEM_TO_MIU1);
-    tBdmaParam.bIntMode     = 1;
-    tBdmaParam.eDstAddrMode = HAL_BDMA_ADDR_INC;
-    tBdmaParam.u32TxCount   = pstDmaCfg->length;
-    tBdmaParam.pSrcAddr     = (void*)0;
-    tBdmaParam.pDstAddr     = (pstDmaCfg->phyaddr < ARM_MIU1_BASE_ADDR) ? (void *)((U32)pstDmaCfg->phyaddr) : (void *)((U32)pstDmaCfg->phyaddr - ARM_MIU1_BASE_ADDR);
-    tBdmaParam.pfTxCbFunc   = msys_bdma_done;
-    tBdmaParam.u32Pattern   = pstDmaCfg->pattern;
-
-    if (HAL_BDMA_PROC_DONE != HalBdma_Transfer(u8DmaCh, &tBdmaParam)) {
-        return -1;
-    }
-
-    if (tBdmaParam.bIntMode) {
-        CamOsTsemDownInterruptible(&m_stBdmaDoneSem[u8DmaCh]);
-    }
-
-    return 0;
-}
-EXPORT_SYMBOL(msys_dma_fill);
-
-int  msys_dma_copy(MSYS_DMA_COPY *cfg)
-{
-    HalBdmaParam_t  tBdmaParam;
-    u8              u8DmaCh = HAL_BDMA_CH2;
-    tBdmaParam.ePathSel     = ((U32)cfg->phyaddr_src < ARM_MIU1_BASE_ADDR) ? (HAL_BDMA_MIU0_TO_MIU0) : (HAL_BDMA_MIU1_TO_MIU0);
-    tBdmaParam.ePathSel     = ((U32)cfg->phyaddr_dst < ARM_MIU1_BASE_ADDR) ? tBdmaParam.ePathSel : tBdmaParam.ePathSel+1;
-    tBdmaParam.pSrcAddr     = ((U32)cfg->phyaddr_src < ARM_MIU1_BASE_ADDR) ? (void *)((U32)cfg->phyaddr_src) : (void *)((U32)cfg->phyaddr_src - ARM_MIU1_BASE_ADDR);
-    tBdmaParam.pDstAddr     = ((U32)cfg->phyaddr_dst < ARM_MIU1_BASE_ADDR) ? (void *)((U32)cfg->phyaddr_dst) : (void *)((U32)cfg->phyaddr_dst - ARM_MIU1_BASE_ADDR);
-    tBdmaParam.bIntMode     = 1;
-    tBdmaParam.eDstAddrMode = HAL_BDMA_ADDR_INC;
-    tBdmaParam.u32TxCount   = cfg->length;
-    tBdmaParam.pfTxCbFunc   = msys_bdma_done;
-    tBdmaParam.u32Pattern   = 0;
-
-    if (HAL_BDMA_PROC_DONE != HalBdma_Transfer(u8DmaCh, &tBdmaParam)) {
-        return -1;
-    }
-
-    if (tBdmaParam.bIntMode) {
-        CamOsTsemDownInterruptible(&m_stBdmaDoneSem[u8DmaCh]);
-    }
-
-    return 0;
-}
-EXPORT_SYMBOL(msys_dma_copy);
-
+EXPORT_SYMBOL(msys_kfile_read);
 #endif
 
+#if 0
 int ssys_get_HZ(void)
 {
     return HZ;
 }
 EXPORT_SYMBOL(ssys_get_HZ);
-
+#endif
 
 subsys_initcall(msys_init);
-
-EXPORT_SYMBOL(msys_user_to_physical);
-EXPORT_SYMBOL(msys_request_dmem);
-EXPORT_SYMBOL(msys_release_dmem);
-EXPORT_SYMBOL(msys_fix_dmem);
-EXPORT_SYMBOL(msys_unfix_dmem);
-EXPORT_SYMBOL(msys_find_dmem_by_phys);
-EXPORT_SYMBOL(msys_get_proc_class);
-EXPORT_SYMBOL(msys_get_sysfs_class);
-EXPORT_SYMBOL(msys_kfile_open);
-EXPORT_SYMBOL(msys_kfile_write);
-EXPORT_SYMBOL(msys_kfile_read);
-EXPORT_SYMBOL(msys_kfile_close);
 
 
 MODULE_AUTHOR("SSTAR");

@@ -38,6 +38,13 @@ config MS_FLASH_ISP_MXP_PARTS
     default y
 
 
+config SS_CUSTOMIZED_CUS_ZY_ERASE_ENV
+        bool "Customized ZY Erase ENV"
+        default n
+        depends on MS_FLASH_ISP != n
+        help
+          This is for customized ZY fw_setenv behavior.
+
 endif
 
 	

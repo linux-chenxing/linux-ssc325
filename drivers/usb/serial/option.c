@@ -693,7 +693,8 @@ static const struct option_blacklist_info yuga_clm920_nc5_blacklist = {
 };
 
 static const struct usb_device_id option_ids[] = {
-	{ USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_COLT) },
+    { USB_DEVICE(0x2df3,0x9d03)},
+    { USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_COLT) },
 	{ USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_RICOLA) },
 	{ USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_RICOLA_LIGHT) },
 	{ USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_RICOLA_QUAD) },

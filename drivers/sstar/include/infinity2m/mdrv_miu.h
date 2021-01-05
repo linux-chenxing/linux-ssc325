@@ -1,9 +1,8 @@
 /*
 * mdrv_miu.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef __MDRV_MIU_H__
@@ -243,9 +242,11 @@ unsigned char MDrv_MIU_Slits(unsigned char u8Blockx, phy_addr u64SlitsStart, phy
 unsigned char MDrv_MIU_Get_IDEnables_Value(unsigned char u8MiuDev, unsigned char u8Blockx, unsigned char u8ClientIndex);
 unsigned int MDrv_MIU_ProtectDramSize(void);
 int MDrv_MIU_ClientIdToName(unsigned short clientId, char *clientName);
+int MDrv_MIU_Enable_Goup1_Smaller_Group2(unsigned char u8Enable);
 
 #ifdef CONFIG_MIU_HW_MMU
-int MDrv_MMU_SetRegion(unsigned short u16Region);
+int MDrv_MMU_SetRegion(unsigned short u16Region, unsigned short u16ReplaceRegion);
+int MDrv_MMU_SetPageSize(unsigned char u8PgSz256En);
 int MDrv_MMU_Map(unsigned short u16PhyAddrEntry, unsigned short u16VirtAddrEntry);
 unsigned short MDrv_MMU_MapQuery(unsigned short u16PhyAddrEntry);
 int MDrv_MMU_UnMap(unsigned short u16PhyAddrEntry);

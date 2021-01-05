@@ -1,9 +1,8 @@
 /*
 * miu_bw.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: Karl.Xiao <Karl.Xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/kernel.h>
@@ -943,6 +942,55 @@ static ssize_t measure_all_show(struct device *dev, struct device_attribute *att
     return (str - buf);
 }
 
+static ssize_t dram_info_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    char *str = buf;
+    char *end = buf + PAGE_SIZE;
+    unsigned int iMiuBankAddr = 0;
+    unsigned int iAtopBankAddr = 0;
+    unsigned int iMiupllBankAddr = 0;
+    unsigned int dram_type = 0;
+    unsigned int ddfset = 0;
+    unsigned int dram_freq = 0;
+    unsigned int miupll_freq = 0;
+
+    if ('0'== (dev->kobj.name[3])) {
+        iMiuBankAddr = BASE_REG_MIU_PA;
+        iAtopBankAddr = BASE_REG_ATOP_PA;
+        iMiupllBankAddr = BASE_REG_MIUPLL_PA;
+    }
+#if MIU_NUM > 1
+    else if ('1'== (dev->kobj.name[3])) {
+        iMiuBankAddr = BASE_REG_MIU1_PA;
+        iAtopBankAddr = BASE_REG_ATOP1_PA;
+        iMiupllBankAddr = BASE_REG_MIUPLL_PA;
+    }
+#endif
+    else {
+        return 0;
+    }
+
+    dram_type = INREGMSK16(iMiuBankAddr + REG_ID_01, 0x0003);
+    ddfset = (INREGMSK16(iAtopBankAddr + REG_ID_19, 0x00FF) << 16) + INREGMSK16(iAtopBankAddr + REG_ID_18, 0xFFFF);
+    dram_freq = ((432 * 4 * 4) << 19) / ddfset;
+    miupll_freq = 24 * INREGMSK16(iMiupllBankAddr + REG_ID_03, 0x00FF) / ((INREGMSK16(iMiupllBankAddr + REG_ID_03, 0x0700) >> 8) + 2);
+
+    str += scnprintf(str, end - str, "DRAM Type:   %s\n", (dram_type==3)? "DDR3" : (dram_type==2)? "DDR2" : "Unknown");
+    str += scnprintf(str, end - str, "DRAM Size:   %dMB\n", 1 << (INREGMSK16(iMiuBankAddr + REG_ID_69, 0xF000) >> 12));
+    str += scnprintf(str, end - str, "DRAM Freq:   %dMHz\n", dram_freq);
+    str += scnprintf(str, end - str, "MIUPLL Freq: %dMHz\n", miupll_freq);
+    str += scnprintf(str, end - str, "Data Rate:   %dx Mode\n", 1 << (INREGMSK16(iMiuBankAddr + REG_ID_01, 0x0300) >> 8));
+    str += scnprintf(str, end - str, "Bus Width:   %dbit\n", 16 << (INREGMSK16(iMiuBankAddr + REG_ID_01, 0x000C) >> 2));
+    str += scnprintf(str, end - str, "SSC:         %s\n", (INREGMSK16(iAtopBankAddr + REG_ID_14, 0xC000)==0x8000)? "OFF" : "ON");
+
+    if (str > buf)
+        str--;
+
+    str += scnprintf(str, end - str, "\n");
+
+    return (str - buf);
+}
+
 DEVICE_ATTR(monitor_client_enable, 0644, monitor_client_enable_show, monitor_client_enable_store);
 DEVICE_ATTR(monitor_client_disable, 0644, monitor_client_disable_show, monitor_client_disable_store);
 DEVICE_ATTR(monitor_set_interval_ms, 0644, monitor_set_interval_avg_show, monitor_set_interval_avg_store);
@@ -950,6 +998,7 @@ DEVICE_ATTR(monitor_set_duration_ms, 0644, monitor_set_counts_avg_show, monitor_
 DEVICE_ATTR(monitor_client_dump_enable, 0644, monitor_client_dump_enable_show, monitor_client_dump_enable_store);
 DEVICE_ATTR(monitor_client_filter_enable, 0644, monitor_filter_abnormal_value_show, monitor_filter_abnormal_value_store);
 DEVICE_ATTR(measure_all, 0644, measure_all_show, measure_all_store);
+DEVICE_ATTR(dram_info, 0444, dram_info_show, NULL);
 
 void mstar_create_MIU_node(void)
 {
@@ -978,6 +1027,7 @@ void mstar_create_MIU_node(void)
     device_create_file(&miu0.dev, &dev_attr_monitor_client_dump_enable);
     device_create_file(&miu0.dev, &dev_attr_monitor_client_filter_enable);
     device_create_file(&miu0.dev, &dev_attr_measure_all);
+    device_create_file(&miu0.dev, &dev_attr_dram_info);
 
 #if MIU_NUM > 1
     miu1.index = 0;
@@ -1005,5 +1055,6 @@ void mstar_create_MIU_node(void)
     device_create_file(&miu1.dev, &dev_attr_monitor_client_dump_enable);
     device_create_file(&miu1.dev, &dev_attr_monitor_client_filter_enable);
     device_create_file(&miu1.dev, &dev_attr_measure_all);
+    device_create_file(&miu1.dev, &dev_attr_dram_info);
 #endif
 }

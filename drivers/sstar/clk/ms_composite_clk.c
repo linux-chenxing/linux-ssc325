@@ -1,9 +1,8 @@
 /*
 * ms_composite_clk.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/kernel.h>
@@ -147,7 +146,7 @@ static void __init ms_clk_composite_init(struct device_node *node)
     struct ms_clk_mux *mux = NULL;
     struct clk_gate *gate = NULL;
     void __iomem *reg;
-    u32 i, mux_shift, mux_width, mux_glitch, bit_idx;
+    u32 i, mux_shift, mux_width, mux_glitch, bit_idx, auto_enable;
     struct clk *clk;
     unsigned int flag = 0;
 
@@ -160,14 +159,14 @@ static void __init ms_clk_composite_init(struct device_node *node)
 
     if (!parent_names || !mux || !gate)
     {
-        pr_err("<%s> failed to allocate memory\n", clk_name);
+        pr_err("<%s> allocate mem fail\n", clk_name);
         goto fail;
     }
 
     reg = of_iomap(node, 0);
     if (!reg)
     {
-        pr_err("<%s> could not map region\n", clk_name);
+        pr_err("<%s> map region fail\n", clk_name);
         goto fail;
     }
 
@@ -239,23 +238,26 @@ static void __init ms_clk_composite_init(struct device_node *node)
     }
     else
     {
-        pr_err("clock <%s> info. error!\n", clk_name);
+        pr_err("clock <%s> info err\n", clk_name);
         goto fail;
     }
 
     if (IS_ERR(clk))
     {
-        pr_err("%s: failed to register clock <%s>\n", __func__, clk_name);
+        pr_err("%s: register clock <%s> fail\n", __func__, clk_name);
         goto fail;
     }
 
     of_clk_add_provider(node, of_clk_src_simple_get, clk);
     clk_register_clkdev(clk, clk_name, NULL);
 
-    if(of_property_read_bool(node, "auto-enable"))
+    if(!of_property_read_u32(node, "auto-enable", &auto_enable))
     {
-        clk_prepare_enable(clk);
-        pr_debug("clk_prepare_enable <%s>\n", clk_name);
+        if (auto_enable)
+        {
+            clk_prepare_enable(clk);
+            pr_debug("clk_prepare_enable <%s>\n", clk_name);
+        }
     }
 
     return;

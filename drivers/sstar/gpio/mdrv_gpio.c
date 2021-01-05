@@ -1,9 +1,8 @@
 /*
 * mdrv_gpio.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/module.h>
@@ -190,6 +189,23 @@ void MDrv_GPIO_Set_POLARITY(U8 u8IndexGPIO, U8 reverse)
     MHal_GPIO_Set_POLARITY(u8IndexGPIO, reverse);
 }
 
+//-------------------------------------------------------------------------------------------------
+/// set gpio driving
+/// @param  u8IndexGPIO              \b IN:  pad index
+///         setHigh                  \b IN:  0->4mA, 1->8mA
+/// @return None
+/// @note
+//-------------------------------------------------------------------------------------------------
+__attribute__((weak)) void MHal_GPIO_Set_Driving(U8 u8IndexGPIO, U8 setHigh) {
+   // "not support
+}
+
+void MDrv_GPIO_Set_Driving(U8 u8IndexGPIO, U8 setHigh)
+{
+    MHal_GPIO_Set_Driving(u8IndexGPIO, setHigh);
+}
+
+
 EXPORT_SYMBOL(MDrv_GPIO_Init);
 EXPORT_SYMBOL(MDrv_GPIO_Pad_Set);
 EXPORT_SYMBOL(MDrv_GPIO_PadGroupMode_Set);
@@ -205,4 +221,5 @@ EXPORT_SYMBOL(MDrv_GPIO_Set_Low);
 EXPORT_SYMBOL(MDrv_Enable_GPIO_INT);
 EXPORT_SYMBOL(MDrv_GPIO_To_Irq);
 EXPORT_SYMBOL(MDrv_GPIO_Set_POLARITY);
+EXPORT_SYMBOL(MDrv_GPIO_Set_Driving);
 

@@ -1,9 +1,8 @@
 /*
 * drv_ive.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: chris.luo <chris.luo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include "mdrv_ive.h"
@@ -472,6 +471,14 @@ static void ive_drv_start(ive_drv_handle *handle, ive_ioc_config *config)
             ive_hal_set_coeff_adp_thresh(&handle->hal_handle, &config->coeff_adp_thresh);
             break;
 
+        case IVE_IOC_OP_TYPE_MATRIX_TRANSFORM:
+            ive_hal_set_coeff_matrix_transform(&handle->hal_handle, &config->coeff_matrix_transform);
+            break;
+
+        case IVE_IOC_OP_TYPE_IMAGE_DOT:
+            ive_hal_set_coeff_image_dot(&handle->hal_handle, &config->coeff_image_dot);
+            break;
+
         default:
             break;
     }
@@ -527,7 +534,7 @@ IVE_IOC_ERROR ive_drv_process(ive_drv_handle *handle, ive_file_data *file_data)
     file_data->state = IVE_FILE_STATE_PROCESSING;
     handle->dev_state = IVE_DRV_STATE_PROCESSING;
 
-    IVE_MSG(IVE_MSG_DBG, "process: %p\n", file_data->ioc_config.input.address[0]);
+    IVE_MSG(IVE_MSG_DBG, "process: %p ; %p ; %p\n", file_data->ioc_config.input.address[0], file_data->ioc_config.input.address[1], file_data->ioc_config.input.address[2]);
 
     ive_drv_start(handle, &file_data->ioc_config);
 
@@ -559,7 +566,7 @@ ive_file_data* ive_drv_post_process(ive_drv_handle *handle)
         IVE_MSG(IVE_MSG_DBG, "no more request in queue\n");
         handle->dev_state = IVE_DRV_STATE_READY;
     } else {
-        IVE_MSG(IVE_MSG_DBG, "process: 0x%p, 0x%p, 0x%p\n", next_file_data->ioc_config.input.address[0], next_file_data->ioc_config.input.address[1], next_file_data->ioc_config.output.address[0]);
+        IVE_MSG(IVE_MSG_DBG, "process: 0x%p, 0x%p, 0x%p\n", next_file_data->ioc_config.input.address[0], next_file_data->ioc_config.input.address[1], next_file_data->ioc_config.output.address[2]);
         next_file_data->state = IVE_FILE_STATE_PROCESSING;
         ive_drv_start(handle, &next_file_data->ioc_config);
     }

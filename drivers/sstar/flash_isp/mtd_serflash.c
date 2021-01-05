@@ -1,9 +1,8 @@
 /*
 * mtd_serflash.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 //*********************************************************************
@@ -122,6 +121,24 @@ static int serflash_erase(struct mtd_info *mtd, struct erase_info *instr)
         return -EINVAL;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
+
+#ifdef CONFIG_SS_CUSTOMIZED_CUS_ZY_ERASE_ENV
+    if ((instr->addr == 0x5F000)&&(instr->len == 0x1000))
+    {
+        // do nothing
+    }
+    else
+    {
+        /*  mod = do_div(x,y);
+            result = x; */
+        addr_temp = instr->addr;
+        len_temp = instr->len;
+        if ((do_div(addr_temp , mtd->erasesize) != 0) ||(do_div(len_temp, mtd->erasesize) != 0))
+        {
+            return -EINVAL;
+        }
+    }
+#else
     /*  mod = do_div(x,y);
         result = x; */
     addr_temp = instr->addr;
@@ -130,6 +147,8 @@ static int serflash_erase(struct mtd_info *mtd, struct erase_info *instr)
     {
         return -EINVAL;
     }
+#endif
+
 #else
     if ((instr->addr % mtd->erasesize) != 0 || (instr->len % mtd->erasesize) != 0)
         return -EINVAL;
@@ -745,7 +764,7 @@ static int serflash_resume(struct platform_device *pdev)
 }
 #endif
 
-static struct platform_driver platram_driver = {
+static struct platform_driver ms_flash_driver = {
 	.probe		= serflash_probe,
 	.remove		= serflash_cleanup,
 #ifdef CONFIG_PM
@@ -762,7 +781,7 @@ static struct platform_driver platram_driver = {
 };
 
 
-module_platform_driver(platram_driver);
+module_platform_driver(ms_flash_driver);
 
 
 MODULE_LICENSE("GPL");

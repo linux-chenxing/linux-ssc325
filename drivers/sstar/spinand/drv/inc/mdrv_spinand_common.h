@@ -1,9 +1,8 @@
 /*
 * mdrv_spinand_common.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _DRV_SPINAND_COMMON_H_
@@ -49,15 +48,18 @@
 typedef enum _SPINAND_ERROR_NUM
 {
     ERR_SPINAND_SUCCESS,
-    ERR_SPINAND_UNKNOWN_ID,
+    ERR_SPINAND_RESET_FAIL,
     ERR_SPINAND_TIMEOUT,
-    ERR_SPINAND_ECC_ERROR,
-    ERR_SPINAND_ECC_BITFLIP,
+    ERR_SPINAND_BDMA_TIMEOUT,
     ERR_SPINAND_BAD_BLK,
     ERR_SPINAND_E_FAIL,
     ERR_SPINAND_W_FAIL,
-    ERR_SPINAND_BDMA_TIMEOUT,
-    ERR_SPINAND_INVALID
+    ERR_SPINAND_INVALID,
+    ERR_SPINAND_UNKNOWN_ID,
+    ERR_SPINAND_ECC_1_3_CORRECTED,
+    ERR_SPINAND_ECC_4_6_CORRECTED,
+    ERR_SPINAND_ECC_7_8_CORRECTED,
+    ERR_SPINAND_ECC_ERROR,
 } SPINAND_FLASH_ERRNO_e;
 
 typedef enum

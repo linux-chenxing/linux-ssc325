@@ -43,4 +43,16 @@ bool "Supply to EEE function"
 default n
 help
     Supply to EEE function
+
+config EMAC_PHY_RESTART_AN
+bool "Supply to phy restart AN"
+default n
+help
+    Supply to phy restart AN
+
+config EMAC_SPEED10_HALF_PATCH
+bool "Supply to speed 10M duplex half patch"
+default n
+help
+    Supply to hw write out of range to skb in 10M half case
 endif

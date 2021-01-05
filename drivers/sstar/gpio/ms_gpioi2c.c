@@ -1,9 +1,8 @@
 /*
 * ms_gpioi2c.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/module.h>
@@ -210,14 +209,14 @@ static int ms_gpioi2c_probe(struct platform_device *pdev)
     device_create_file(gpioi2c_dev, &dev_attr_gpioi2c_delay);
     device_create_file(gpioi2c_dev, &dev_attr_access_retry);
 
-    printk("[ms_gpioi2c] sda-gpio=%d, scl-gpio=%d\n", sda, scl);
+    printk("[gpioi2c] sda-gpio=%d, scl-gpio=%d\n", sda, scl);
 
     return err;
 }
 
 static int ms_gpioi2c_remove(struct platform_device *pdev)
 {
-    printk("[ms_gpioi2c] removed\n");
+    printk("[gpioi2c] removed\n");
 
     cdev_del(&ms_gpioi2c_cdev);
     unregister_chrdev_region(MKDEV(ms_gpioi2c_major, ms_gpioi2c_minor_start), ms_gpioi2c_dev_count);

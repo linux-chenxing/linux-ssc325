@@ -1,17 +1,19 @@
 /*
- * Copyright (c) 2014 MundoReader S.L.
- * Author: Matthias Brugger <matthias.bgg@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
+* infinity6.dtsi- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
+*/
 
 #include <../../../../drivers/sstar/include/infinity6/irqs.h>
 #include <../../../../drivers/sstar/include/infinity6/gpio.h>
@@ -429,12 +431,26 @@
             micin-pregain-level=<0>;    //0~3
             micin-gain-level=<3>;    //0~7
             linein-gain-level=<2>;  //0~7
-            amp-gpio = <PAD_PM_GPIO0  1>;
+            amp-gpio = <PAD_FUART_TX  1>;
             clocks = <&CLK_upll_384m>;
-           // playback-dma-buffer=<98304>; //512(ms)*48(kHz)*2(ch)*2(16bits)
-           // capture-dma-buffer=<122880>; //640(ms)*48(kHz)*2(ch)*2(16bits)
-            digmic-padmux = <1>; //1~6
-            i2s-padmux = <1>; //only 1 mode
+
+            /*
+            0: OFF
+            1: PAD_GPIO4 ~ PAD_GPIO6
+            2: PAD_SD1_IO4 ~ PAD_SD1_IO6
+            3: PAD_SD1_IO8, PAD_UART0_RX, PAD_UART0_TX
+            */
+            digmic-padmux = <1>;
+
+            /*
+            0: OFF
+            1: PAD_GPIO0 ~ PAD_GPIO3
+            2: PAD_SD1_IO0 ~ PAD_SD1_IO3
+            3: PAD_SPI1_CZ, PAD_SPI1_CK, PAD_SPI1_DI, PAD_SPI1_DO
+            */
+            i2s-padmux = <1>;
+
+            keep-i2s-clk = <0>;
             status = "ok";
         };
 
@@ -449,16 +465,20 @@
             slot-max-clks = <48000000>,<48000000>,<48000000>;
             slot-intcdzs = <1>,<1>,<1>;
             slot-fakecdzs = <0>,<0>,<0>;
-            slot-pwr-gpios = <17>,<0>,<0>;
+            slot-cdzs-gpios = <PAD_PM_SD_CDZ>,<PAD_SD1_IO6>,<0>;
+            slot-pwr-gpios = <PAD_FUART_RTS>,<PAD_PM_GPIO9>,<0>;
+            slot-pwr-off-delay = <30>,<30>,<30>;
+            slot-sdio-use = <0>,<0>,<0>;
+
             interrupts-extended = <&ms_main_intc GIC_SPI INT_IRQ_FCIE IRQ_TYPE_LEVEL_HIGH>,//was INT_IRQ_SDIO
                                  <&ms_main_intc GIC_SPI INT_IRQ_SDIO IRQ_TYPE_LEVEL_HIGH>,
                                  <&ms_main_intc GIC_SPI INT_FIQ_SD_CDZ IRQ_TYPE_LEVEL_HIGH>,
                                  <&ms_gpi_intc 42>,
                                  <&ms_main_intc GIC_SPI INT_FIQ_SD_CDZ IRQ_TYPE_LEVEL_HIGH>;
             interrupt-names = "mie0_irq", "mie1_irq", "cdz_slot0_irq", "cdz_slot1_irq", "cdz_slot2_irq";
-            clocks = <&CLK_sd>,<&CLK_sdio>,<&CLK_sd>,
-                     <&CLK_sd>,<&CLK_sdio>,<&CLK_sd>,
-                     <&CLK_sd>,<&CLK_sdio>,<&CLK_sd>;
+            clocks = <&CLK_sd>,<&CLK_sdio>,<&CLK_VOID>,
+                     <&CLK_sd>,<&CLK_sdio>,<&CLK_VOID>,
+                     <&CLK_sd>,<&CLK_sdio>,<&CLK_VOID>;
             status = "ok";
         };
 
@@ -516,7 +536,18 @@
             reg = <0x1F006800 0x200>;
             interrupts=<GIC_SPI INT_IRQ_RTC IRQ_TYPE_LEVEL_HIGH>; //need to check
             clocks = <&CLK_rtc>;
-            status = "disabled";
+#if 0
+                tm_sec; /*秒 - 取值區間為[0, 59]*/  
+                tm_min; /*分 - 取值區間為[0, 59]*/  
+                tm_hour; /*時 - 取值區間為[0, 23]*/  
+                tm_mday; /*日 - 取值區間為[1, 31]*/  
+                tm_mon; /*月份 - 取值區間為[0, 11]*/  
+                tm_year; /*年份 - 其值為1900年至今年數*/  
+                tm_wday; /*星期 - 取值區間[0, 6]，0代表星期天，1代表星期1，以此類推*/  
+                tm_yday; /*從每年的1月1日開始的天數-取值區間為[0, 365]，0代表1月1日*/  
+            default_date = <0 0 0 5 10 83 6 0>;
+#endif
+            status = "ok";
         };
 
         cpufreq {
@@ -549,7 +580,7 @@
             reg = <0x1F003400 0x600>;
             clocks = <&CLK_xtali_12m>;
             npwm = <11>;
-            pad-ctrl = <PAD_PWM0 PAD_PWM1 PAD_UNKNOWN PAD_UNKNOWN PAD_SPI0_CZ PAD_SPI0_CK PAD_SPI0_DI PAD_SPI0_DO PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN>;
+            pad-ctrl = <PAD_PWM0 PAD_PWM1 PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN PAD_UNKNOWN>;
             status = "ok";
         };
 
@@ -571,6 +602,11 @@
 
 &clks {
     #include <../../../../drivers/sstar/include/infinity6/reg_clks.h>
-    #include "infinity6-clks.dtsi"
+#ifndef __DTS_DUALOS__
+	#include "infinity6-clks.dtsi"
+#else
+	#include "infinity6-clks_simple.dtsi"
+#endif
+
 };
 

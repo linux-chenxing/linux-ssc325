@@ -1,9 +1,8 @@
 /*
 * mhal_pwm.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,11 +11,12 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include "mhal_pwm.h"
 #include "gpio.h"
+#include <linux/of_irq.h>
 
 //------------------------------------------------------------------------------
 //  Variables
@@ -33,6 +33,13 @@
 //------------------------------------------------------------------------------
 //  Global Functions
 //------------------------------------------------------------------------------
+//+++[Only4I6e]
+void MDEV_PWM_AllGrpEnable(struct mstar_pwm_chip *ms_chip)
+{
+    //Dummy func
+}
+//---[Only4I6e]
+
 
 //------------------------------------------------------------------------------
 //
@@ -50,8 +57,8 @@
 //
 void DrvPWMSetDuty(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32 u32Val)
 {
-    U32 u32Period;
-    U32 u32Duty;
+    U32 u32Period = 0x00000000;
+    U32 u32Duty = 0x00000000;
 
     if (0 == u32Val)
     {
@@ -377,6 +384,68 @@ int DrvPWMGroupHold(struct mstar_pwm_chip *ms_chip, U8 u8GroupId, U8 u8Val)
     return 0;
 }
 
+//+++[Only4I6e]
+int DrvPWMGroupGetRoundNum(struct mstar_pwm_chip* ms_chip, U8 u8GroupId, U16* u16Val)
+{
+    return 0;
+}
+
+int DrvPWMGroupGetHoldM1(struct mstar_pwm_chip *ms_chip)
+{
+#if 0
+    return INREG16(ms_chip->base + REG_GROUP_HOLD_MODE1);
+#else
+    //printk("\n[WARN][%s L%d] Only4i6e\n", __FUNCTION__, __LINE__);
+    return 1;
+#endif
+}
+
+int DrvPWMGroupHoldM1(struct mstar_pwm_chip *ms_chip, U8 u8Val)
+{
+#if 0
+    if (u8Val) {
+        SETREG16(ms_chip->base + REG_GROUP_HOLD_MODE1, 1);
+        printk("[%s L%d] hold mode1 en!(keep low)\n", __FUNCTION__, __LINE__);
+    }
+    else {
+        CLRREG16(ms_chip->base + REG_GROUP_HOLD_MODE1, 0);
+        printk("[%s L%d] hold mode1 dis!\n", __FUNCTION__, __LINE__);
+    }
+#else
+    //printk("\n[WARN][%s L%d] Only4i6e\n", __FUNCTION__, __LINE__);
+#endif
+    return 1;
+}
+
+int DrvPWMDutyQE0(struct mstar_pwm_chip *ms_chip, U8 u8GroupId, U8 u8Val)
+{
+#if 0
+    if (PWM_GROUP_NUM <= u8GroupId)
+        return 0;
+
+    printk("[%s L%d] grp:%d x%x(%d)\n", __FUNCTION__, __LINE__, u8GroupId, u8Val, u8Val);
+    if (u8Val)
+        SETREG16(ms_chip->base + REG_PWM_DUTY_QE0, (1 << (u8GroupId + REG_PWM_DUTY_QE0_SHFT)));
+    else
+        CLRREG16(ms_chip->base + REG_PWM_DUTY_QE0, (1 << (u8GroupId + REG_PWM_DUTY_QE0_SHFT)));
+#else
+    //printk("\n[WARN][%s L%d] Only4i6e id:%d\n", __FUNCTION__, __LINE__, u8GroupId);
+#endif
+    return 1;
+}
+
+int DrvPWMGetOutput(struct mstar_pwm_chip *ms_chip, U8* pu8Output)
+{
+#if 0
+    *pu8Output = INREG16(ms_chip->base + REG_PWM_OUT);
+    printk("[%s L%d] output:x%x\n", __FUNCTION__, __LINE__, *pu8Output);
+#else
+    //printk("\n[WARN][%s L%d] Only4i6e\n", __FUNCTION__, __LINE__);
+#endif
+    return 1;
+}
+//---[Only4I6e]
+
 int DrvPWMSetEnd(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8 u8DutyId, U32 u32Val)
 {
     return 0;
@@ -412,4 +481,10 @@ int DrvPWMDiv(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8 u8Val)
 int DrvPWMGroupInfo(struct mstar_pwm_chip *ms_chip, char* buf_start, char* buf_end)
 {
     return 0;
+}
+
+irqreturn_t PWM_IRQ(int irq, void *data)
+{
+    //Only4i6e
+    return IRQ_NONE;
 }

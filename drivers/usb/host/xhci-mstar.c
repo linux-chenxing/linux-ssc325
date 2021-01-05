@@ -9,8 +9,8 @@
 
 #include "xhci.h"
 #include "xhci-mstar.h"
-#include "../core/bc-mstar.h"
-#include "../core/mstar-lib.h"
+#include "bc-mstar.h"
+#include "mstar-lib.h"
 
 extern int create_xhci_sysfs_files(struct xhci_hcd *xhci);
 extern void remove_xhci_sysfs_files(struct xhci_hcd *xhci);
@@ -36,8 +36,8 @@ static int xhci_plat_setup(struct usb_hcd *hcd)
 }
 
 static struct hc_driver mstar_plat_xhci_driver = {
-	.description =		"mstar-xhci-hcd",
-	.product_desc =		"Mstar xHCI Host Controller",
+	.description =		"sstar-xhci-hcd",
+	.product_desc =		"Sstar xHCI Host Controller",
 	.hcd_priv_size =	sizeof(struct xhci_hcd *),
 
 	/*
@@ -122,6 +122,8 @@ void  XHCI_enable_testbus(uintptr_t CHIPTOP_base, uintptr_t U3TOP_base, uintptr_
 	writeb(0x21,    (void*) (XHCI_base+0x6807));
 }
 
+#if defined(XHCI_ENABLE_PPC)
+
 static void XHCI_enable_PPC(uintptr_t U3TOP_base)
 {
 	u16 addr_w, bit_num;
@@ -176,7 +178,7 @@ static void XHCI_enable_PPC(uintptr_t U3TOP_base)
 		}
 	}
 }
-
+#endif
 
 void Mstar_U2utmi_init(uintptr_t UTMI_base, uintptr_t U3TOP_base, unsigned int flag)
 {
@@ -650,16 +652,16 @@ static int xhci_mstar_plat_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	printk("xHCI_%x%04x \n", readb((void*)(_MSTAR_PM_BASE+0x1ECC*2)), readw((void*)(_MSTAR_PM_BASE+0x1ECE*2)));
-	printk("Mstar-xhci H.W init\n");
+	printk("Sstar-xhci H.W init\n");
 
-	if( 0==strncmp(pdev->name, "Mstar-xhci-1", strlen("Mstar-xhci-1")) )
+	if( 0==strncmp(pdev->name, "soc:Sstar-xhci-1", strlen("soc:Sstar-xhci-1")) )
 	{
 		#ifdef DISABLE_FIRST_XHC
 		printk("[XHCI] can't init first xHCI due to DISABLE_FIRST_XHC.....\n");
 		return -ENODEV;
 		#endif
 	}
-	else if( 0==strncmp(pdev->name, "Mstar-xhci-2", strlen("Mstar-xhci-2")) )
+	else if( 0==strncmp(pdev->name, "soc:Sstar-xhci-2", strlen("soc:Sstar-xhci-2")) )
 	{
 		#ifdef DISABLE_SECOND_XHC
 		printk("[XHCI] can't init second xHCI due to DISABLE_SECOND_XHC.....\n");
@@ -668,8 +670,9 @@ static int xhci_mstar_plat_probe(struct platform_device *pdev)
 	}
 
 #ifdef ENABLE_SECOND_XHC /* 2 roots case */
-	#define NAME_LEN (12)
-	if( 0==strncmp(pdev->name, "Mstar-xhci-1", NAME_LEN) ) {
+	#define NAME_LEN (16)
+	if( 0==strncmp(pdev->name, "soc:Sstar-xhci-1", NAME_LEN) )
+	{
 		u3phy_init_addr.utmi_base = _MSTAR_U3UTMI0_BASE;
 		u3phy_init_addr.xhci_base = _MSTAR_XHCI0_BASE;
 		u3phy_init_addr.u3top_base = _MSTAR_U3TOP0_BASE;
@@ -677,7 +680,7 @@ static int xhci_mstar_plat_probe(struct platform_device *pdev)
 		u3phy_init_addr.u3dtop_base = _MSTAR_U3PHY_DTOP0_BASE;
 		u3phy_init_addr.u3atop_base = _MSTAR_U3PHY_ATOP0_BASE;
 	}
-	else if( 0==strncmp(pdev->name, "Mstar-xhci-2", NAME_LEN) ) {
+	else if(0==strncmp(pdev->name, "soc:Sstar-xhci-2", NAME_LEN)) {
 		u3phy_init_addr.utmi_base = _MSTAR_U3UTMI1_BASE;
 		u3phy_init_addr.xhci_base = _MSTAR_XHCI1_BASE;
 		u3phy_init_addr.u3top_base = _MSTAR_U3TOP1_BASE;
@@ -752,9 +755,9 @@ static int xhci_mstar_plat_probe(struct platform_device *pdev)
 
 	#if defined(ENABLE_IRQ_REMAP)
 	#ifdef ENABLE_SECOND_XHC
-	if( 0==strncmp(pdev->name, "Mstar-xhci-1", NAME_LEN) )
+	if( 0==strncmp(pdev->name, "soc:Sstar-xhci-1", NAME_LEN) )
 		irq = MSTAR_XHCI_IRQ;
-	else if( 0==strncmp(pdev->name, "Mstar-xhci-2", NAME_LEN) )
+	else if( 0==strncmp(pdev->name, "soc:Sstar-xhci-2", NAME_LEN) )
 		irq = MSTAR_XHCI2_IRQ;
 	#else /* one root case */
 	irq = MSTAR_XHCI_IRQ;
@@ -766,9 +769,9 @@ static int xhci_mstar_plat_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 #ifdef ENABLE_SECOND_XHC
-	if( 0==strncmp(pdev->name, "Mstar-xhci-1", NAME_LEN) )
+	if( 0==strncmp(pdev->name, "soc:Sstar-xhci-1", NAME_LEN) )
 		hcd->rsrc_start = _MSTAR_XHCI0_BASE;
-	else if( 0==strncmp(pdev->name, "Mstar-xhci-2", NAME_LEN) )
+	else if( 0==strncmp(pdev->name, "soc:Sstar-xhci-2", NAME_LEN) )
 		hcd->rsrc_start = _MSTAR_XHCI1_BASE;
 #else /* one root case */
 	hcd->rsrc_start = _MSTAR_XHCI_BASE;
@@ -783,7 +786,7 @@ static int xhci_mstar_plat_probe(struct platform_device *pdev)
 	}
 
 #ifdef ENABLE_SECOND_XHC
-	if( 0==strncmp(pdev->name, "Mstar-xhci-1", NAME_LEN) ) {
+	if( 0==strncmp(pdev->name, "soc:Sstar-xhci-1", NAME_LEN) ) {
 		hcd->xhci_base = _MSTAR_XHCI0_BASE;
 		hcd->u3top_base = _MSTAR_U3TOP0_BASE;
 		hcd->utmi_base = _MSTAR_U3UTMI0_BASE;
@@ -791,7 +794,7 @@ static int xhci_mstar_plat_probe(struct platform_device *pdev)
 		hcd->u3dphy_base[0] = _MSTAR_U3PHY_DTOP0_BASE;
 		hcd->port_index = 1;
 	}
-	else if( 0==strncmp(pdev->name, "Mstar-xhci-2", NAME_LEN) ) {
+	else if( 0==strncmp(pdev->name, "soc:Sstar-xhci-2", NAME_LEN) ) {
 		hcd->xhci_base = _MSTAR_XHCI1_BASE;
 		hcd->u3top_base = _MSTAR_U3TOP1_BASE;
 		hcd->utmi_base = _MSTAR_U3UTMI1_BASE;
@@ -835,7 +838,7 @@ static int xhci_mstar_plat_probe(struct platform_device *pdev)
 	}
 
 #ifdef ENABLE_SECOND_XHC
-	if( 0==strncmp(pdev->name, "Mstar-xhci-1", NAME_LEN) ) {
+	if( 0==strncmp(pdev->name, "soc:Sstar-xhci-1", NAME_LEN) ) {
 		xhci->shared_hcd->xhci_base = _MSTAR_XHCI0_BASE;
 		xhci->shared_hcd->u3top_base = _MSTAR_U3TOP0_BASE;
 		xhci->shared_hcd->utmi_base = _MSTAR_U3UTMI0_BASE;
@@ -843,7 +846,7 @@ static int xhci_mstar_plat_probe(struct platform_device *pdev)
 		xhci->shared_hcd->u3dphy_base[0] = _MSTAR_U3PHY_DTOP0_BASE;
 		xhci->shared_hcd->port_index = 1;
 	}
-	else if( 0==strncmp(pdev->name, "Mstar-xhci-2", NAME_LEN) ) {
+	else if( 0==strncmp(pdev->name, "soc:Sstar-xhci-2", NAME_LEN) ) {
 		xhci->shared_hcd->xhci_base = _MSTAR_XHCI1_BASE;
 		xhci->shared_hcd->u3top_base = _MSTAR_U3TOP1_BASE;
 		xhci->shared_hcd->utmi_base = _MSTAR_U3UTMI1_BASE;
@@ -948,9 +951,9 @@ static int xhci_hcd_mstar_drv_resume(struct device *dev)
 
 #ifdef ENABLE_SECOND_XHC /* 2 roots case */
 	{
-        #define NAME_LEN (12)
+        #define NAME_LEN (16)
 
-        if( 0==strncmp(pdev->name, "Mstar-xhci-1", NAME_LEN) ) {
+        if( 0==strncmp(pdev->name, "soc:Sstar-xhci-1", NAME_LEN) ) {
                 u3phy_init_addr.utmi_base = _MSTAR_U3UTMI0_BASE;
                 u3phy_init_addr.xhci_base = _MSTAR_XHCI0_BASE;
                 u3phy_init_addr.u3top_base = _MSTAR_U3TOP0_BASE;
@@ -958,7 +961,7 @@ static int xhci_hcd_mstar_drv_resume(struct device *dev)
                 u3phy_init_addr.u3dtop_base = _MSTAR_U3PHY_DTOP0_BASE;
                 u3phy_init_addr.u3atop_base = _MSTAR_U3PHY_ATOP0_BASE;
         }
-        else if( 0==strncmp(pdev->name, "Mstar-xhci-2", NAME_LEN) ) {
+        else if( 0==strncmp(pdev->name, "soc:Sstar-xhci-2", NAME_LEN) ) {
                 u3phy_init_addr.utmi_base = _MSTAR_U3UTMI1_BASE;
                 u3phy_init_addr.xhci_base = _MSTAR_XHCI1_BASE;
                 u3phy_init_addr.u3top_base = _MSTAR_U3TOP1_BASE;
@@ -1025,12 +1028,12 @@ static const struct dev_pm_ops mstar_xhci_plat_pm_ops = {
 
 #if defined(CONFIG_OF)
 static struct of_device_id mstar_xhci_of_device_ids[] = {
-	{.compatible = "Mstar-xhci-1"},
+	{.compatible = "Sstar-xhci-1"},
 	{},
 };
 #ifdef ENABLE_SECOND_XHC
 static struct of_device_id mstar_xhci_1_of_device_ids[] = {
-	{.compatible = "Mstar-xhci-2"},
+	{.compatible = "Sstar-xhci-2"},
 	{},
 };
 #endif
@@ -1042,7 +1045,7 @@ static struct platform_driver xhci_mstar_driver = {
 	.remove =	xhci_mstar_plat_remove,
 
 	.driver = {
-		.name   = "Mstar-xhci-1",
+		.name   = "Sstar-xhci-1",
 		.pm = DEV_PM_OPS,
 #if defined(CONFIG_OF)
 		.of_match_table = mstar_xhci_of_device_ids,
@@ -1056,7 +1059,7 @@ static struct platform_driver second_xhci_mstar_driver = {
         .remove =       xhci_mstar_plat_remove,
 
         .driver = {
-                .name   = "Mstar-xhci-2",
+                .name   = "Sstar-xhci-2",
 		.pm = DEV_PM_OPS,
 #if defined(CONFIG_OF)
                 .of_match_table = mstar_xhci_1_of_device_ids,

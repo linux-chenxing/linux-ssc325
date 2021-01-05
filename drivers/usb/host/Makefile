@@ -6,8 +6,8 @@
 # tell define_trace.h where to find the xhci trace header
 CFLAGS_xhci-trace.o := -I$(src)
 
-# mstar_porting_plat >>>
-EXTRA_CFLAGS      += -Idrivers/sstar/include/$(CONFIG_SSTAR_CHIP_NAME)/usb
+EXTRA_CFLAGS      += -Idrivers/sstar/usb/host
+EXTRA_CFLAGS      += -Idrivers/sstar/usb/host/$(CONFIG_SSTAR_CHIP_NAME)
 #EXTRA_CFLAGS      += -Idrivers/sstar2/hal/$(CONFIG_SSTAR_CHIP_NAME)/usb
 #ifdef CONFIG_MSTAR_BDMA
 #EXTRA_CFLAGS      += -Idrivers/sstar2/include
@@ -37,7 +37,8 @@ ifneq ($(CONFIG_USB_XHCI_RCAR), )
 	xhci-plat-hcd-y		+= xhci-rcar.o
 endif
 # mstar_porting_plat >>>
-xhci-hcd-$(CONFIG_MP_USB_MSTAR) += xhci-mstar.o xhci-mstar-sysfs.o
+xhci-hcd-$(CONFIG_MP_USB_MSTAR) += xhci-mstar.o
+xhci-hcd-$(CONFIG_MP_USB_MSTAR) += xhci-mstar-sysfs.o
 # mstar_porting_plat <<<
 
 obj-$(CONFIG_USB_WHCI_HCD)	+= whci/

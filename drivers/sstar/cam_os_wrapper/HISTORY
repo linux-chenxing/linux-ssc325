@@ -2,6 +2,50 @@
 =                        cam_os_wrapper change log                            =
 ===============================================================================
 
+v1.0.23 - 2019-12-11
+  Added
+    - Support CamOsMemoryBarrier.
+
+v1.0.22 - 2019-12-09
+  Added
+    - Support CamOsIdrInitEx for create IDR with maximum entry number.
+
+v1.0.21 - 2019-08-09
+  Added
+    - Support CamOsThreadChangePriority.
+
+v1.0.20 - 2019-08-02
+  Changed
+    - cam_os_util_list.h enable CAM_OS_HLIST_EMPTY again, it will cause ABICC
+      check g++ build fail.
+
+v1.0.19 - 2019-08-01
+  Changed
+    - Change parameter order of following atomic function for alignment API style
+      CamOsAtomicAddReturn
+      CamOsAtomicSubReturn
+      CamOsAtomicSubAndTest
+      CamOsAtomicAddNegative
+
+v1.0.18 - 2019-08-01
+  Added
+    - CamOsAtomicAndFetch / CamOsAtomicFetchAnd for AND operation.
+    - CamOsAtomicNandFetch / CamOsAtomicFetchNand for NAND operation.
+    - CamOsAtomicOrFetch / CamOsAtomicFetchOr for OR operation.
+    - CamOsAtomicXorFetch / CamOsAtomicFetchXor for XOR operation.
+
+v1.0.17 - 2019-05-16
+  Enhanced
+    - CamOsGetTimeOfDay and CamOsSetTimeOfDay support nanosecond field in RTK.
+
+v1.0.16 - 2019-05-10
+  Fixed
+    - cam_os_util_list.h cause ABICC check g++ build fail.
+
+v1.0.15 - 2019-05-06
+  Added
+    - Add CamOsMemInvalidate for invalidate data in cache.
+
 v1.0.14 - 2019-04-10
   Fixed
     - CamOsSetTimeOfDay, _TestCamOsSystemTime

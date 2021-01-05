@@ -1,9 +1,8 @@
 /*
-* spi-infinity.c- Sigmastar
+* mspi.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/clk.h>
@@ -27,6 +26,17 @@
 #include <linux/of_irq.h>
 #include <linux/of_device.h>
 #include <linux/spi/spi.h>
+#include <linux/gpio.h>
+#include <linux/clk.h>
+#include <linux/clk-provider.h>
+#include <linux/dma-mapping.h>
+#include "ms_platform.h"
+
+#if defined(CONFIG_MS_PADMUX)
+#include "mdrv_padmux.h"
+#include "mdrv_puse.h"
+#include "gpio.h"
+#endif
 
 //-------------------------------------------------------------------------------------------------
 //  Global Variables
@@ -34,6 +44,8 @@
 
 bool gbInitFlag = false;
 static struct mutex		hal_mspi_lock;
+static bool SUPPORT_DMA = true;
+
 //-------------------------------------------------------------------------------------------------
 //  RegbaseAddr  Disc
 //-------------------------------------------------------------------------------------------------
@@ -51,7 +63,9 @@ static struct mutex		hal_mspi_lock;
 #define TRUE true
 #define FALSE false
 
-#define SUPPORT_SPI_1 1
+#define SUPPORT_SPI_1 0
+
+#define MAX_SUPPORT_BITS    16
 
 #define BANK_TO_ADDR32(b) (b<<9)
 #define BANK_SIZE 0x200
@@ -62,6 +76,7 @@ static struct mutex		hal_mspi_lock;
 #define MSPI1_BANK_ADDR   0x1111
 #define CLK__BANK_ADDR    0x1038
 #define CHIPTOP_BANK_ADDR 0x101E
+#define MOVDMA_BANK_ADDR 0x100B
 
 #define BASE_REG_MSPI0_ADDR			MSPI0_BANK_ADDR*0x200 //GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x111000)
 #define BASE_REG_MSPI1_ADDR			MSPI1_BANK_ADDR*0x200 //GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x111100)
@@ -114,6 +129,7 @@ static struct mutex		hal_mspi_lock;
 #define MSPI_DONE_CLEAR_OFFSET         0x5C
 #define MSPI_CHIP_SELECT_OFFSET        0x5F
 
+#define MSPI_FULL_DEPLUX_RD_CNT (0x77)
 #define MSPI_FULL_DEPLUX_RD00 (0x78)
 #define MSPI_FULL_DEPLUX_RD01 (0x78)
 #define MSPI_FULL_DEPLUX_RD02 (0x79
@@ -155,14 +171,46 @@ static struct mutex		hal_mspi_lock;
     #define  MSPI1_CLK_12M          0x0800
     #define  MSPI1_CLK_MASK         0x0F00
 
+// clk_mspi
+#define MSPI_CLK_CFG                    0x33
+    #define MSPI_SELECT_0           0x0000
+    #define MSPI_SELECT_1           0x4000
+    #define MSPI_CLK_MASK           0xF000
+	
 //CHITOP 101E mspi mode select
 #define MSPI0_MODE          0x0C //bit0~bit1
-    #define MSPI0_MODE_MASK 0x03
+    #define MSPI0_MODE_MASK 0x07
 #define MSPI1_MODE          0x0C //bit4~bit5
     #define MSPI1_MODE_MASK 0x70
 #define EJTAG_MODE          0xF
+    #define EJTAG_MODE_1    0x01
     #define EJTAG_MODE_2    0x02
+    #define EJTAG_MODE_3    0x03
     #define EJTAG_MODE_MASK 0x03
+
+//MOVDMA 100B
+#define MOV_DMA_SRC_ADDR_L 0x03
+#define MOV_DMA_SRC_ADDR_H 0x04
+#define MOV_DMA_DST_ADDR_L 0x05
+#define MOV_DMA_DST_ADDR_H 0x06
+#define MOV_DMA_BYTE_CNT_L 0x07
+#define MOV_DMA_BYTE_CNT_H 0x08
+#define DMA_MOVE0_IRQ_CLR  0x28
+#define MOV_DMA_IRQ_FINAL_STATUS    0x2A
+#define DMA_MOVE0_ENABLE 0x00
+#define DMA_RW         0x50 //0 for dma write to device, 1 for dma read from device
+    #define DMA_READ 0x01
+    #define DMA_WRITE 0x00
+#define DMA_DEVICE_MODE 0x51
+#define DMA_DEVICE_SEL 0x52
+
+//spi dma
+#define MSPI_DMA_DATA_LENGTH_L 0x30
+#define MSPI_DMA_DATA_LENGTH_H 0x31
+#define MSPI_DMA_ENABLE 0x32
+#define MSPI_DMA_RW_MODE 0x33
+    #define MSPI_DMA_WRITE 0x00
+    #define MSPI_DMA_READ 0x01
 //-------------------------------------------------------------------------------------------------
 //  Local Defines
 //-------------------------------------------------------------------------------------------------
@@ -188,11 +236,17 @@ static struct mutex		hal_mspi_lock;
 #define CHIPTOP_READ(_reg_)                 READ_WORD(bs->VirtChiptopBaseAddr + ((_reg_)<<2))
 #define CHIPTOP_WRITE(_reg_, _val_)         WRITE_WORD(bs->VirtChiptopBaseAddr + ((_reg_)<<2), (_val_))
 
+#define MOVDMA_READ(_reg_)                 READ_WORD(bs->VirtMovdmaBaseAddr + ((_reg_)<<2))
+#define MOVDMA_WRITE(_reg_, _val_)         WRITE_WORD(bs->VirtMovdmaBaseAddr + ((_reg_)<<2), (_val_))
+
 #define _HAL_MSPI_ClearDone()               MSPI_WRITE(MSPI_DONE_CLEAR_OFFSET,MSPI_CLEAR_DONE)
 #define MAX_CHECK_CNT                       2000
 
 #define MSPI_READ_INDEX 			   0x0
 #define MSPI_WRITE_INDEX			   0x1
+
+#define SPI_MIU0_BUS_BASE                  0x20000000
+#define SPI_MIU1_BUS_BASE                  0xFFFFFFFF
 
 //-------------------------------------------------------------------------------------------------
 //  Local Variables
@@ -275,6 +329,7 @@ typedef struct
     char *VirtMspBaseAddr;
     char *VirtClkBaseAddr;
     char *VirtChiptopBaseAddr;
+    char *VirtMovdmaBaseAddr;
 } MSPI_BaseAddr_st;
 
 static MSPI_BaseAddr_st _hal_msp = {
@@ -315,15 +370,20 @@ struct mstar_spi {
 	void __iomem *regs;
 	struct clk *clk;
 	int irq;
+	int use_dma;
+	int xfer_w_dma;
 	struct completion done;
 	const u8 *tx_buf;
 	u8 *rx_buf;
 	int len;
+	int wsize;
     char *VirtMspBaseAddr;
     char *VirtClkBaseAddr;
     char *VirtChiptopBaseAddr;
+    char *VirtMovdmaBaseAddr;
     char u8channel;
-    int u32spi_mode;
+    u32  u32spi_mode;
+    u8   bits_per_word;
 };
 
 static struct spi_board_info mstar_info = {
@@ -397,6 +457,20 @@ void HAL_MSPI_IntEnable(struct mstar_spi *bs,MSPI_CH eChannel,bool bEnable)
     mutex_unlock(&hal_mspi_lock);
 }
 
+#if defined(CONFIG_MS_PADMUX)
+static int _MSPI_IsPadSet(MSPI_CH eChannel)
+{
+    // important: need to modify if more MDRV_PUSE_SPI? defined
+    if (eChannel == E_MSPI0 && PAD_UNKNOWN != mdrv_padmux_getpad(MDRV_PUSE_SPI0_CK) )
+    {
+        //printk("SPI: %d pad set by padmux driver!!\n", eChannel);
+        return TRUE;
+    }
+    else
+        return FALSE;
+}
+#endif
+
 void HAL_MSPI_Init(struct mstar_spi *bs,MSPI_CH eChannel,u8 u8Mode)
 {
     u16 TempData;
@@ -408,14 +482,16 @@ void HAL_MSPI_Init(struct mstar_spi *bs,MSPI_CH eChannel,u8 u8Mode)
     {
         return;
     }
-    else if((eChannel == E_MSPI0) && (u8Mode > 3))
+    else if((eChannel == E_MSPI0) && (u8Mode > 6))
     {
         return;
     }
+#if SUPPORT_SPI_1
     else if((eChannel == E_MSPI1) && (u8Mode > 6))
     {
         return;
     }
+#endif
     mutex_lock(&hal_mspi_lock);
     _HAL_MSPI_CheckandSetBaseAddr(eChannel);
 
@@ -426,35 +502,52 @@ void HAL_MSPI_Init(struct mstar_spi *bs,MSPI_CH eChannel,u8 u8Mode)
         // CLK SETTING
         TempData = CLK_READ(MSPI0_CLK_CFG);
         TempData &= ~(MSPI0_CLK_MASK);
-        TempData |= MSPI1_CLK_108M;
+        TempData |= MSPI0_CLK_108M;
         CLK_WRITE(MSPI0_CLK_CFG, TempData);
-        //select mspi mode
-        TempData = CHIPTOP_READ(MSPI0_MODE);
-        TempData &= ~(MSPI0_MODE_MASK);
-        TempData |= u8Mode;
-        CHIPTOP_WRITE(MSPI0_MODE,TempData);
 
-        //Disable jtag mode   // IO PAD conflict turn off jtag
-        TempData = CHIPTOP_READ(EJTAG_MODE);
-        if(TempData == EJTAG_MODE_2) {
-            TempData &= ~(EJTAG_MODE_MASK);
-            CHIPTOP_WRITE(EJTAG_MODE,TempData);
+#if defined(CONFIG_MS_PADMUX)
+        if (0 == mdrv_padmux_active() ||
+            FALSE == _MSPI_IsPadSet(E_MSPI0) )
+#endif
+        {
+            //printk("SPI: %d pad set by SPI driver!!\n", eChannel);
+            //select mspi mode
+            TempData = CHIPTOP_READ(MSPI0_MODE);
+            TempData &= ~(MSPI0_MODE_MASK);
+            TempData |= u8Mode;
+            CHIPTOP_WRITE(MSPI0_MODE,TempData);
+
+            //Disable jtag mode   // IO PAD conflict turn off jtag
+            TempData = CHIPTOP_READ(EJTAG_MODE);
+            if((u8Mode == 4 && TempData == EJTAG_MODE_1) ||
+               (u8Mode == 3 && TempData == EJTAG_MODE_3) ){
+                TempData &= ~(EJTAG_MODE_MASK);
+                CHIPTOP_WRITE(EJTAG_MODE,TempData);
+            }
         }
     }
-    else if (eChannel == E_MSPI1)
+#if SUPPORT_SPI_1
+   else if (eChannel == E_MSPI1)
     {
         // CLK SETTING
         TempData = CLK_READ(MSPI1_CLK_CFG);
         TempData &= ~(MSPI1_CLK_MASK);
         TempData |= MSPI1_CLK_108M;
         CLK_WRITE(MSPI1_CLK_CFG, TempData);
-        //select mspi mode
-        TempData = CHIPTOP_READ(MSPI1_MODE);
-        TempData &= ~(MSPI1_MODE_MASK);
-        TempData |= (u8Mode << 4);
-        CHIPTOP_WRITE(MSPI1_MODE,TempData);
-    }
 
+#if defined(CONFIG_MS_PADMUX)
+        if (0 == mdrv_padmux_active() ||
+            FALSE == _MSPI_IsPadSet(E_MSPI1) )
+#endif
+        {
+            //select mspi mode
+            TempData = CHIPTOP_READ(MSPI1_MODE);
+            TempData &= ~(MSPI1_MODE_MASK);
+            TempData |= (u8Mode << 4);
+            CHIPTOP_WRITE(MSPI1_MODE,TempData);
+        }
+    }
+#endif
     mutex_unlock(&hal_mspi_lock);
     return;
 }
@@ -541,11 +634,32 @@ static U16 _HAL_MSPI_CheckDone(struct mstar_spi *bs)
 
 	return MSPI_READ(MSPI_DONE_OFFSET);
 }
+
+//------------------------------------------------------------------------------
+/// Description : SPI chip select enable and disable
+/// @param Enable \b OUT: enable or disable chip select
+//------------------------------------------------------------------------------
+static void _HAL_MSPI_ChipSelect(struct mstar_spi *bs,BOOL Enable ,U8 eSelect)
+{
+    U16 regdata = 0;
+    U8 bitmask = 0;
+    regdata = MSPI_READ(MSPI_CHIP_SELECT_OFFSET);
+    if(Enable) {
+        bitmask = ~(1 << eSelect);
+        regdata &= bitmask;
+    } else {
+        bitmask = (1 << eSelect);
+        regdata |= bitmask;
+    }
+    MSPI_WRITE(MSPI_CHIP_SELECT_OFFSET, regdata);
+}
+
 //------------------------------------------------------------------------------
 /// Description : Trigger MSPI operation
 /// @return TRUE  : operation success
 /// @return FALSE : operation timeout
 //------------------------------------------------------------------------------
+#ifdef _EN_MSPI_INTC_
 BOOL _HAL_MSPI_Trigger(struct mstar_spi *bs)
 {
 	unsigned int timeout;
@@ -563,6 +677,12 @@ BOOL _HAL_MSPI_Trigger(struct mstar_spi *bs)
         mspi_dbgmsg("timeout\n");
         //goto out;
     }
+    else {
+        if(bs->xfer_w_dma){ // clear MOVDMA finish status
+            u16 intsrc = MOVDMA_READ(MOV_DMA_IRQ_FINAL_STATUS);
+            MOVDMA_WRITE(DMA_MOVE0_IRQ_CLR, intsrc);
+        }
+    }
 
     // check operation complete
 //    if(!_HAL_MSPI_CheckDone()) {
@@ -574,6 +694,37 @@ BOOL _HAL_MSPI_Trigger(struct mstar_spi *bs)
 //    MSPI_WRITE(MSPI_RBF_SIZE_OFFSET,0x0);
     return TRUE;
 }
+#else
+#define HW_MSPI_WAIT_TIMEOUT      (30000)
+BOOL _HAL_MSPI_Trigger(struct mstar_spi *bs)
+{
+    U16 volatile time_remain = HW_MSPI_WAIT_TIMEOUT;
+   // trigger operation
+    MSPI_WRITE(MSPI_TRIGGER_OFFSET,MSPI_TRIGGER);
+
+
+    while (time_remain--) {
+
+        if (_HAL_MSPI_CheckDone(bs) == 1) { //done
+            if(bs->xfer_w_dma){ // clear MOVDMA finish status
+                u16 intsrc = MOVDMA_READ(MOV_DMA_IRQ_FINAL_STATUS);
+                MOVDMA_WRITE(DMA_MOVE0_IRQ_CLR, intsrc);
+            }
+            _HAL_MSPI_ClearDone();  // for debug
+            mspi_dbgmsg("<<<<<<<<<<<<<<<<<<< SPI_Done >>>>>>>>>>>>>>>>>\n");
+            break;
+        }
+    }
+
+    MSPI_WRITE(MSPI_RBF_SIZE_OFFSET,0x0);
+
+    if (!time_remain) {
+        mspi_dbgmsg("timeout\n");
+        return FALSE;
+    }
+    return TRUE;
+}
+#endif
 //-------------------------------------------------------------------------------------------------
 /// Description : read data from MSPI
 /// @param pData \b IN :pointer to receive data from MSPI read buffer
@@ -586,6 +737,8 @@ BOOL HAL_MSPI_Read(struct mstar_spi *bs, MSPI_CH eChannel, U8 *pData, U16 u16Siz
     U8  u8Index = 0;
     U16  u16TempBuf = 0;
     U16 i =0, j = 0;
+    U8 shift;
+    U8  isMsbBitMode = (bs->bits_per_word % 8) && !(bs->u32spi_mode & SPI_LSB_FIRST);
 
     mutex_lock(&hal_mspi_lock);
     _HAL_MSPI_CheckandSetBaseAddr( eChannel);
@@ -605,12 +758,34 @@ BOOL HAL_MSPI_Read(struct mstar_spi *bs, MSPI_CH eChannel, U8 *pData, U16 u16Siz
             if(u8Index & 1) {
                 u16TempBuf = MSPI_READ((MSPI_READ_BUF_OFFSET + (u8Index >> 1)));
                 //DEBUG_MSPI(E_MSPI_DBGLV_DEBUG,printk("read Buf data %x index %d\n",u16TempBuf, u8Index));
-                pData[u8Index] = u16TempBuf >> 8;
-                pData[u8Index-1] = u16TempBuf & 0xFF;
+                if (isMsbBitMode)
+                {
+                    if (bs->bits_per_word < 8)
+                    {
+                        shift = 8 - bs->bits_per_word;
+                        pData[u8Index]   = u16TempBuf >> (8 + shift);
+                        pData[u8Index-1] = (u16TempBuf & 0xFF) >> shift;
+                    }
+                    else  //bits_per_word=9~15
+                    {
+                        shift = 16 - bs->bits_per_word;
+                        pData[u8Index] = u16TempBuf >> 8;
+                        pData[u8Index-1] = (u16TempBuf & 0xFF) >> shift;
+                    }
+                }
+                else {
+                    pData[u8Index] = u16TempBuf >> 8;
+                    pData[u8Index-1] = u16TempBuf & 0xFF;
+                }
             } else if(u8Index == (j -1)) {
                 u16TempBuf = MSPI_READ((MSPI_READ_BUF_OFFSET + (u8Index >> 1)));
                 //DEBUG_MSPI(E_MSPI_DBGLV_DEBUG,printk("read Buf data %x index %d\n",u16TempBuf, u8Index));
-                pData[u8Index] = u16TempBuf & 0xFF;
+                if (isMsbBitMode) {
+                    pData[u8Index] = (u16TempBuf & 0xFF) >> (8 - bs->bits_per_word);
+                }
+                else {
+                    pData[u8Index] = u16TempBuf & 0xFF;
+                }
             }
 
             //printk("******************* read Buf data %x index %d\n",u16TempBuf, u8Index);
@@ -631,19 +806,45 @@ BOOL HAL_MSPI_Read(struct mstar_spi *bs, MSPI_CH eChannel, U8 *pData, U16 u16Siz
 //------------------------------------------------------------------------------
 BOOL HAL_MSPI_Write(struct mstar_spi *bs, MSPI_CH eChannel, U8 *pData, U16 u16Size)
 {
-    U8  u8Index = 0;
+    U8  u8Index = 0, u8TempBuf;
     U16 u16TempBuf = 0;
+    U8 shift;
+    U8  isMsbBitMode = (bs->bits_per_word % 8) && !(bs->u32spi_mode & SPI_LSB_FIRST);
+
     mutex_lock(&hal_mspi_lock);
     _HAL_MSPI_CheckandSetBaseAddr( eChannel);
 
+    // bit mode: to send 1 0000 0101
+    //     we get data[0]=0x01,data[1]=0x05 from users
+    //     We must fill wbuf[0]=0x80,wbuf[1]=0x05 for HW MSB bit mode
     for(u8Index = 0; u8Index < u16Size; u8Index++) {
         if(u8Index & 1) {
-            u16TempBuf = (pData[u8Index] << 8) | pData[u8Index-1];
+            if (isMsbBitMode) {
+                if (bs->bits_per_word < 8)
+                {
+                    shift = 8 - bs->bits_per_word;
+                    u16TempBuf = (pData[u8Index] << (8+shift)) | (pData[u8Index-1] << shift);
+                }
+                else  //bits_per_word=9~15
+                {
+                    shift = 16 - bs->bits_per_word;
+                    u16TempBuf = (pData[u8Index] << 8) | (pData[u8Index-1] << shift);
+                }
+            }
+            else {
+                u16TempBuf = (pData[u8Index] << 8) | pData[u8Index-1];
+            }
             //DEBUG_MSPI(E_MSPI_DBGLV_DEBUG,printk("write Buf data %x index %d\n",u16TempBuf, u8Index));
             MSPI_WRITE((MSPI_WRITE_BUF_OFFSET + (u8Index >> 1)),u16TempBuf);
         } else if(u8Index == (u16Size -1)) {
-            //DEBUG_MSPI(E_MSPI_DBGLV_DEBUG,printk("write Buf data %x index %d\n",pData[u8Index], u8Index));
-            MSPI_WRITE((MSPI_WRITE_BUF_OFFSET + (u8Index >> 1)),pData[u8Index]);
+            if (isMsbBitMode) {
+                 u8TempBuf = pData[u8Index] << (8 - bs->bits_per_word);
+             }
+             else {
+                 u8TempBuf = pData[u8Index];
+             }
+            //DEBUG_MSPI(E_MSPI_DBGLV_DEBUG,printk("write Buf data %x index %d\n",u8TempBuf, u8Index));
+            MSPI_WRITE((MSPI_WRITE_BUF_OFFSET + (u8Index >> 1)),u8TempBuf);
         }
     }
 
@@ -652,6 +853,32 @@ BOOL HAL_MSPI_Write(struct mstar_spi *bs, MSPI_CH eChannel, U8 *pData, U16 u16Si
     // set write data size
     mutex_unlock(&hal_mspi_lock);
     return TRUE;
+}
+
+BOOL HAL_MSPI_FullDuplex(struct mstar_spi *bs , MSPI_CH eChannel, U8 *txdata, U8 *rxdata, U16 u16size)
+{
+    U16 fullDeplux_rd_cnt = 0;
+    U16 *u16val = (U16*)rxdata;
+    U16  i = 0;
+    BOOL bRet = FALSE;
+
+    /* tx */
+    bRet = HAL_MSPI_Write(bs, eChannel, txdata, u16size);
+
+    /*read duplux buffer*/
+    fullDeplux_rd_cnt  = MSPI_READ(MSPI_FULL_DEPLUX_RD_CNT)&0xFF;
+
+    for(i = 0; i < fullDeplux_rd_cnt/2; i++)
+    {
+        u16val[i]  = MSPI_READ(MSPI_FULL_DEPLUX_RD00+i);
+    }
+
+    if(fullDeplux_rd_cnt%2)
+    {
+        rxdata[fullDeplux_rd_cnt - 1]  = ((MSPI_READ(MSPI_FULL_DEPLUX_RD00 + fullDeplux_rd_cnt/2)) &0xFF);
+    }
+
+    return bRet;
 }
 
 //------------------------------------------------------------------------------
@@ -722,24 +949,6 @@ BOOL HAL_MSPI_Reset_DCConfig(struct mstar_spi *bs,MSPI_CH eChannel)
     mutex_unlock(&hal_mspi_lock);
     return TRUE;
 }
-//------------------------------------------------------------------------------
-/// Description : SPI chip select enable and disable
-/// @param Enable \b OUT: enable or disable chip select
-//------------------------------------------------------------------------------
-static void _HAL_MSPI_ChipSelect(struct mstar_spi *bs,BOOL Enable ,U8 eSelect)
-{
-    U16 regdata = 0;
-    U8 bitmask = 0;
-    regdata = MSPI_READ(MSPI_CHIP_SELECT_OFFSET);
-    if(Enable) {
-        bitmask = ~(1 << eSelect);
-        regdata &= bitmask;
-    } else {
-        bitmask = (1 << eSelect);
-        regdata |= bitmask;
-    }
-    MSPI_WRITE(MSPI_CHIP_SELECT_OFFSET, regdata);
-}
 
 //------------------------------------------------------------------------------
 /// Description : Set MSPI chip select
@@ -759,6 +968,29 @@ void MDrv_MSPI_ChipSelect(struct mstar_spi *bs,U8 u8Channel,  BOOL Enable, U8 u8
     HAL_MSPI_SetChipSelect(bs,(MSPI_CH)u8Channel,Enable,u8CS);
     return;
 }
+
+U32 HAL_MSPI_SelectCLK(struct mstar_spi *bs,U8 u8Channel) //Enable DMA CLK
+{
+    u16 TempData;
+
+    TempData = CLK_READ(MSPI_CLK_CFG);
+    if(u8Channel == E_MSPI0)//mspi0
+    {
+        // CLK SETTING
+        TempData &= ~(MSPI_CLK_MASK);
+        TempData |= MSPI_SELECT_0;
+    }
+    else if(u8Channel == E_MSPI1)//mspi1
+    {
+        // CLK SETTING
+        TempData &= ~(MSPI_CLK_MASK);
+        TempData |= MSPI_SELECT_1;
+    }
+    CLK_WRITE(MSPI_CLK_CFG, TempData);
+    
+    return 0;
+}
+
 //-------------------------------------------------------------------------------------------------
 /// Description : read data from MSPI
 /// @param pData \b IN :pointer to receive data from MSPI read buffer
@@ -824,6 +1056,116 @@ U8 MDrv_MSPI_Write(struct mstar_spi *bs,U8 u8Channel, U8 *pData, U16 u16Size)
     }
     return E_MSPI_OK;
 }
+
+BOOL MDrv_MSPI_FullDuplex(struct mstar_spi *bs, U8 u8Channel, U8 *txdata, U8 *rxdata, U16 u16size)
+{
+    U8  i = 0;
+    U8  frmcnt = 0;
+    U8  lastfrmsize = 0;
+
+    frmcnt = u16size/MAX_WRITE_BUF_SIZE;
+    lastfrmsize = u16size%MAX_WRITE_BUF_SIZE;
+
+    for (i = 0; i < frmcnt; i++)
+    {
+        if(!HAL_MSPI_FullDuplex(bs, (MSPI_CH)u8Channel, txdata + i * MAX_WRITE_BUF_SIZE, rxdata + i * MAX_WRITE_BUF_SIZE, MAX_WRITE_BUF_SIZE))
+        {
+            return FALSE;
+        }
+    }
+
+    if(!lastfrmsize)
+        return TRUE;
+
+    return HAL_MSPI_FullDuplex(bs, (MSPI_CH)u8Channel, txdata + frmcnt * MAX_WRITE_BUF_SIZE, rxdata + frmcnt * MAX_WRITE_BUF_SIZE, lastfrmsize);
+}
+
+
+U8 MDrv_MSPI_DMA_Read(struct mstar_spi *bs, U8 u8Channel, U8 *pData, U16 u16Size)
+{
+    dma_addr_t data_addr;
+
+    if(pData == NULL) {
+        return E_MSPI_NULL;
+    }
+    mutex_lock(&hal_mspi_lock);
+
+    HAL_MSPI_SelectCLK(bs, u8Channel);
+
+    MOVDMA_WRITE( DMA_RW, DMA_READ); // 1 for dma read from device
+
+    MSPI_WRITE(MSPI_DMA_ENABLE, 0x01);
+    MSPI_WRITE(MSPI_DMA_RW_MODE, MSPI_DMA_READ);
+
+    MSPI_WRITE(MSPI_DMA_DATA_LENGTH_L, u16Size & 0xFFFF );
+    MSPI_WRITE(MSPI_DMA_DATA_LENGTH_H, (u16Size>>16)& 0x00FF); // 24bit
+
+    MOVDMA_WRITE(MOV_DMA_BYTE_CNT_L, u16Size & 0xFFFF );
+    MOVDMA_WRITE(MOV_DMA_BYTE_CNT_H, u16Size>>16 );
+
+    data_addr=dma_map_single(NULL, pData, u16Size, DMA_TO_DEVICE);
+    if(data_addr > SPI_MIU1_BUS_BASE)
+        data_addr -= SPI_MIU1_BUS_BASE;
+    else
+        data_addr -= SPI_MIU0_BUS_BASE;
+
+    MOVDMA_WRITE(MOV_DMA_DST_ADDR_L, data_addr & 0x0000FFFF );
+    MOVDMA_WRITE(MOV_DMA_DST_ADDR_H, data_addr >>16 );
+
+    MOVDMA_WRITE(0x00,0x01);//dma enable
+    _HAL_MSPI_ChipSelect(bs,1,0);//enable chip select for device0  (pulled low)
+    _HAL_MSPI_RWBUFSize(bs,MSPI_READ_INDEX, 0); //spi length = 0
+    _HAL_MSPI_Trigger(bs);
+    _HAL_MSPI_ChipSelect(bs,0,0);//disable chip select for device0  (pulled high)
+
+    mutex_unlock(&hal_mspi_lock);
+    return E_MSPI_OK;
+}
+
+U8 MDrv_MSPI_DMA_Write(struct mstar_spi *bs,U8 u8Channel, U8 *pData, U16 u16Size)
+{
+    dma_addr_t data_addr;
+    mutex_lock(&hal_mspi_lock);
+
+    //printk("### MDrv_MSPI_DMA_Write\r\n");
+
+    HAL_MSPI_SelectCLK(bs, u8Channel);
+
+    MOVDMA_WRITE( DMA_RW, DMA_WRITE );//0 for dma write to device
+    MOVDMA_WRITE( DMA_DEVICE_MODE, 0x0001 ); // 1 to enable dma device mode
+    MOVDMA_WRITE( DMA_DEVICE_SEL, bs->u8channel); //0 select mspi0 , 1 select mspi1
+
+    MSPI_WRITE(MSPI_DMA_ENABLE, 0x01);
+    MSPI_WRITE(MSPI_DMA_RW_MODE, MSPI_DMA_WRITE);
+
+    MSPI_WRITE(MSPI_DMA_DATA_LENGTH_L, u16Size & 0xFFFF );
+    MSPI_WRITE(MSPI_DMA_DATA_LENGTH_H, u16Size>>16 );
+
+    MOVDMA_WRITE(MOV_DMA_BYTE_CNT_L, u16Size & 0xFFFF );
+    MOVDMA_WRITE(MOV_DMA_BYTE_CNT_H, u16Size>>16 );
+
+    data_addr=dma_map_single(NULL, pData, u16Size, DMA_FROM_DEVICE);
+    if(data_addr > SPI_MIU1_BUS_BASE)
+        data_addr -= SPI_MIU1_BUS_BASE;
+    else
+        data_addr -= SPI_MIU0_BUS_BASE;
+
+    Chip_Flush_MIU_Pipe();
+
+    MOVDMA_WRITE(MOV_DMA_SRC_ADDR_L, data_addr & 0x0000FFFF );
+    MOVDMA_WRITE(MOV_DMA_SRC_ADDR_H, data_addr >>16);
+
+
+    MOVDMA_WRITE(0x00,0x01);//dma enable
+    _HAL_MSPI_ChipSelect(bs,1,0);//enable chip select for device0  (pulled low)
+    _HAL_MSPI_RWBUFSize(bs,MSPI_WRITE_INDEX, 0);
+    _HAL_MSPI_Trigger(bs);
+    _HAL_MSPI_ChipSelect(bs,0,0);//disable chip select for device0  (pulled high)
+	
+    mutex_unlock(&hal_mspi_lock);
+    return E_MSPI_OK;
+}
+
 
 u8 MDrv_MSPI_Init(struct mstar_spi *bs,u8 u8Channel,u8 u8Mode)
 {
@@ -961,9 +1303,12 @@ void HAL_MSPI_SetLSB(struct mstar_spi *bs,MSPI_CH eChannel, BOOL enable)
     mutex_unlock(&hal_mspi_lock);
 }
 
-static U8 clk_spi_ckg[3] = {108, 54, 12};
-static U16 clk_spi_div[8] = {2, 4, 8, 16, 32, 64, 128, 256};
-static ST_DRV_MSPI_CLK clk_buffer[24];
+#define NUM_SPI_CKG             4
+#define NUM_SPI_CLKDIV          8
+#define NUM_SPI_CLKRATES        32                  //NUM_SPI_CKG * NUM_SPI_CLKDIVRATE
+static U8 clk_spi_ckg[NUM_SPI_CKG] = {108, 54, 12, 144};
+static U16 clk_spi_div[NUM_SPI_CLKDIV] = {2, 4, 8, 16, 32, 64, 128, 256};
+static ST_DRV_MSPI_CLK clk_buffer[NUM_SPI_CLKRATES];
 
 U32 HAL_MSPI_CLK_Config(struct mstar_spi *bs,U8 u8Chanel,U32 u32MspiClk)
 {
@@ -975,10 +1320,10 @@ U32 HAL_MSPI_CLK_Config(struct mstar_spi *bs,U8 u8Chanel,U32 u32MspiClk)
     if(u8Chanel >=2)
         return FALSE;
     memset(&temp,0,sizeof(ST_DRV_MSPI_CLK));
-    memset(&clk_buffer,0,sizeof(ST_DRV_MSPI_CLK)*24);
-    for(i = 0;i < 3;i++)//clk_spi_m_p1
+    memset(&clk_buffer,0,sizeof(ST_DRV_MSPI_CLK)*NUM_SPI_CLKRATES);
+    for(i = 0;i < NUM_SPI_CKG;i++)//clk_spi_m_p1
     {
-        for(j = 0;j<8;j++)//spi div
+        for(j = 0;j<NUM_SPI_CLKDIV;j++)//spi div
         {
             clk = clk_spi_ckg[i]*1000000;
             clk_buffer[j+8*i].u8ClkSpi_cfg = i;
@@ -986,9 +1331,9 @@ U32 HAL_MSPI_CLK_Config(struct mstar_spi *bs,U8 u8Chanel,U32 u32MspiClk)
             clk_buffer[j+8*i].u32ClkSpi = clk/clk_spi_div[j];
         }
     }
-    for(i = 0;i<24;i++)
+    for(i = 0;i<NUM_SPI_CLKRATES;i++)
     {
-        for(j = i;j<24;j++)
+        for(j = i;j<NUM_SPI_CLKRATES;j++)
         {
             if(clk_buffer[i].u32ClkSpi > clk_buffer[j].u32ClkSpi)
             {
@@ -1000,19 +1345,19 @@ U32 HAL_MSPI_CLK_Config(struct mstar_spi *bs,U8 u8Chanel,U32 u32MspiClk)
             }
         }
     }
-    for(i = 0;i<24;i++)
+    for(i = 0;i<NUM_SPI_CLKRATES;i++)
     {
         if(u32MspiClk <= clk_buffer[i].u32ClkSpi)
         {
             break;
         }
     }
-    if (24 == i)
+    if (NUM_SPI_CLKRATES == i)
     {
         i--;
     }
     //match Closer clk
-    if ((i) && ((u32MspiClk - clk_buffer[i-1].u32ClkSpi)<(clk_buffer[i].u32ClkSpi - u32MspiClk)))
+    else if ((i) && ((u32MspiClk - clk_buffer[i-1].u32ClkSpi)<(clk_buffer[i].u32ClkSpi - u32MspiClk)))
     {
         i -= 1;
     }
@@ -1028,6 +1373,7 @@ U32 HAL_MSPI_CLK_Config(struct mstar_spi *bs,U8 u8Chanel,U32 u32MspiClk)
         TempData |= (clk_buffer[i].u8ClkSpi_cfg<<2);
         CLK_WRITE(MSPI0_CLK_CFG, TempData);
     }
+#if SUPPORT_SPI_1
     else if(u8Chanel == E_MSPI1)//mspi1
     {
         // CLK SETTING
@@ -1036,6 +1382,7 @@ U32 HAL_MSPI_CLK_Config(struct mstar_spi *bs,U8 u8Chanel,U32 u32MspiClk)
         TempData |= (clk_buffer[i].u8ClkSpi_cfg<<10);
         CLK_WRITE(MSPI1_CLK_CFG, TempData);
     }
+#endif
     TempData = MSPI_READ(MSPI_CLK_CLOCK_OFFSET);
     TempData &= MSPI_CLK_CLOCK_MASK;
     TempData |= clk_buffer[i].u8ClkSpi_DIV << MSPI_CLK_CLOCK_BIT_OFFSET;
@@ -1173,6 +1520,7 @@ void mspi_config(struct mstar_spi *bs,u8 u8Channel)
     return;
 }
 
+#ifdef _EN_MSPI_INTC_
 static irqreturn_t mstar_spi_interrupt(int irq, void *dev_id)
 {
 	struct spi_master *master = dev_id;
@@ -1189,12 +1537,14 @@ static irqreturn_t mstar_spi_interrupt(int irq, void *dev_id)
 	}else{
             //printk("<<<<<<<<<<<<<<<<<<< SPI Fail >>>>>>>>>>>>>>>>>\n");
 	}
+
 	_HAL_MSPI_ClearDone();
 
     return IRQ_HANDLED;
 }
+#endif
 
-
+#if SUPPORT_SPI_1
 static irqreturn_t mstar_spi_interrupt_spi1(int irq, void *dev_id)
 {
 	struct spi_master *master = dev_id;
@@ -1215,45 +1565,51 @@ static irqreturn_t mstar_spi_interrupt_spi1(int irq, void *dev_id)
 
     return IRQ_HANDLED;
 }
+#endif
 
-static int mstar_spi_start_transfer(struct spi_device *spi,
-		struct spi_transfer *tfr)
+static int mstar_spi_start_transfer(struct spi_device *spi, struct spi_transfer *tfr)
 {
-	struct mstar_spi *bs = spi_master_get_devdata(spi->master);
+    struct mstar_spi *bs = spi_master_get_devdata(spi->master);
 
-	//printk("[mstar_spi_start_transfer]\n");
+    //printk("[mstar_spi_start_transfer]\n");
 
-	mspi_dbgmsg("All = %x\n",spi->mode);
-	mspi_dbgmsg("SPI mode = %d\n",spi->mode & 0x03);
+    mspi_dbgmsg("All = %x\n",spi->mode);
+    mspi_dbgmsg("SPI mode = %d\n",spi->mode & 0x03);
     mspi_dbgmsg("LSB first = %d\n",spi->mode & 0x08);
 
-	//reinit_completion(&bs->done);
-	bs->tx_buf = tfr->tx_buf;
-	bs->rx_buf = tfr->rx_buf;
-	bs->len = tfr->len;
+    //reinit_completion(&bs->done);
+    bs->tx_buf = tfr->tx_buf;
+    bs->rx_buf = tfr->rx_buf;
+    bs->len = tfr->len;
 
-	MDrv_MSPI_ChipSelect(bs,_hal_msp.eCurrentCH,1,0);
+    MDrv_MSPI_ChipSelect(bs,_hal_msp.eCurrentCH,1,0);
 
-	/*if(tfr->speed_hz != NULL){
-	     MDrv_MSPI_SetCLK(_hal_msp.eCurrentCH,tfr->speed_hz);
-	}*/
+    /*if(tfr->speed_hz != NULL){
+         MDrv_MSPI_SetCLK(_hal_msp.eCurrentCH,tfr->speed_hz);
+    }*/
 
-	if(bs->tx_buf != NULL){
-	    mspi_dbgmsg("bs->tx_buf=%x,%x\n",bs->tx_buf[0],bs->tx_buf[1]);
-	    MDrv_MSPI_Write(bs, _hal_msp.eCurrentCH,(U8 *)bs->tx_buf,(U16)bs->len);
+    if((bs->tx_buf != NULL) && (bs->rx_buf != NULL))
+    {
+        MDrv_MSPI_FullDuplex(bs, _hal_msp.eCurrentCH, (U8 *)bs->tx_buf, (U8 *)bs->rx_buf, (U16)bs->len);
+        return 0;
+    }else if(bs->tx_buf != NULL){
+        mspi_dbgmsg("bs->tx_buf=%x,%x\n",bs->tx_buf[0],bs->tx_buf[1]);
+
+        if(bs->xfer_w_dma)
+            MDrv_MSPI_DMA_Write(bs, spi->master->bus_num,(U8 *)bs->tx_buf,(U16)bs->len);
+        else
+            MDrv_MSPI_Write(bs, _hal_msp.eCurrentCH,(U8 *)bs->tx_buf,(U16)bs->len);
+    }else if(bs->rx_buf != NULL){
+        if(bs->xfer_w_dma)
+            MDrv_MSPI_DMA_Read(bs,spi->master->bus_num,(U8 *)bs->rx_buf,(U16)bs->len);
+        else
+            MDrv_MSPI_Read(bs,_hal_msp.eCurrentCH,(U8 *)bs->rx_buf,(U16)bs->len);
+
+        mspi_dbgmsg("bs->rx_buf=%x,%x\n",bs->rx_buf[0],bs->rx_buf[1]);
     }
+    //printk("bs->len=%d\n",bs->len);
 
-	if(bs->rx_buf != NULL){
-
-		MDrv_MSPI_Read(bs,_hal_msp.eCurrentCH,(U8 *)bs->rx_buf,(U16)bs->len);
-
-		mspi_dbgmsg("bs->rx_buf=%x,%x\n",bs->rx_buf[0],bs->rx_buf[1]);
-    }
-
-	//printk("bs->len=%d\n",bs->len);
-
-
-	return 0;
+    return 0;
 }
 
 static int mstar_spi_finish_transfer(struct spi_device *spi,
@@ -1277,13 +1633,67 @@ static int mstar_spi_finish_transfer(struct spi_device *spi,
 	return 0;
 }
 
+static int mstar_spi_set_framecfg(struct mstar_spi *bs, int bits_per_word)
+{
+    MSPI_FrameConfig stFrameConfig;
+    int i;
+
+    if (bits_per_word > MAX_SUPPORT_BITS)
+    {
+         return -EINVAL;
+    }
+    else if (bits_per_word > 8)
+    {
+        for (i = 0; i < MAX_WRITE_BUF_SIZE; i+=2)
+        {
+            stFrameConfig.u8WBitConfig[i]   = bits_per_word - 8 -1;
+            stFrameConfig.u8WBitConfig[i+1] = 8 -1;
+        }
+        for (i = 0; i < MAX_READ_BUF_SIZE; i+=2)
+        {
+            stFrameConfig.u8RBitConfig[i]   = bits_per_word - 8 -1;
+            stFrameConfig.u8RBitConfig[i+1] = 8 -1;
+        }
+    }
+    else
+    {
+        for (i = 0; i < MAX_WRITE_BUF_SIZE; i++)
+        {
+            stFrameConfig.u8WBitConfig[i]   = bits_per_word -1;
+        }
+        for (i = 0; i < MAX_READ_BUF_SIZE; i++)
+        {
+            stFrameConfig.u8WBitConfig[i]   = bits_per_word -1;
+        }
+    }
+    MDrv_MSPI_FRAMEConfig(bs,bs->u8channel,&stFrameConfig);
+
+    return 0;
+}
+
 static int mstar_spi_setup(struct spi_device *spi)
 {
 	struct mstar_spi *bs = spi_master_get_devdata(spi->master);
 
-	MDrv_MSPI_SetMode(bs,bs->u8channel, spi->mode & (SPI_CPHA | SPI_CPOL));
+	MDrv_MSPI_SetMode(bs,bs->u8channel, spi->mode & MSTAR_SPI_MODE_BITS);
 	HAL_MSPI_SetLSB(bs,bs->u8channel,(spi->mode & SPI_LSB_FIRST)>>3);
 	spi->max_speed_hz = MDrv_MSPI_SetCLK(bs,bs->u8channel,spi->max_speed_hz);
+	bs->u32spi_mode = spi->mode & MSTAR_SPI_MODE_BITS;
+
+	// setup transfer bit mask
+    bs->xfer_w_dma = (spi->bits_per_word % 8 ==0) ? bs->use_dma : false;
+    bs->bits_per_word = spi->bits_per_word;
+    if (spi->bits_per_word > MAX_SUPPORT_BITS) {
+        return -EINVAL;
+    }
+    else if (spi->bits_per_word > 8) {
+        bs->wsize = 2;
+    }
+    else {
+        bs->wsize = 1;
+    }
+	mstar_spi_set_framecfg(bs, spi->bits_per_word);
+
     mspi_dbgmsg("<~~~~~~~~~~~~~~~~>SETUP :%x,speed:%d channel:%d\n",spi->mode,spi->max_speed_hz,bs->u8channel);
     return 0;
 }
@@ -1300,6 +1710,11 @@ static int mstar_spi_transfer_one(struct spi_master *master,
 	//mspi_dbgmsg("[mstar_spi_transfer_one]\n");
 
 	list_for_each_entry(tfr, &mesg->transfers, transfer_list) {
+
+	    if (tfr->len % bs->wsize != 0) {
+            mspi_dbgmsg("invalid transfer len\n");
+            goto out;
+        }
 
 		err = mstar_spi_start_transfer(spi, tfr);
 		if (err){
@@ -1330,12 +1745,19 @@ out:
 static int mstar_spi_probe(struct platform_device *pdev)
 {
 	struct spi_master *master;
-	struct spi_master *master_spi1;
 	struct mstar_spi *bs;
 	int err;
 	unsigned int u4IO_PHY_BASE;
-	unsigned int u4spi_bank[4];
-	int irq,irq2;
+	unsigned int u4spi_bank[5];
+#ifdef _EN_MSPI_INTC_
+	int irq;
+#if SUPPORT_SPI_1
+    struct spi_master *master_spi1;
+    int irq2;
+#endif
+#endif
+    struct clk *clk;
+    struct clk_hw *hw_parent;
 
     mspi_dbgmsg("<<<<<<<<<<<<<<<<< Probe >>>>>>>>>>>>>>>\n");
 
@@ -1360,7 +1782,7 @@ static int mstar_spi_probe(struct platform_device *pdev)
 #endif
 
 	master->mode_bits = MSTAR_SPI_MODE_BITS;
-	master->bits_per_word_mask = SPI_BPW_MASK(8);
+	master->bits_per_word_mask = SPI_BPW_RANGE_MASK(1, MAX_SUPPORT_BITS);
 	master->num_chipselect = 3;
 	master->transfer_one_message = mstar_spi_transfer_one;
 	master->dev.of_node = pdev->dev.of_node;
@@ -1371,7 +1793,7 @@ static int mstar_spi_probe(struct platform_device *pdev)
 
 #if SUPPORT_SPI_1
 	master_spi1->mode_bits = MSTAR_SPI_MODE_BITS;
-	master_spi1->bits_per_word_mask = SPI_BPW_MASK(8);
+	master_spi1->bits_per_word_mask = SPI_BPW_RANGE_MASK(1, MAX_SUPPORT_BITS);
 	master_spi1->num_chipselect = 3;
 	master_spi1->transfer_one_message = mstar_spi_transfer_one;
 	master_spi1->dev.of_node = pdev->dev.of_node;
@@ -1381,6 +1803,7 @@ static int mstar_spi_probe(struct platform_device *pdev)
 	master_spi1->bus_num = 1;
 #endif
 
+#ifdef _EN_MSPI_INTC_
     irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
     mspi_dbgmsg("[MSPI] Request IRQ: %d\n", irq);
     if (request_irq(irq, mstar_spi_interrupt, 0, "MSPI_0 interrupt", (void*)master) == 0)
@@ -1395,12 +1818,12 @@ static int mstar_spi_probe(struct platform_device *pdev)
     else
         mspi_dbgmsg("[MSPI] MSPI_1 interrupt failed");
 #endif
-
+#endif
 
     of_property_read_u32(pdev->dev.of_node, "io_phy_addr", &u4IO_PHY_BASE);
-    of_property_read_u32_array(pdev->dev.of_node, "banks", (unsigned int*)u4spi_bank, 4);
+    of_property_read_u32_array(pdev->dev.of_node, "banks", (unsigned int*)u4spi_bank, 5);
 
-    _hal_msp.eCurrentCH = E_MSPI1;
+    //_hal_msp.eCurrentCH = E_MSPI1;
     //_hal_msp.VirtMspBaseAddr = (char*)ioremap(BANK_TO_ADDR32(u4spi_bank[_hal_msp.eCurrentCH])+u4IO_PHY_BASE, BANK_SIZE);
     //_hal_msp.VirtClkBaseAddr     = (char*)ioremap(BANK_TO_ADDR32(u4spi_bank[2])+u4IO_PHY_BASE, BANK_SIZE);
     //_hal_msp.VirtChiptopBaseAddr =(char*)ioremap(BANK_TO_ADDR32(u4spi_bank[3])+u4IO_PHY_BASE, BANK_SIZE);
@@ -1410,15 +1833,24 @@ static int mstar_spi_probe(struct platform_device *pdev)
     mspi_dbgmsg("u4spi_bank[1] %x\n",u4spi_bank[1]);
     mspi_dbgmsg("u4spi_bank[2] %x\n",u4spi_bank[2]);
     mspi_dbgmsg("u4spi_bank[3] %x\n",u4spi_bank[3]);
+    mspi_dbgmsg("u4spi_bank[4] %x\n",u4spi_bank[4]);
 
 	bs = spi_master_get_devdata(master);
 	init_completion(&bs->done);
+
     bs->VirtMspBaseAddr = (char*)ioremap(BANK_TO_ADDR32(u4spi_bank[0])+u4IO_PHY_BASE, BANK_SIZE);
     bs->VirtClkBaseAddr = (char*)ioremap(BANK_TO_ADDR32(u4spi_bank[2])+u4IO_PHY_BASE, BANK_SIZE);
     bs->VirtChiptopBaseAddr =(char*)ioremap(BANK_TO_ADDR32(u4spi_bank[3])+u4IO_PHY_BASE, BANK_SIZE);
+    bs->VirtMovdmaBaseAddr =(char*)ioremap(BANK_TO_ADDR32(u4spi_bank[4])+u4IO_PHY_BASE, BANK_SIZE);
+
     bs->u8channel = E_MSPI0;
 
     of_property_read_u32(pdev->dev.of_node, "spi0_mode", &bs->u32spi_mode);
+    bs->use_dma = false;
+    if (SUPPORT_DMA)
+    {
+      of_property_read_u32(pdev->dev.of_node, "dma", &bs->use_dma);
+    }
 
 	/* initialise the hardware */
     mspi_config(bs,0);
@@ -1429,14 +1861,38 @@ static int mstar_spi_probe(struct platform_device *pdev)
     bs->VirtMspBaseAddr = (char*)ioremap(BANK_TO_ADDR32(u4spi_bank[1])+u4IO_PHY_BASE, BANK_SIZE);
     bs->VirtClkBaseAddr = (char*)ioremap(BANK_TO_ADDR32(u4spi_bank[2])+u4IO_PHY_BASE, BANK_SIZE);
     bs->VirtChiptopBaseAddr =(char*)ioremap(BANK_TO_ADDR32(u4spi_bank[3])+u4IO_PHY_BASE, BANK_SIZE);
+    bs->VirtMovdmaBaseAddr =(char*)ioremap(BANK_TO_ADDR32(u4spi_bank[4])+u4IO_PHY_BASE, BANK_SIZE);
     bs->u8channel = E_MSPI1;
 
     of_property_read_u32(pdev->dev.of_node, "spi1_mode", &bs->u32spi_mode);
+    bs->use_dma = false;
+    if (SUPPORT_DMA)
+    {
+        of_property_read_u32(pdev->dev.of_node, "dma", &bs->use_dma);
+    }
 
-	/* initialise the hardware */
+    /* initialise the hardware */
     mspi_config(bs,1);
 #endif
 
+    //2. set clk
+    clk = of_clk_get(pdev->dev.of_node, 0);
+    if(IS_ERR(clk))
+    {
+        err = PTR_ERR(clk);
+        mspi_dbgmsg("[%s]: of_clk_get failed\n", __func__);
+    }
+    else
+    {
+        /* select clock mux */
+        hw_parent = clk_hw_get_parent_by_index(__clk_get_hw(clk), 0);  // select clock mux=0
+        mspi_dbgmsg( "[%s]parent_num:%d parent[0]:%s\n", __func__,
+                clk_hw_get_num_parents(__clk_get_hw(clk)), clk_hw_get_name(hw_parent));
+        clk_set_parent(clk, hw_parent->clk);
+
+        clk_prepare_enable(clk);
+        mspi_dbgmsg("[mspi] clk_prepare_enable\n");
+    }
 
 	err = devm_spi_register_master(&pdev->dev, master);
 	if (err) {
@@ -1468,6 +1924,7 @@ out_master_put:
 
 static int mstar_spi_remove(struct platform_device *pdev)
 {
+    struct clk *clk;
 
 #if 0
 
@@ -1478,6 +1935,19 @@ static int mstar_spi_remove(struct platform_device *pdev)
 
 	clk_disable_unprepare(bs->clk);
 #endif
+
+    clk = of_clk_get(pdev->dev.of_node, 0);
+    if (IS_ERR(clk))
+    {
+        mspi_dbgmsg( "[SAR] Fail to get clk!\n" );
+
+    }
+    else
+    {
+        clk_disable_unprepare(clk);
+        clk_put(clk);
+    }
+
 	return 0;
 }
 

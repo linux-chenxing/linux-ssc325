@@ -1,9 +1,8 @@
 /*
 * regMIU.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _REG_MIU_H_
@@ -90,6 +89,11 @@
 #define REG_MIU_SEL3                (MIU_REG_BASE+0xf6UL)  //0x12F3
 #define REG_MIU_SELX(x)             (0xF0UL+x*2)
 
+// MIU Group Priority 
+#define REG_MIU_GROUP_PRIORITY        (MIU_REG_BASE+0xFEUL)  //0x12FE
+#define MIU_GROUP_PRIORITY_GROUP1_SMALLER_GROUP2        (0x81C6)
+#define MIU_GROUP_PRIORITY_GROUP1_NO_CHANGE_GROUP2   (0x80E1)
+
 // MIU1
 #define MIU1_PROTECT_DDR_SIZE       (MIU1_REG_BASE+0xD3UL)
 #define MIU1_PROTECT_DDR_SIZE_MASK  BITS_RANGE(15:12)
@@ -134,6 +138,9 @@
 #define REG_MIU_PROTECT_PWR_IRQ_MASK_OFFSET (MIU_REG_BASE+0xD8UL)
 #define REG_MIU_PROTECT_PWR_IRQ_MASK_BIT    (BIT11)
 
+// PM Top Resiter
+#define REG_CHIP_INFORM_SHADOW     (PM_REG_BASE + 0xCEUL)
+
 // MMU Control Register
 #define REG_MMU_CTRL                (MIU_MMU_REG_BASE+0xA0UL)
 #define REG_MMU_RW_ENTRY            (MIU_MMU_REG_BASE+0xA2UL)
@@ -145,8 +152,10 @@
 #define REG_MMU_CLIENT_ID_6_7       (MIU_MMU_REG_BASE+0xAEUL)
 #define REG_MMU_CLIENT_ID_SEL       (MIU_MMU_REG_BASE+0xB0UL)
 #define REG_MMU_IRQ_CTRL            (MIU_MMU_REG_BASE+0xB2UL)
-#define REG_MMU_COLLISION_ENTRY     (MIU_MMU_REG_BASE+0xB2UL)
+#define REG_MMU_COLLISION_ENTRY     (MIU_MMU_REG_BASE+0xB4UL)
 #define REG_MMU_ACCESS              (MIU_MMU_REG_BASE+0xB6UL)
+// Chip2 new function Register
+#define REG_MMU_REPLACE_MSB       (MIU_MMU_REG_BASE+0xA8UL)
 
 // MMU Control
 #define REG_MMU_CTRL_ENABLE         (BIT0)
@@ -170,5 +179,8 @@
 #define REG_MMU_IRQ_WR_FLAG         (BIT8)
 #define REG_MMU_IRQ_INVALID_RW      (BIT9)
 #define REG_MMU_IRQ_INVALID_ID_MASK 15:10
+
+// Chip2 new function
+#define REG_MMU_REPLACE_MSB_MASK    4:0
 
 #endif // _REG_MIU_H_

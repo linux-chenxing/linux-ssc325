@@ -1,9 +1,8 @@
 /*
 * ms_chip.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: Karl.Xiao <Karl.Xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/kernel.h>
@@ -73,6 +72,8 @@ static char NONE_platform_name[]="NONE";
 ////};
 //
 //
+
+#ifdef CONFIG_SS_BUILTIN_DTB
 #define BUILTIN_DTB_SZ (64*1024)
 struct MS_BUILTIN_DTB
 {
@@ -87,7 +88,7 @@ struct MS_BUILTIN_DTB builtin_dtb __attribute__ ((aligned (16)))=
 };
 void *builtin_dtb_start=(void *)builtin_dtb.content;
 const u32  builtin_dtb_size=BUILTIN_DTB_SZ;
-
+#endif
 
 //MS_VERSION LX_VERSION =
 //{
@@ -191,7 +192,7 @@ char* Chip_Get_Platform_Name(void)
 	char *name=chip_funcs.chip_get_platform_name();
 	if(name==NULL || strlen(name) > 15 )
 	{
-		printk(KERN_ERR "platform name invalid!! must not be NULL & < 15 chars\n");
+		//printk(KERN_ERR "platform name invalid!! must not be NULL & < 15 chars\n");
 		BUG();
 	}
 
@@ -500,7 +501,7 @@ static int _default_chip_function_set(int id, int param)
 {
 	UNUSED(id);
 	UNUSED(param);
-	printk(KERN_ERR "CHIP_FUNCTION not yet implemented\n!!");
+	//printk(KERN_ERR "CHIP_FUNCTION not yet implemented\n!!");
 	return -1;
 }
 

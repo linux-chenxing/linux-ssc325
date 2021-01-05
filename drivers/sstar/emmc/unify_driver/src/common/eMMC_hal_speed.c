@@ -1,9 +1,8 @@
 /*
 * eMMC_hal_speed.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: joe.su <joe.su@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include "eMMC.h"
@@ -24,7 +23,7 @@ U32 eMMC_FCIE_EnableSDRMode(void)
 
     // ----------------------------------------
     // may call from any other interface status
-	#if 0
+    #if 0
     if(DRV_FLAG_SPEED_HS200 == eMMC_SPEED_MODE())
     {
         u32_ErrSpeed = eMMC_SetBusSpeed(eMMC_SPEED_HIGH);
@@ -35,18 +34,18 @@ U32 eMMC_FCIE_EnableSDRMode(void)
         u32_ErrWidth = eMMC_SetBusWidth(g_eMMCDrv.u16_of_buswidth, 0);
     }
     else
-	#else
-	if(DRV_FLAG_SPEED_HS200 == eMMC_SPEED_MODE()||
-		DRV_FLAG_SPEED_HS400 == eMMC_SPEED_MODE())
-	{
-		u32_Err = eMMC_FCIE_ErrHandler_ReInit_Ex();
-		if(eMMC_ST_SUCCESS != u32_Err)
-		{
-			eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: %Xh \n", u32_Err);
-			return u32_Err;
-		}
-	}
-	#endif
+    #else
+    if(DRV_FLAG_SPEED_HS200 == eMMC_SPEED_MODE()||
+        DRV_FLAG_SPEED_HS400 == eMMC_SPEED_MODE())
+    {
+        u32_Err = eMMC_FCIE_ErrHandler_ReInit_Ex();
+        if(eMMC_ST_SUCCESS != u32_Err)
+        {
+            eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: %Xh \n", u32_Err);
+            return u32_Err;
+        }
+    }
+    #endif
     {
         u32_ErrSpeed = eMMC_SetBusSpeed(eMMC_SPEED_HIGH);
         u32_ErrWidth = eMMC_SetBusWidth(g_eMMCDrv.u16_of_buswidth, 0);
@@ -133,7 +132,7 @@ void eMMC_FCIE_SetATopTimingReg(U8 u8_SetIdx)
         REG_FCIE_SETBIT(reg_emmcpll_0x6c, g_eMMCDrv.TimingTable_t.Set[u8_SetIdx].u8_Cell<<BIT_DQS_DELAY_CELL_SHIFT);
     }
 
-	#if (defined(ENABLE_eMMC_HS200) && ENABLE_eMMC_HS200) || \
+    #if (defined(ENABLE_eMMC_HS200) && ENABLE_eMMC_HS200) || \
         (defined(ENABLE_eMMC_HS400) && ENABLE_eMMC_HS400)
     else//HS400,HS200
     {
@@ -146,7 +145,7 @@ void eMMC_FCIE_SetATopTimingReg(U8 u8_SetIdx)
             REG_FCIE_SETBIT(REG_ANL_SKEW4_INV, BIT_ANL_SKEW4_INV);
             #endif
         }
-    	else
+        else
         {
             #ifdef REG_DIG_SKEW4_INV
             REG_FCIE_CLRBIT(REG_DIG_SKEW4_INV, BIT_DIG_SKEW4_INV);       //skew4 inverse for muji
@@ -168,14 +167,14 @@ void eMMC_FCIE_SetATopTimingReg(U8 u8_SetIdx)
                 g_eMMCDrv.TimingTable_t.Set[u8_SetIdx].u8_Skew2<<4);
         #endif
     }
-	#endif
+    #endif
 
     #else
     if(g_eMMCDrv.TimingTable_t.Set[u8_SetIdx].u8_Reg2Ch)
     {
         REG_FCIE_SETBIT(FCIE_SM_STS, BIT11);
     }
-	else
+    else
     {
         REG_FCIE_CLRBIT(FCIE_SM_STS, BIT11);
     }
@@ -555,23 +554,23 @@ U32 eMMC_FCIE_EnableFastMode_Ex(U8 u8_PadType)
             break;
         #endif
         #if defined(ENABLE_eMMC_HS400_5_1)&&ENABLE_eMMC_HS400_5_1
-		case FCIE_eMMC_HS400_5_1:
-			u32_err = eMMC_SetBusWidth(g_eMMCDrv.u16_of_buswidth, 2); // enable DDR
-			if(eMMC_ST_SUCCESS!=u32_err)
-			{
-				eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: HS400 5.1 enable DDR fail: %Xh\n", u32_err);
-				return u32_err;
-			}
-			u32_err = eMMC_SetBusSpeed(eMMC_SPEED_HS400);
-			if(eMMC_ST_SUCCESS!=u32_err)
-			{
-				eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: enable HS400 5.1 fail: %Xh\n", u32_err);
-				return u32_err;
-			}
-			if(0==g_eMMCDrv.TimingTable_t.u8_SetCnt)
-				eMMC_clock_setting(gau8_eMMCPLLSel_200[0]);
+        case FCIE_eMMC_HS400_5_1:
+            u32_err = eMMC_SetBusWidth(g_eMMCDrv.u16_of_buswidth, 2); // enable DDR
+            if(eMMC_ST_SUCCESS!=u32_err)
+            {
+                eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: HS400 5.1 enable DDR fail: %Xh\n", u32_err);
+                return u32_err;
+            }
+            u32_err = eMMC_SetBusSpeed(eMMC_SPEED_HS400);
+            if(eMMC_ST_SUCCESS!=u32_err)
+            {
+                eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: enable HS400 5.1 fail: %Xh\n", u32_err);
+                return u32_err;
+            }
+            if(0==g_eMMCDrv.TimingTable_t.u8_SetCnt)
+                eMMC_clock_setting(gau8_eMMCPLLSel_200[0]);
 
-			break;
+            break;
         #endif
 
     }
@@ -590,8 +589,8 @@ U32 eMMC_FCIE_EnableFastMode_Ex(U8 u8_PadType)
 
     eMMC_pads_switch(u8_PadType);
     #if defined(ENABLE_eMMC_HS400)&&ENABLE_eMMC_HS400
-	if(g_eMMCDrv.TimingTable_G_t.u8_SetCnt && u8_PadType == FCIE_eMMC_HS400)
-		eMMC_FCIE_ApplyTimingSet(g_eMMCDrv.TimingTable_G_t.u8_CurSetIdx);
+    if(g_eMMCDrv.TimingTable_G_t.u8_SetCnt && u8_PadType == FCIE_eMMC_HS400)
+        eMMC_FCIE_ApplyTimingSet(g_eMMCDrv.TimingTable_G_t.u8_CurSetIdx);
         else
     #endif
     if(g_eMMCDrv.TimingTable_t.u8_SetCnt)

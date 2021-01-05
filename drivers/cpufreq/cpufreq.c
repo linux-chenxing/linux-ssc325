@@ -32,7 +32,7 @@
 #include <trace/events/power.h>
 
 #ifdef CONFIG_LH_RTOS
-#include "../sstar/ipc/lh_syscall.h"
+#include "drv_dualos.h"
 #endif
 
 static LIST_HEAD(cpufreq_policy_list);

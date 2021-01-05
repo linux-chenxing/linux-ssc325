@@ -1,9 +1,8 @@
 /*
 * halSERFLASH.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _HAL_SERFLASH_H_
@@ -91,8 +90,6 @@ typedef enum
     E_4PINS
 }SPI_PAD_SUPPORT;
 
-
-
 //-------------------------------------------------------------------------------------------------
 //  Function and Variable
 //-------------------------------------------------------------------------------------------------
@@ -110,6 +107,9 @@ extern MS_BOOL HAL_SERFLASH_DetectSize(MS_U32  *u32FlashSize);
 extern MS_BOOL HAL_SERFLASH_EraseChip(void);
 extern MS_BOOL HAL_SERFLASH_AddressToBlock(MS_U32 u32FlashAddr, MS_U32 *pu32BlockIndex);
 extern MS_BOOL HAL_SERFLASH_BlockToAddress(MS_U32 u32BlockIndex, MS_U32 *pu32FlashAddr);
+#ifdef CONFIG_SS_CUSTOMIZED_CUS_ZY_ERASE_ENV
+extern MS_BOOL HAL_SERFLASH_BlockErase_CUS_ZY(MS_U32 u32StartAddr, MS_U32 u32EraseSize, MS_BOOL bWait);
+#endif
 extern MS_BOOL HAL_SERFLASH_BlockErase(MS_U32 u32StartBlock,MS_U32 u32EndBlock,MS_BOOL bWait);
 extern MS_BOOL HAL_SERFLASH_SectorErase(MS_U32 u32SectorAddress);
 extern MS_BOOL HAL_SERFLASH_CheckWriteDone(void);
@@ -144,7 +144,9 @@ extern void HAL_SERFLASH_ProgramFlashByFSP(MS_U32 u32Addr, MS_U32 u32Data);
 
 extern MS_U8 HAL_SPI_ReadBlockStatus(MS_PHYADDR u32FlashAddr);
 
-
+#ifdef CONFIG_SS_CUSTOMIZED_CUS_ZY_ERASE_ENV
+MS_BOOL HAL_FSP_BlockErase_CUS_ZY(MS_U32 u32StartAddr, MS_U32 u32EraseSize, MS_BOOL bWait);
+#endif
 MS_BOOL HAL_FSP_BlockErase(MS_U32 u32StartBlock, MS_U32 u32EndBlock, MS_BOOL bWait);
 MS_BOOL HAL_FSP_BurstRead(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data);
 MS_BOOL HAL_FSP_Read(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data);
@@ -166,6 +168,7 @@ MS_BOOL HAL_FSP_Write_BDMA(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data);
 MS_BOOL HAL_QUAD_Enable(MS_BOOL bEnable);
 MS_BOOL HAL_FSP_ReadStatus(MS_U8 u8CMD, MS_U8 u8CountData, MS_U8* pu8Data);
 MS_BOOL HAL_FSP_WriteStatus(MS_U8 u8CMD, MS_U8 u8CountData, MS_U8* pu8Data);
+MS_BOOL HAL_FSP_WriteStatusReg2(MS_U16 u16StatusReg);
 
 
 #endif // _HAL_SERFLASH_H_

@@ -1,9 +1,8 @@
 /*
 * regSERFLASH.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _REG_SERFLASH_H_
@@ -38,16 +37,17 @@
 //-------------------------------------------------------------------------------------------------
 
 // BASEADDR & BK
-#define MS_BASE_REG_RIU_PA 		0x1F000000
+#define MS_BASE_REG_RIU_PA      0x1F000000
 #define MS_SPI_ADDR             0x14000000
 #define MS_SPI_IO_SIZE          0x1000000
 
 
-#define BASE_REG_ISP_ADDR			GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x000800)
-#define BASE_REG_FSP_ADDR			GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x001600)
-#define BASE_REG_QSPI_ADDR			GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x001700)
-#define BASE_REG_CHIPTOP_ADDR		GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x101E00)
-#define BASE_REG_BDMACh0_ADDR	    GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x100200)
+#define BASE_REG_ISP_ADDR           GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x000800)
+#define BASE_REG_PMSLEEP_ADDR       GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x000E00)
+#define BASE_REG_FSP_ADDR           GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x001600)
+#define BASE_REG_QSPI_ADDR          GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x001700)
+#define BASE_REG_CHIPTOP_ADDR       GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x101E00)
+#define BASE_REG_BDMACh0_ADDR       GET_BASE_ADDR_BY_BANK(IO_ADDRESS(MS_BASE_REG_RIU_PA), 0x100200)
 
 
 //----- Chip flash -------------------------
@@ -83,7 +83,7 @@
     #define ISP_SPI_CMD_PARALLEL            BITS(7:0, 0x55)
     #define ISP_SPI_CMD_EN4K                BITS(7:0, 0xA5)
     #define ISP_SPI_CMD_EX4K                BITS(7:0, 0xB5)
-	/* MXIC Individual Block Protection Mode */
+    /* MXIC Individual Block Protection Mode */
     #define ISP_SPI_CMD_WPSEL               BITS(7:0, 0x68)
     #define ISP_SPI_CMD_SBLK                BITS(7:0, 0x36)
     #define ISP_SPI_CMD_SBULK               BITS(7:0, 0x39)
@@ -97,13 +97,13 @@
     #define ISP_SPI_WDATA_DUMMY     BITS(7:0, 0xFF)
 #define REG_ISP_SPI_RDATA           0x05
 #define REG_ISP_SPI_CLKDIV          0x06 // clock = CPU clock / this div
-	#define ISP_SPI_CLKDIV2			BIT(0)
-	#define	ISP_SPI_CLKDIV4			BIT(2)
-	#define	ISP_SPI_CLKDIV8			BIT(6)
-	#define	ISP_SPI_CLKDIV16    	BIT(7)
-	#define	ISP_SPI_CLKDIV32		BIT(8)
-	#define	ISP_SPI_CLKDIV64		BIT(9)
-	#define	ISP_SPI_CLKDIV128		BIT(10)
+    #define ISP_SPI_CLKDIV2         BIT(0)
+    #define ISP_SPI_CLKDIV4         BIT(2)
+    #define ISP_SPI_CLKDIV8         BIT(6)
+    #define ISP_SPI_CLKDIV16        BIT(7)
+    #define ISP_SPI_CLKDIV32        BIT(8)
+    #define ISP_SPI_CLKDIV64        BIT(9)
+    #define ISP_SPI_CLKDIV128       BIT(10)
 #define REG_ISP_DEV_SEL             0x07
 #define REG_ISP_SPI_CECLR           0x08
     #define ISP_SPI_CECLR                   BITS(0:0, 1)
@@ -207,7 +207,7 @@
 #define SF_SR_PROG_ERASE_ERR_MASK       BMASK(6:6)
 #define SF_SR_SRWD_MASK                 BMASK(7:7)
     #define SF_SR_SRWD                      BITS(7:7, 1)
-    #define SF_SR_QUALD                     BITS(6:6, 1)
+    #define SF_SR_QUAD                      BITS(6:6, 1)
 
 // PM_SLEEP CMD.
 #define REG_PM_CKG_SPI              0x20 // Ref spec. before using these setting.
@@ -221,12 +221,12 @@
     #define PM_SPI_CLK_SWITCH_ON            BITS(14:14, 1)
 
 #define REG_PM_SPI_WPN              0x01
-	#define PM_SPI_WPN_SWITCH_MASK		BMASK(0:0)
-	#define PM_SPI_WPN_SWITCH_OUT		BITS(0:0, 0)
-	#define PM_SPI_WPN_SWITCH_IN			BITS(0:0, 1)
-	#define PM_SPI_WPN_OUT_DAT_MASK		BMASK(1:1)
-	#define PM_SPI_WPN_OUT_HIGH			BITS(1:1, 1)
-	#define PM_SPI_WPN_OUT_LOW			BITS(1:1, 0)
+    #define PM_SPI_WPN_SWITCH_MASK      BMASK(0:0)
+    #define PM_SPI_WPN_SWITCH_OUT       BITS(0:0, 0)
+    #define PM_SPI_WPN_SWITCH_IN            BITS(0:0, 1)
+    #define PM_SPI_WPN_OUT_DAT_MASK     BMASK(1:1)
+    #define PM_SPI_WPN_OUT_HIGH         BITS(1:1, 1)
+    #define PM_SPI_WPN_OUT_LOW          BITS(1:1, 0)
 
 
 #define REG_PM_CHK_51MODE           0x53
@@ -234,11 +234,11 @@
     #define PM_51_ONT_ON_SPI            BITS(0:0, 0x0)
 // For Power Consumption
 
-#define REG_PM_GPIO_SPICZ_OEN		0x17
-#define REG_PM_GPIO_SPICK_OEN		0x18
-#define REG_PM_GPIO_SPIDI_OEN		0x19
-#define REG_PM_GPIO_SPIDO_OEN		0x1A
-#define REG_PM_SPI_IS_GPIO			0x35
+#define REG_PM_GPIO_SPICZ_OEN       0x17
+#define REG_PM_GPIO_SPICK_OEN       0x18
+#define REG_PM_GPIO_SPIDI_OEN       0x19
+#define REG_PM_GPIO_SPIDO_OEN       0x1A
+#define REG_PM_SPI_IS_GPIO          0x35
 #define PM_SPI_GPIO_MASK            BMASK(3:0)
 #define PM_SPI_IS_GPIO                  BITS(3:0, 0xF)
 #define PM_SPI_NOT_GPIO                 BITS(3:0, 0x0)
@@ -249,13 +249,13 @@
 #define PM_SPI_WP_IS_GPIO                  BITS(7:7, 1)
 #define PM_SPI_WP_NOT_GPIO                 BITS(7:7, 0)
 
-#define REG_PM_GPIO_WPN			0x01
-#define REG_PM_GPIO_HOLD			0x02
-#define PM_SPI_GPIO_OEN_MASK		BMASK(0:0)
-#define PM_SPI_GPIO_OEN_EN		BITS(0:0, 0)
-#define PM_SPI_GPIO_OEN_DIS		BITS(0:0, 1)
-#define PM_SPI_GPIO_HIGH_MASK		BMASK(1:1)
-#define PM_SPI_GPIO_HIGH			BITS(1:1, 1)
+#define REG_PM_GPIO_WPN         0x01
+#define REG_PM_GPIO_HOLD            0x02
+#define PM_SPI_GPIO_OEN_MASK        BMASK(0:0)
+#define PM_SPI_GPIO_OEN_EN      BITS(0:0, 0)
+#define PM_SPI_GPIO_OEN_DIS     BITS(0:0, 1)
+#define PM_SPI_GPIO_HIGH_MASK       BMASK(1:1)
+#define PM_SPI_GPIO_HIGH            BITS(1:1, 1)
 
 // CLK_GEN0
 #define REG_CLK0_CKG_SPI            0x16
@@ -269,28 +269,30 @@
 #define CLK0_CLK_SWITCH_ON            BITS(5:5, 1)
 
 // please refer to the serial flash datasheet
-#define SPI_CMD_READ		(0x03)
-#define SPI_CMD_FASTREAD	(0x0B)
-#define SPI_CMD_RDID		(0x9F)
-#define SPI_CMD_WREN		(0x06)
-#define SPI_CMD_WRDI		(0x04)
-#define SPI_CMD_SE			(0x20)
-#define SPI_CMD_32BE		(0x52)
-#define SPI_CMD_64BE		(0xD8)
-#define SPI_CMD_CE			(0xC7)
-#define SPI_CMD_PP			(0x02)
-#define SPI_CMD_RDSR		(0x05)
-#define SPI_CMD_RDSR2		(0x35)
-#define SPI_CMD_RDSR3		(0x15)
+#define SPI_CMD_READ        (0x03)
+#define SPI_CMD_FASTREAD    (0x0B)
+#define SPI_CMD_RDID        (0x9F)
+#define SPI_CMD_WREN        (0x06)
+#define SPI_CMD_WRDI        (0x04)
+#define SPI_CMD_SE          (0x20)
+#define SPI_CMD_32BE        (0x52)
+#define SPI_CMD_64BE        (0xD8)
+#define SPI_CMD_CE          (0xC7)
+#define SPI_CMD_PP          (0x02)
+#define SPI_CMD_QP          (0x32)
+#define SPI_CMD_4PP         (0x38)
+#define SPI_CMD_RDSR        (0x05)
+#define SPI_CMD_RDSR2       (0x35)
+#define SPI_CMD_RDSR3       (0x15)
 // support for new WinBond Flash
-#define SPI_CMD_WRSR		(0x01)
-#define SPI_CMD_WRSR2		(0x31)
-#define SPI_CMD_WRSR3		(0x11)
-#define SPI_CMD_QPI			(0x35)
-#define SPI_CMD_QPI_RST	(0xF5)
+#define SPI_CMD_WRSR        (0x01)
+#define SPI_CMD_WRSR2       (0x31)
+#define SPI_CMD_WRSR3       (0x11)
+#define SPI_CMD_QPI         (0x35)
+#define SPI_CMD_QPI_RST (0xF5)
 #define SPI_WRIET_BUSY        (0x01)
   // support for 256Mb up MIX flash
-#define SPI_CMD_WREAR		(0xC5)
+#define SPI_CMD_WREAR       (0xC5)
 
   // FSP Register
 #define REG_FSP_WDB0    0x60
@@ -334,82 +336,82 @@
 #define REG_FSP_RDB8    0x69
 #define REG_FSP_RDB9    0x69
 
-#define FSP_OFFSET      	0x60
-#define REG_FSP_WD0   		(FSP_OFFSET+0x00)
-#define REG_FSP_WD0_MASK	BMASK(7:0)
-	#define FSP_WD0(byte)	BITS(7:0,(byte))
-#define REG_FSP_WD1   		(FSP_OFFSET+0x00)
-#define REG_FSP_WD1_MASK	BMASK(15:8)
-	#define FSP_WD1(byte)	BITS(15:8,(byte))
-#define REG_FSP_WD2   		(FSP_OFFSET+0x01)
-#define REG_FSP_WD2_MASK	BMASK(7:0)
-	#define FSP_WD2(byte)	BITS(7:0,(byte))
-#define REG_FSP_WD3   		(FSP_OFFSET+0x01)
-#define REG_FSP_WD3_MASK	BMASK(15:8)
-	#define FSP_WD3(byte)	BITS(15:8,(byte))
-#define REG_FSP_WD4   		(FSP_OFFSET+0x02)
-#define REG_FSP_WD4_MASK	BMASK(7:0)
-	#define FSP_WD4(byte)	BITS(7:0,(byte))
-#define REG_FSP_WD5   		(FSP_OFFSET+0x02)
-#define REG_FSP_WD5_MASK	BMASK(15:8)
-	#define FSP_WD5(byte)		BITS(15:8,(byte))
-#define REG_FSP_WD6   		(FSP_OFFSET+0x03)
-#define REG_FSP_WD6_MASK	BMASK(7:0)
-	#define FSP_WD6(byte)	BITS(7:0,(byte))
-#define REG_FSP_WD7   		(FSP_OFFSET+0x03)
-#define REG_FSP_WD7_MASK	BMASK(15:8)
-	#define FSP_WD7(byte)	BITS(15:8,(byte))
-#define REG_FSP_WD8   		(FSP_OFFSET+0x04)
-#define REG_FSP_WD8_MASK	BMASK(7:0)
-	#define FSP_WD8(byte)	BITS(7:0,(byte))
-#define REG_FSP_WD9   		(FSP_OFFSET+0x04)
-#define REG_FSP_WD9_MASK	BMASK(15:8)
-	#define FSP_WD9(byte)	BITS(15:8,(byte))
+#define FSP_OFFSET          0x60
+#define REG_FSP_WD0         (FSP_OFFSET+0x00)
+#define REG_FSP_WD0_MASK    BMASK(7:0)
+    #define FSP_WD0(byte)   BITS(7:0,(byte))
+#define REG_FSP_WD1         (FSP_OFFSET+0x00)
+#define REG_FSP_WD1_MASK    BMASK(15:8)
+    #define FSP_WD1(byte)   BITS(15:8,(byte))
+#define REG_FSP_WD2         (FSP_OFFSET+0x01)
+#define REG_FSP_WD2_MASK    BMASK(7:0)
+    #define FSP_WD2(byte)   BITS(7:0,(byte))
+#define REG_FSP_WD3         (FSP_OFFSET+0x01)
+#define REG_FSP_WD3_MASK    BMASK(15:8)
+    #define FSP_WD3(byte)   BITS(15:8,(byte))
+#define REG_FSP_WD4         (FSP_OFFSET+0x02)
+#define REG_FSP_WD4_MASK    BMASK(7:0)
+    #define FSP_WD4(byte)   BITS(7:0,(byte))
+#define REG_FSP_WD5         (FSP_OFFSET+0x02)
+#define REG_FSP_WD5_MASK    BMASK(15:8)
+    #define FSP_WD5(byte)       BITS(15:8,(byte))
+#define REG_FSP_WD6         (FSP_OFFSET+0x03)
+#define REG_FSP_WD6_MASK    BMASK(7:0)
+    #define FSP_WD6(byte)   BITS(7:0,(byte))
+#define REG_FSP_WD7         (FSP_OFFSET+0x03)
+#define REG_FSP_WD7_MASK    BMASK(15:8)
+    #define FSP_WD7(byte)   BITS(15:8,(byte))
+#define REG_FSP_WD8         (FSP_OFFSET+0x04)
+#define REG_FSP_WD8_MASK    BMASK(7:0)
+    #define FSP_WD8(byte)   BITS(7:0,(byte))
+#define REG_FSP_WD9         (FSP_OFFSET+0x04)
+#define REG_FSP_WD9_MASK    BMASK(15:8)
+    #define FSP_WD9(byte)   BITS(15:8,(byte))
 
-#define REG_FSP_RD0   		(FSP_OFFSET+0x05)
-#define REG_FSP_RD0_MASK	BMASK(7:0)
-	#define FSP_RD0(byte)	BITS(7:0,(byte))
-#define REG_FSP_RD1   		(FSP_OFFSET+0x05)
-#define REG_FSP_RD1_MASK	BMASK(15:8)
-	#define FSP_RD1(byte)	BITS(15:8,(byte))
-#define REG_FSP_RD2   		(FSP_OFFSET+0x06)
-#define REG_FSP_RD2_MASK	BMASK(7:0)
-	#define FSP_RD2(byte)	BITS(7:0,(byte))
-#define REG_FSP_RD3   		(FSP_OFFSET+0x06)
-#define REG_FSP_RD3_MASK	BMASK(15:8)
-	#define FSP_RD3(byte)	BITS(15:8,(byte))
-#define REG_FSP_RD4   		(FSP_OFFSET+0x07)
-#define REG_FSP_RD4_MASK	BMASK(7:0)
-	#define FSP_RD4(byte)	BITS(7:0,(byte))
-#define REG_FSP_RD5   		(FSP_OFFSET+0x07)
-#define REG_FSP_RD5_MASK	BMASK(15:8)
-	#define FSP_RD5(byte)	BITS(15:8,(byte))
-#define REG_FSP_RD6   		(FSP_OFFSET+0x08)
-#define REG_FSP_RD6_MASK	BMASK(7:0)
-	#define FSP_RD6(byte)	BITS(7:0,(byte))
-#define REG_FSP_RD7   		(FSP_OFFSET+0x08)
-#define REG_FSP_RD7_MASK	BMASK(15:8)
-	#define FSP_RD7(byte)	BITS(15:8,(byte))
-#define REG_FSP_RD8   		(FSP_OFFSET+0x09)
-#define REG_FSP_RD8_MASK	BMASK(7:0)
-	#define FSP_RD8(byte)	BITS(7:0,(byte))
-#define REG_FSP_RD9   		(FSP_OFFSET+0x09)
-#define REG_FSP_RD9_MASK	BMASK(15:8)
-	#define FSP_RD9(byte)	BITS(15:8,(byte))
+#define REG_FSP_RD0         (FSP_OFFSET+0x05)
+#define REG_FSP_RD0_MASK    BMASK(7:0)
+    #define FSP_RD0(byte)   BITS(7:0,(byte))
+#define REG_FSP_RD1         (FSP_OFFSET+0x05)
+#define REG_FSP_RD1_MASK    BMASK(15:8)
+    #define FSP_RD1(byte)   BITS(15:8,(byte))
+#define REG_FSP_RD2         (FSP_OFFSET+0x06)
+#define REG_FSP_RD2_MASK    BMASK(7:0)
+    #define FSP_RD2(byte)   BITS(7:0,(byte))
+#define REG_FSP_RD3         (FSP_OFFSET+0x06)
+#define REG_FSP_RD3_MASK    BMASK(15:8)
+    #define FSP_RD3(byte)   BITS(15:8,(byte))
+#define REG_FSP_RD4         (FSP_OFFSET+0x07)
+#define REG_FSP_RD4_MASK    BMASK(7:0)
+    #define FSP_RD4(byte)   BITS(7:0,(byte))
+#define REG_FSP_RD5         (FSP_OFFSET+0x07)
+#define REG_FSP_RD5_MASK    BMASK(15:8)
+    #define FSP_RD5(byte)   BITS(15:8,(byte))
+#define REG_FSP_RD6         (FSP_OFFSET+0x08)
+#define REG_FSP_RD6_MASK    BMASK(7:0)
+    #define FSP_RD6(byte)   BITS(7:0,(byte))
+#define REG_FSP_RD7         (FSP_OFFSET+0x08)
+#define REG_FSP_RD7_MASK    BMASK(15:8)
+    #define FSP_RD7(byte)   BITS(15:8,(byte))
+#define REG_FSP_RD8         (FSP_OFFSET+0x09)
+#define REG_FSP_RD8_MASK    BMASK(7:0)
+    #define FSP_RD8(byte)   BITS(7:0,(byte))
+#define REG_FSP_RD9         (FSP_OFFSET+0x09)
+#define REG_FSP_RD9_MASK    BMASK(15:8)
+    #define FSP_RD9(byte)   BITS(15:8,(byte))
 
 #define REG_FSP_WBF_SIZE   0x6a
-#define REG_FSP_WBF_SIZE0_MASK	BMASK(3:0)
+#define REG_FSP_WBF_SIZE0_MASK  BMASK(3:0)
 #define REG_FSP_WBF_SIZE0(s)    BITS(3:0,s)
-#define REG_FSP_WBF_SIZE1_MASK	BMASK(7:4)
+#define REG_FSP_WBF_SIZE1_MASK  BMASK(7:4)
 #define REG_FSP_WBF_SIZE1(s)    BITS(7:4,s)
-#define REG_FSP_WBF_SIZE2_MASK	BMASK(11:8)
+#define REG_FSP_WBF_SIZE2_MASK  BMASK(11:8)
 #define REG_FSP_WBF_SIZE2(s)    BITS(11:8,s)
 #define REG_FSP_RBF_SIZE   0x6b
-#define REG_FSP_RBF_SIZE0_MASK	BMASK(3:0)
+#define REG_FSP_RBF_SIZE0_MASK  BMASK(3:0)
 #define REG_FSP_RBF_SIZE0(s)    BITS(3:0,s)
-#define REG_FSP_RBF_SIZE1_MASK	BMASK(7:4)
+#define REG_FSP_RBF_SIZE1_MASK  BMASK(7:4)
 #define REG_FSP_RBF_SIZE1(s)    BITS(7:4,s)
-#define REG_FSP_RBF_SIZE2_MASK	BMASK(11:8)
+#define REG_FSP_RBF_SIZE2_MASK  BMASK(11:8)
 #define REG_FSP_RBF_SIZE2(s)    BITS(11:8,s)
 
 #define REG_FSP_CTRL   0x6c
@@ -448,6 +450,10 @@
 #define REG_FSP_DONE_CLR_MASK        BMASK(0:0)
 #define REG_FSP_CLR             BITS(0:0,1)
 
+#define REG_FSP_QUAD_MODE           0x75
+#define REG_FSP_QUAD_ENABLE                 BITS(0:0,1)
+#define REG_FSP_QUAD_ENABLE_MASK        BMASK(7:0)
+
 #define REG_FSP_WBF_SIZE_OUTSIDE    0x78
 #define REG_FSP_WBF_OUTSIDE         0x79
 #define REG_FSP_WBF_REPLACED_MASK   BMASK(7:0)
@@ -466,11 +472,11 @@
 
 
 
-		// Serial Flash Register // please refer to the serial flash datasheet
+        // Serial Flash Register // please refer to the serial flash datasheet
 #define SF_SR_WIP_MASK                  BMASK(0:0)
 #define SF_SR_WEL_MASK                  BMASK(1:1)
 #define SF_SR_BP_MASK                   BMASK(5:2)
-		// BMASK(4:2) is normal case but SERFLASH_TYPE_MX25L6405 use BMASK(5:2)
+        // BMASK(4:2) is normal case but SERFLASH_TYPE_MX25L6405 use BMASK(5:2)
 #define SF_SR_PROG_ERASE_ERR_MASK       BMASK(6:6)
 #define SF_SR_SRWD_MASK                 BMASK(7:7)
 #define SF_SR_SRWD                      BITS(7:7, 1)
@@ -486,6 +492,7 @@
 #define REG_SPI_BURST_WRITE 0x0A
 #define REG_SPI_DISABLE_BURST 0x02
 #define REG_SPI_ENABLE_BURST  0x01
+#define REG_SPI_BURST_OFF     0x03
 
 
 #endif // _REG_SERFLASH_H_

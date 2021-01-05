@@ -1,9 +1,8 @@
 /*
 * mdrv_aes.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #if 1
@@ -33,6 +32,7 @@
 #include <linux/scatterlist.h>
 #include <linux/dma-mapping.h>
 #include <linux/of_device.h>
+#include <linux/of_irq.h>
 #include <linux/delay.h>
 #include <linux/time.h>
 #include <linux/crypto.h>
@@ -47,6 +47,7 @@
 #include "halAESDMA.h"
 #include "mdrv_aes.h"
 #include <linux/miscdevice.h>
+#include "mdrv_cipher.h"
 
 #else
 #include <linux/module.h>
@@ -73,11 +74,12 @@ int gbSupportAES256 = 0;
 #else
 #define AESDMA_DBG(fmt, arg...)
 #endif
-
+#if defined(CONFIG_SS_AESDMA_INTR) && CONFIG_SS_AESDMA_INTR
+#define AESDMA_ISR
+#endif
 
 #define AESDMA_DES (0)
-
-#define LOOP_CNT    100000 //100ms
+#define LOOP_CNT    100 //100ms
 
 #define MSOS_PROCESS_PRIVATE    0x00000000
 #define MSOS_PROCESS_SHARED     0x00000001
@@ -87,6 +89,10 @@ int gbSupportAES256 = 0;
 struct mutex _mtcrypto_lock;
 struct platform_device *psg_mdrv_aesdma;
 struct aesdma_alloc_dmem ALLOC_DMEM = {0, 0, "AESDMA_ENG", "AESDMA_ENG1", 0, 0};
+#ifdef AESDMA_ISR
+static bool _isr_requested = 0;
+static struct completion _mdmadone;
+#endif
 
 extern int infinity_sha_create(void);
 extern int infinity_sha_destroy(void);
@@ -213,10 +219,27 @@ void allocMem(U32 len)
     memset(ALLOC_DMEM.aesdma_vir_addr, 0, len);//AESDMA_ALLOC_MEMSIZE);
 }
 
+#ifdef AESDMA_ISR
+static irqreturn_t aes_dma_interrupt(int irq, void *argu)
+{
+    int status = 0;
+
+    status = HAL_AESDMA_GetStatus();
+    if(status & AESDMA_CTRL_DMA_DONE)
+    {
+        complete(&_mdmadone);
+        HAL_AESDMA_INTDISABLE();
+    }
+
+    return IRQ_HANDLED;
+}
+#endif
+
 int infinity_aes_crypt_pub(struct infinity_aes_op *op, u32 in_addr, u32 out_addr)
 {
     unsigned long start = 0, err = 0;
     unsigned long timeout;
+    unsigned int wait_min = 0, wait_max = 0;
 
     AESDMA_DBG("%s %d\n",__FUNCTION__,__LINE__);
 
@@ -227,9 +250,19 @@ int infinity_aes_crypt_pub(struct infinity_aes_op *op, u32 in_addr, u32 out_addr
     HAL_AESDMA_SetXIULength(op->len);
     HAL_AESDMA_SetFileoutAddr(Chip_Phys_to_MIU(out_addr), op->len);
 
-    HAL_AESDMA_UseCipherKey();
-
-    HAL_AESDMA_SetCipherKey2((U16*)op->key, op->keylen);
+    if(op->keylen==1 && op->key[0]==E_AES_KEY_SRC_INT_UNI)
+    {
+        HAL_AESDMA_UseEfuseKey();
+    }
+    else if(op->keylen==1 && op->key[0]==E_AES_KEY_SRC_INT_CONST)
+    {
+        HAL_AESDMA_UseHwKey();
+    }
+    else
+    {
+        HAL_AESDMA_UseCipherKey();
+        HAL_AESDMA_SetCipherKey2((U16*)op->key, op->keylen);
+    }
 
     if ((op->mode == AES_MODE_CBC) || (op->mode == AES_MODE_CTR))
     {
@@ -257,31 +290,65 @@ int infinity_aes_crypt_pub(struct infinity_aes_op *op, u32 in_addr, u32 out_addr
     }
 
     HAL_AESDMA_FileOutEnable(1);
+#ifdef AESDMA_ISR
+    if(_isr_requested)
+    {
+        reinit_completion(&_mdmadone);
+        HAL_AESDMA_INTMASK();
+    }
+#endif
     HAL_AESDMA_Start(1);
 
-    // Wait for ready.
     start = jiffies;
-    timeout = start + msecs_to_jiffies(LOOP_CNT);
-    while((HAL_AESDMA_GetStatus() & AESDMA_CTRL_DMA_DONE) != AESDMA_CTRL_DMA_DONE)
+#ifdef AESDMA_ISR
+    if(_isr_requested)
     {
-        if (time_after_eq(jiffies, timeout))
+        if(!wait_for_completion_timeout(&_mdmadone, msecs_to_jiffies(LOOP_CNT)))
         {
-            err = 1;
-            break;
+            err = -1;
         }
     }
+    else
+#endif
+    {
+        timeout = start + msecs_to_jiffies(LOOP_CNT);
+
+        // Wait for ready.
+        wait_min = (op->len * 8) >> 10;
+        wait_max = (op->len * 10) >> 10;
+        if(!in_atomic() && wait_min >= 10)
+        {
+            usleep_range(wait_min, wait_max);
+        }
+
+        while((HAL_AESDMA_GetStatus() & AESDMA_CTRL_DMA_DONE) != AESDMA_CTRL_DMA_DONE)
+        {
+            if (time_after_eq(jiffies, timeout))
+            {
+                err = -1;
+                break;
+            }
+            /* CAUTION: In crypto test self task, crypto_ecb_crypt use atomic operation kmap_atomic that make BUG()*/
+            if(!in_atomic())
+            {
+                schedule();
+            }
+        }
+    }
+
     AESDMA_DBG("Elapsed time: %lu jiffies\n", jiffies - start);
 
     Chip_Flush_MIU_Pipe();
     HAL_AESDMA_Reset();
-    if (err)
+    if (err<0)
     {
         printk("AES timeout\n");
-        return -1;
+        return err;
     }
     return op->len;
 }
 
+// return: op length
 static unsigned int infinity_aes_crypt(struct infinity_aes_op *op)
 {
     int ret = 0;
@@ -397,6 +464,7 @@ static int fallback_blk_enc(struct blkcipher_desc *desc,
 static void infinity_encrypt(struct crypto_tfm *tfm, u8 *out, const u8 *in)
 {
     struct infinity_aes_op *op = crypto_tfm_ctx(tfm);
+    int ret=0;
     AESDMA_DBG("%s %d\n",__FUNCTION__,__LINE__);
 
     if (!gbSupportAES256 && op->keylen != AES_KEYSIZE_128) {
@@ -410,13 +478,19 @@ static void infinity_encrypt(struct crypto_tfm *tfm, u8 *out, const u8 *in)
     op->flags = 0;
     op->len = AES_BLOCK_SIZE;
     op->dir = AES_DIR_ENCRYPT;
-    infinity_aes_crypt(op);
+    ret = infinity_aes_crypt(op);
+    if (ret < 0)
+    {
+        printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+    }
+
 }
 
 
 static void infinity_decrypt(struct crypto_tfm *tfm, u8 *out, const u8 *in)
 {
     struct infinity_aes_op *op = crypto_tfm_ctx(tfm);
+    int ret=0;
     AESDMA_DBG("%s %d\n",__FUNCTION__,__LINE__);
 
     if (!gbSupportAES256 && op->keylen != AES_KEYSIZE_128) {
@@ -430,7 +504,13 @@ static void infinity_decrypt(struct crypto_tfm *tfm, u8 *out, const u8 *in)
     op->flags = 0;
     op->len = AES_BLOCK_SIZE;
     op->dir = AES_DIR_DECRYPT;
-    infinity_aes_crypt(op);
+
+    ret = infinity_aes_crypt(op);
+    if (ret < 0)
+    {
+        printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+    }
+
 }
 
 static int fallback_init_cip(struct crypto_tfm *tfm)
@@ -507,12 +587,19 @@ static int infinity_cbc_decrypt(struct blkcipher_desc *desc,
         memcpy(ivTemp, op->src+(op->len)-16, 16);
         op->dir = AES_DIR_DECRYPT;
         ret = infinity_aes_crypt(op);
+        if (ret < 0)
+        {
+            printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+            err=ret;
+            goto finish;
+        }
+
         nbytes -= ret;
         err = blkcipher_walk_done(desc, &walk, nbytes);
 
 		if (err != 0)
 		{
-			printk("[AESDMA] ERR blkcipher_walk_done %s!\n", __FUNCTION__);
+			printk("[AESDMA][%s] blkcipher_walk_done return err:%d!\n", __FUNCTION__, ret);
 			goto finish;
 		}
         memcpy(walk.iv, ivTemp, 16);
@@ -553,12 +640,19 @@ static int infinity_cbc_encrypt(struct blkcipher_desc *desc,
         op->len = nbytes - (nbytes % AES_BLOCK_SIZE);
         op->dir = AES_DIR_ENCRYPT;
         ret = infinity_aes_crypt(op);
+        if (ret < 0)
+        {
+            printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+            err=ret;
+            goto finish;
+        }
+
         nbytes -= ret;
         err = blkcipher_walk_done(desc, &walk, nbytes);
 
 		if (err != 0)
 		{
-			printk("[AESDMA] ERR blkcipher_walk_done %s!\n", __FUNCTION__);
+			printk("[AESDMA][%s] blkcipher_walk_done return err:%d!\n", __FUNCTION__, ret);
 			goto finish;
 		}
 
@@ -600,12 +694,19 @@ static int infinity_ecb_decrypt(struct blkcipher_desc *desc,
         op->len = nbytes - (nbytes % AES_BLOCK_SIZE);
         op->dir = AES_DIR_DECRYPT;
         ret = infinity_aes_crypt(op);
+        if (ret < 0)
+        {
+            printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+            err=ret;
+            goto finish;
+        }
+
         nbytes -= ret;
         err = blkcipher_walk_done(desc, &walk, nbytes);
 
 		if (err != 0)
 		{
-			printk("[AESDMA] ERR blkcipher_walk_done %s!\n", __FUNCTION__);
+			printk("[AESDMA][%s] blkcipher_walk_done return err:%d!\n", __FUNCTION__, ret);
 			goto finish;
 		}
     }
@@ -641,12 +742,20 @@ static int infinity_ecb_encrypt(struct blkcipher_desc *desc,
         op->len = nbytes - (nbytes % AES_BLOCK_SIZE);
         op->dir = AES_DIR_ENCRYPT;
         ret = infinity_aes_crypt(op);
+        if (ret < 0)
+        {
+            printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+            err=ret;
+            goto finish;
+        }
+
         nbytes -= ret;
         ret =  blkcipher_walk_done(desc, &walk, nbytes);
 
 		if (ret != 0)
 		{
-			printk("[AESDMA] ERR blkcipher_walk_done %s!\n", __FUNCTION__);
+			printk("[AESDMA][%s] blkcipher_walk_done return err:%d!\n", __FUNCTION__, ret);
+            err=ret;
 			goto finish;
 		}
     }
@@ -689,12 +798,19 @@ static int infinity_ctr_encrypt(struct blkcipher_desc *desc,
         op->len = nbytes - (nbytes % AES_BLOCK_SIZE);
         op->dir = AES_DIR_ENCRYPT;
         ret = infinity_aes_crypt(op);
+        if (ret < 0)
+        {
+            printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+            err=ret;
+            goto finish;
+        }
+
         nbytes -= ret;
         err = blkcipher_walk_done(desc, &walk, nbytes);
 
 		if (err != 0)
 		{
-			printk("[AESDMA] ERR blkcipher_walk_done %s!\n", __FUNCTION__);
+			printk("[AESDMA][%s] blkcipher_walk_done return err:%d!\n", __FUNCTION__, ret);
 			goto finish;
 		}
 
@@ -1072,13 +1188,16 @@ static int infinity_aes_remove(struct platform_device *pdev)
 
 static int infinity_aes_probe(struct platform_device *pdev)
 {
-
     int ret = 0;
+#ifdef AESDMA_ISR
+    int irq;
+#endif
 
     mutex_init(&_mtcrypto_lock);
     psg_mdrv_aesdma = pdev;
     enableClock();
 	allocMem(4096);
+
 #if 0
     ret = crypto_register_alg(&infinity_des_alg);
     if (ret)
@@ -1130,15 +1249,30 @@ static int infinity_aes_probe(struct platform_device *pdev)
 
     infinity_sha_create();
 	misc_register(&rsadev);
-    dev_notice(&pdev->dev, "MSTAR AES engine enabled.\n");
-
+    dev_dbg(&pdev->dev, "SSTAR AES engine enabled.\n");
+#ifdef AESDMA_ISR
+    irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
+    if (request_irq(irq, aes_dma_interrupt, 0, "aes interrupt", NULL) == 0)
+    {
+        init_completion(&_mdmadone);
+        AESDMA_DBG("sstar AES interrupt registered\n");
+        _isr_requested = 1;
+    }
+    else
+    {
+        pr_err("sstar AES interrupt failed\n");
+        _isr_requested = 0;
+    }
+#endif
     return 0;
- eecb:
-    crypto_unregister_alg(&infinity_ecb_alg);
- ecbc:
-    crypto_unregister_alg(&infinity_cbc_alg);
- ectr:
+
+ectr:
     crypto_unregister_alg(&infinity_ctr_alg);
+ecbc:
+    crypto_unregister_alg(&infinity_cbc_alg);
+eecb:
+    crypto_unregister_alg(&infinity_ecb_alg);
+
 #if 0
  edesecb:
     crypto_unregister_alg(&infinity_des_ecb_alg);
@@ -1159,7 +1293,7 @@ static int infinity_aes_probe(struct platform_device *pdev)
  eiomap:
     crypto_unregister_alg(&infinity_alg);
 
-    dev_err(&pdev->dev, "MSTAR AES initialization failed.\n");
+    pr_err("SSTAR AES initialization failed.\n");
     return ret;
 }
 

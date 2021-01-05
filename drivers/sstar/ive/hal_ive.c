@@ -1,9 +1,8 @@
 /*
 * hal_ive.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: chris.luo <chris.luo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include "mdrv_ive.h"
@@ -617,9 +616,11 @@ void ive_hal_set_coeff_thresh_u16(ive_hal_handle *handle, ive_ioc_coeff_thresh_u
  */
 void ive_hal_set_coeff_add(ive_hal_handle *handle, ive_ioc_coeff_add *coeff)
 {
+    handle->reg_bank1.op_mode = coeff->mode;
     handle->reg_bank1.add_weight_x = coeff->weight_x;
     handle->reg_bank1.add_weight_y = coeff->weight_y;
 
+    REGW(handle->base_addr1, 0x04, handle->reg_bank1.reg04);
     REGW(handle->base_addr1, 0x2B, handle->reg_bank1.reg2B);
     REGW(handle->base_addr1, 0x2C, handle->reg_bank1.reg2C);
 }
@@ -788,9 +789,11 @@ void ive_hal_set_coeff_ncc(ive_hal_handle *handle, u64 output_addr)
 void ive_hal_set_coeff_lbp(ive_hal_handle *handle, ive_ioc_coeff_lbp *coeff)
 {
     handle->reg_bank1.op_mode = coeff->mode;
+    handle->reg_bank1.infmt = coeff->chlmode;
     handle->reg_bank1.thresh_16bit_1 = coeff->thresh-1;
 
     REGW(handle->base_addr1, 0x04, handle->reg_bank1.reg04);
+    REGW(handle->base_addr1, 0x05, handle->reg_bank1.reg05);
     REGW(handle->base_addr1, 0x28, handle->reg_bank1.reg28);
 }
 
@@ -840,6 +843,135 @@ void ive_hal_set_coeff_adp_thresh(ive_hal_handle *handle, ive_ioc_coeff_adp_thre
 }
 
 /*******************************************************************************************************************
+ * ive_hal_set_coeff_matrix_transform
+ *   Set matrix transform coefficient
+ *
+ * Parameters:
+ *   handle: IVE HAL handle
+ *   coeff: coefficient
+ *
+ * Return:
+ *   none
+ */
+void ive_hal_set_coeff_matrix_transform(ive_hal_handle *handle, ive_ioc_coeff_matrix_transform *coeff)
+{
+    handle->reg_bank1.op_mode = coeff->ctrl_mode;
+
+    switch( coeff->chl_mode )
+    {
+        case IVE_IOC_MODE_MATRIX_TRANSFORM_C1:
+        handle->reg_bank1.infmt = 13;
+        handle->reg_bank1.outfmt = 13;
+
+                handle->reg_bank1.mask0 = coeff->s16MatrixArray[0] % 256;
+        handle->reg_bank1.mask1 = coeff->s16MatrixArray[0] /256;
+                handle->reg_bank1.mask2 = 0;
+        handle->reg_bank1.mask3 = 0;
+        handle->reg_bank1.mask4 = 0;
+        handle->reg_bank1.mask5 = 0;
+        handle->reg_bank1.mask6 = 0;
+        handle->reg_bank1.mask7 = 0;
+        handle->reg_bank1.mask8 = 0;
+        handle->reg_bank1.mask9 = 0;
+        handle->reg_bank1.mask10 = 0;
+        handle->reg_bank1.mask11 = 0;
+        handle->reg_bank1.mask12 = 0;
+        handle->reg_bank1.mask13 = 0;
+        handle->reg_bank1.mask14 = 0;
+        handle->reg_bank1.mask15 = 0;
+        handle->reg_bank1.mask16 = 0;
+        handle->reg_bank1.mask17 = 0;
+        break;
+
+    case IVE_IOC_MODE_MATRIX_TRANSFORM_C2:
+        handle->reg_bank1.infmt = 14;
+        handle->reg_bank1.outfmt = 14;
+
+        handle->reg_bank1.mask0 = coeff->s16MatrixArray[0] % 256;
+        handle->reg_bank1.mask1 = coeff->s16MatrixArray[0] /256;
+                handle->reg_bank1.mask2 = coeff->s16MatrixArray[1] % 256;
+        handle->reg_bank1.mask3 = coeff->s16MatrixArray[1] /256;
+        handle->reg_bank1.mask4 = 0;
+        handle->reg_bank1.mask5 = 0;
+        handle->reg_bank1.mask6 = coeff->s16MatrixArray[2] % 256;
+        handle->reg_bank1.mask7 = coeff->s16MatrixArray[2] /256;
+        handle->reg_bank1.mask8 = coeff->s16MatrixArray[3] % 256;
+        handle->reg_bank1.mask9 = coeff->s16MatrixArray[3] /256;
+        handle->reg_bank1.mask10 = 0;
+        handle->reg_bank1.mask11 = 0;
+        handle->reg_bank1.mask12 = 0;
+        handle->reg_bank1.mask13 = 0;
+        handle->reg_bank1.mask14 = 0;
+        handle->reg_bank1.mask15 = 0;
+        handle->reg_bank1.mask16 = 0;
+        handle->reg_bank1.mask17 = 0;
+        break;
+
+    case IVE_IOC_MODE_MATRIX_TRANSFORM_C3:
+        handle->reg_bank1.infmt = 15;
+        handle->reg_bank1.outfmt = 15;
+
+        handle->reg_bank1.mask0 = coeff->s16MatrixArray[0] % 256;
+        handle->reg_bank1.mask1 = coeff->s16MatrixArray[0] /256;
+                handle->reg_bank1.mask2 = coeff->s16MatrixArray[1] % 256;
+        handle->reg_bank1.mask3 = coeff->s16MatrixArray[1] /256;
+        handle->reg_bank1.mask4 = coeff->s16MatrixArray[2] % 256;
+        handle->reg_bank1.mask5 = coeff->s16MatrixArray[2] /256;
+        handle->reg_bank1.mask6 = coeff->s16MatrixArray[3] % 256;
+        handle->reg_bank1.mask7 = coeff->s16MatrixArray[3] /256;
+        handle->reg_bank1.mask8 = coeff->s16MatrixArray[4] % 256;
+        handle->reg_bank1.mask9 = coeff->s16MatrixArray[4] /256;
+        handle->reg_bank1.mask10 = coeff->s16MatrixArray[5] % 256;
+        handle->reg_bank1.mask11 = coeff->s16MatrixArray[5] /256;
+        handle->reg_bank1.mask12 = coeff->s16MatrixArray[6] % 256;
+        handle->reg_bank1.mask13 = coeff->s16MatrixArray[6] /256;
+        handle->reg_bank1.mask14 = coeff->s16MatrixArray[7] % 256;
+        handle->reg_bank1.mask15 = coeff->s16MatrixArray[7] /256;
+        handle->reg_bank1.mask16 = coeff->s16MatrixArray[8] % 256;
+        handle->reg_bank1.mask17 = coeff->s16MatrixArray[8] /256;
+        break;
+    default :
+        IVE_MSG(IVE_MSG_ERR, "Invalid input type of matrix transform!!\n");
+        break;
+    }
+
+
+
+    REGW(handle->base_addr1, 0x04, handle->reg_bank1.reg04);
+    REGW(handle->base_addr1, 0x05, handle->reg_bank1.reg05);
+
+    REGW(handle->base_addr1, 0x1A, handle->reg_bank1.reg1A);
+    REGW(handle->base_addr1, 0x1B, handle->reg_bank1.reg1B);
+    REGW(handle->base_addr1, 0x1C, handle->reg_bank1.reg1C);
+    REGW(handle->base_addr1, 0x1D, handle->reg_bank1.reg1D);
+    REGW(handle->base_addr1, 0x1E, handle->reg_bank1.reg1E);
+    REGW(handle->base_addr1, 0x1F, handle->reg_bank1.reg1F);
+    REGW(handle->base_addr1, 0x20, handle->reg_bank1.reg20);
+    REGW(handle->base_addr1, 0x21, handle->reg_bank1.reg21);
+    REGW(handle->base_addr1, 0x22, handle->reg_bank1.reg22);
+}
+
+/*******************************************************************************************************************
+ * ive_hal_set_coeff_image_dot
+ *   Set image dot coefficient
+ *
+ * Parameters:
+ *   handle: IVE HAL handle
+ *   coeff: coefficient
+ *
+ * Return:
+ *   none
+ */
+void ive_hal_set_coeff_image_dot(ive_hal_handle *handle, ive_ioc_coeff_image_dot *coeff)
+{
+    handle->reg_bank1.op_mode = coeff->mode;
+    handle->reg_bank1.infmt = 14;
+
+    REGW(handle->base_addr1, 0x04, handle->reg_bank1.reg04);
+    REGW(handle->base_addr1, 0x05, handle->reg_bank1.reg05);
+}
+
+/*******************************************************************************************************************
  * ive_hal_start
  *   start IVE HW engine to process images
  *
@@ -880,6 +1012,8 @@ void ive_hal_sw_reset(ive_hal_handle *handle)
 
     handle->reg_bank0.sw_rst = 0; // write one clear
 
+    REGW(handle->base_addr0, 0x02, handle->reg_bank0.reg02);
+
     memset(&handle->reg_bank0, 0, sizeof(handle->reg_bank0));
     memset(&handle->reg_bank1, 0, sizeof(handle->reg_bank1));
 }
@@ -891,6 +1025,7 @@ void ive_hal_reg_dump(ive_hal_handle *handle)
     IVE_MSG(IVE_MSG_DBG, "bank 0 reg 0x%02X = 0x%04x\n", 0x00, REGR(handle->base_addr0, 0x00));
     IVE_MSG(IVE_MSG_DBG, "bank 0 reg 0x%02X = 0x%04x\n", 0x01, REGR(handle->base_addr0, 0x01));
     IVE_MSG(IVE_MSG_DBG, "bank 0 reg 0x%02X = 0x%04x\n", 0x02, REGR(handle->base_addr0, 0x02));
+    IVE_MSG(IVE_MSG_DBG, "bank 0 reg 0x%02X = 0x%04x\n", 0x03, REGR(handle->base_addr0, 0x03));
     IVE_MSG(IVE_MSG_DBG, "bank 0 reg 0x%02X = 0x%04x\n", 0x10, REGR(handle->base_addr0, 0x10));
     IVE_MSG(IVE_MSG_DBG, "bank 0 reg 0x%02X = 0x%04x\n", 0x11, REGR(handle->base_addr0, 0x11));
     IVE_MSG(IVE_MSG_DBG, "bank 0 reg 0x%02X = 0x%04x\n", 0x12, REGR(handle->base_addr0, 0x12));

@@ -1,9 +1,8 @@
 /*
 * mdrv_wdt.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/module.h>
@@ -116,7 +115,6 @@ U32 __infinity_wdt_get_clk_rate(void)
     clk = of_clk_get(pdev->dev.of_node, 0);
     if(IS_ERR(clk))
     {
-        wdtErr("[%s] of_clk_get failed\n", __func__);
         return 0;
     }
 
@@ -130,7 +128,6 @@ void check_osc_clk(void)
     g_u32Clock = __infinity_wdt_get_clk_rate();
     if (g_u32Clock == 0)
     {
-        wdtErr("%s get much clk error from DTS\n", __func__);
         g_u32Clock = OSC_CLK_12000000;
     }
 }

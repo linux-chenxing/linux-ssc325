@@ -1,4 +1,19 @@
-/* SigmaStar trade secret */
+/*
+* mhal_emac.c- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
+*/
 /*
 * mhal_emac.c- Sigmastar
 *
@@ -743,9 +758,9 @@ void MHal_EMAC_Write_JULIAN_0100(void* hal, int bMIU_reset)
         val |= 0xF000;
     if (!pHal->phyRIU)
         val |= 0x0002;
-    if (PHY_INTERFACE_MODE_RMII != pHal->phy_mode)
-        val |= 0x0004;
-    val = (val_h & 0xFFFF0000) | val;
+    val |= 0x0004;
+    // val = (val_h & 0xFFFF0000) | val;
+    val = (val_h & 0xFFFF00C0) | val;
     MHal_EMAC_WritReg32(hal, REG_EMAC_JULIAN_0100, val);
 }
 
@@ -2530,3 +2545,39 @@ int MHal_EMAC_FlowControl_TX(void* hal)
     return 0;
 }
 
+void MHal_EMAC_MIU_Protect_RX(void* hal, u32 start, u32 end)
+{
+    u32 j100, j11c, j120, j124;
+
+    if ((0xF & start) || (0xF& end))
+    {
+        printk("[%s][%d] warning for protection area without 16 byte alignment (start, end) = (0x%08x, 0x%08x)\n", __FUNCTION__, __LINE__, start, end);
+        printk("[%s][%d] warning for protection area without 16 byte alignment (start, end) = (0x%08x, 0x%08x)\n", __FUNCTION__, __LINE__, start, end);
+        printk("[%s][%d] warning for protection area without 16 byte alignment (start, end) = (0x%08x, 0x%08x)\n", __FUNCTION__, __LINE__, start, end);
+    }
+    start >>= 4;
+    end >>= 4;
+
+    j100 = MHal_EMAC_ReadReg32(hal, REG_EMAC_JULIAN_0100);
+    j11c = MHal_EMAC_ReadReg32(hal, REG_EMAC_JULIAN_011C);
+    j120 = MHal_EMAC_ReadReg32(hal, REG_EMAC_JULIAN_0120);
+    j124 = MHal_EMAC_ReadReg32(hal, REG_EMAC_JULIAN_0124);
+
+    j11c = ((j11c & 0x0000ffff) | ((end & 0x0000ffff) << 16));
+    j120 = ((j120 & 0x0000e000) | ((end & 0x1fff0000) >> 16) | ((start & 0x0000ffff) << 16) );
+    j124 = ((j124 & 0xffffe000) | ((start & 0x1fff0000) >> 16) );
+    j100 |= 0x40;
+
+    MHal_EMAC_WritReg32(hal, REG_EMAC_JULIAN_011C, j11c);
+    MHal_EMAC_WritReg32(hal, REG_EMAC_JULIAN_0120, j120);
+    MHal_EMAC_WritReg32(hal, REG_EMAC_JULIAN_0124, j124);
+    MHal_EMAC_WritReg32(hal, REG_EMAC_JULIAN_0100, j100);
+}
+
+void MHal_EMAC_Phy_Restart_An(void* hal)
+{
+    mhal_emac_t* pHal = (mhal_emac_t*) hal;
+    MHal_EMAC_WritReg16(pHal->phyRIU, REG_BANK_ALBANY0, 0x00, 0x0000);
+    udelay( 1 );
+    MHal_EMAC_WritReg16(pHal->phyRIU, REG_BANK_ALBANY0, 0x00, 0x1000);
+}

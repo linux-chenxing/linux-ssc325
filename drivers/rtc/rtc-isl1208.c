@@ -126,7 +126,7 @@ isl1208_i2c_validate_client(struct i2c_client *client)
 	};
 	int i;
 	int ret;
-
+    printk("myzr:in isl1208_i2c_validate_client,before isl1208_i2c_read_regs\n");
 	ret = isl1208_i2c_read_regs(client, 0, regs, ISL1208_RTC_SECTION_LEN);
 	if (ret < 0)
 		return ret;
@@ -623,19 +623,20 @@ isl1208_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	int rc = 0;
 	struct rtc_device *rtc;
-
+    printk("myzr--------------------rtc--------------------i2c----------------------why?\n");
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENODEV;
-
+    printk("myzr:before isl1208_i2c_validate_client > 0\n");
 	if (isl1208_i2c_validate_client(client) < 0)
 		return -ENODEV;
-
+    printk("myzr:before client->irq > 0\n");
 	if (client->irq > 0) {
 		rc = devm_request_threaded_irq(&client->dev, client->irq, NULL,
 					       isl1208_rtc_interrupt,
 					       IRQF_SHARED | IRQF_ONESHOT,
 					       isl1208_driver.driver.name,
 					       client);
+        printk("myzr:before !rc\n");
 		if (!rc) {
 			device_init_wakeup(&client->dev, 1);
 			enable_irq_wake(client->irq);
@@ -646,29 +647,29 @@ isl1208_probe(struct i2c_client *client, const struct i2c_device_id *id)
 			client->irq = 0;
 		}
 	}
-
+    printk("myzr:before devm_rtc_device_register\n");
 	rtc = devm_rtc_device_register(&client->dev, isl1208_driver.driver.name,
 				  &isl1208_rtc_ops,
 				  THIS_MODULE);
 	if (IS_ERR(rtc))
 		return PTR_ERR(rtc);
-
+    printk("myzr:before i2c_set_clientdata\n");
 	i2c_set_clientdata(client, rtc);
-
+    printk("myzr:before isl1208_i2c_get_sr\n");
 	rc = isl1208_i2c_get_sr(client);
 	if (rc < 0) {
 		dev_err(&client->dev, "reading status failed\n");
 		return rc;
 	}
-
+    printk("myzr:after isl1208_i2c_get_sr\n");
 	if (rc & ISL1208_REG_SR_RTCF)
 		dev_warn(&client->dev, "rtc power failure detected, "
 			 "please set clock.\n");
-
+    printk("myzr:before sysfs_create_group\n");
 	rc = sysfs_create_group(&client->dev.kobj, &isl1208_rtc_sysfs_files);
 	if (rc)
 		return rc;
-
+    printk("myzr:after sysfs_create_group\n");
 	return 0;
 }
 

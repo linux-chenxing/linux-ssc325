@@ -5,6 +5,8 @@ EXTRA_CFLAGS      +=  -Idrivers/sstar/flash_isp
 EXTRA_CFLAGS      +=  -Idrivers/sstar/flash_isp/include
 EXTRA_CFLAGS      +=  -Idrivers/sstar/flash_isp/$(CONFIG_SSTAR_CHIP_NAME)
 EXTRA_CFLAGS      +=  -Idrivers/sstar/include
+EXTRA_CFLAGS      +=  -Idrivers/sstar/include/$(CONFIG_SSTAR_CHIP_NAME)
+EXTRA_CFLAGS      +=  -Idrivers/sstar/bdma/$(CONFIG_SSTAR_CHIP_NAME)
 
 # specific options
 EXTRA_CFLAGS      +=  -DMSOS_TYPE_LINUX

@@ -1,9 +1,8 @@
 /*
 * mhal_iic.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _HAL_HWI2C_H_
@@ -85,6 +84,8 @@ typedef signed long            MS_S64;                             // 8 bytes
 #define HAL_HWI2C_PORT1         1
 #define HAL_HWI2C_PORT2         2
 #define HAL_HWI2C_PORT3         3
+
+typedef void* (*mhal_i2c_feature_fp)(U16, U16, void*, U32);
 
 typedef enum _HAL_HWI2C_STATE
 {
@@ -199,6 +200,12 @@ typedef struct _HAL_HWI2C_PinCfg
     BOOL bEnable;   /// enable or disable
 }HAL_HWI2C_PinCfg;
 
+typedef enum _HAL_HWI2C_HW_FEATURE
+{
+	E_HAL_HWI2C_FEATURE_NWRITE = 0,
+	E_HAL_HWI2C_FEATURE_MAX,
+}HAL_HWI2C_HW_FEATURE;
+
 typedef struct _HAL_HWI2C_PortCfg //Synchronize with drvHWI2C.h
 {
     U32                  u32DmaPhyAddr;  /// DMA physical address
@@ -276,6 +283,11 @@ _extern_HAL_IIC_ void HAL_HWI2C_Init_ExtraProc(void);
 _extern_HAL_IIC_ BOOL HAL_HWI2C_WriteChipByteMask(U32 u32RegAddr, U8 u8Val, U8 u8Mask);
 _extern_HAL_IIC_ U8 HAL_HWI2C_ReadChipByte(U32 u32RegAddr);
 _extern_HAL_IIC_ BOOL HAL_HWI2C_WriteChipByte(U32 u32RegAddr, U8 u8Val);
+_extern_HAL_IIC_ BOOL HAL_HWI2C_CheckAbility(HAL_HWI2C_HW_FEATURE etype,mhal_i2c_feature_fp *fp);
+_extern_HAL_IIC_ void HAL_HWI2C_IrqFree(U32 u32irq);
+_extern_HAL_IIC_ void HAL_HWI2C_IrqRequest(U32 u32irq, U32 u32group, void *pdev);
+_extern_HAL_IIC_ void HAL_HWI2C_DMA_TsemInit(U8 u8Port);
+_extern_HAL_IIC_ void HAL_HWI2C_DMA_TsemDeinit(U8 u8Port);
 
 
 #endif  //_MHAL_HWI2C_H_

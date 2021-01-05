@@ -328,6 +328,24 @@ choice
 	default ARM_SINGLE_ARMV7M if !MMU
 	default ARCH_MULTIPLATFORM if MMU
 
+config ARCH_INFINITY2
+       bool "MSTAR I-series family"
+       depends on MMU
+       select ARCH_WANT_OPTIONAL_GPIOLIB
+       select ARM_HAS_SG_CHAIN
+       select AUTO_ZRELADDR
+       select CLKSRC_OF
+       select COMMON_CLK
+       select GENERIC_CLOCKEVENTS
+       select MIGHT_HAVE_PCI
+       select MULTI_IRQ_HANDLER
+       select SPARSE_IRQ
+       select USE_OF
+       select CPU_V7
+       select HAVE_SMP
+       select MIGHT_HAVE_CACHE_L2X0
+
+
 config ARCH_MULTIPLATFORM
 	bool "Allow multiple platforms to be selected"
 	depends on MMU
@@ -2065,6 +2083,10 @@ config AUTO_ZRELADDR
 	  will be determined at run-time by masking the current IP with
 	  0xf8000000. This assumes the zImage being placed in the first 128MB
 	  from start of memory.
+
+config MEMORY_START_ADDRESS
+        hex "Physical address of the memory starting"
+	depends on ARCH_INFINITY2
 
 config EFI_STUB
 	bool

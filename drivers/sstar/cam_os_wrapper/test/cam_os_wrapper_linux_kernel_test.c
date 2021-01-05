@@ -1,15 +1,18 @@
-/* Copyright (c) 2018-2019 Sigmastar Technology Corp.
- All rights reserved.
-
- Unless otherwise stipulated in writing, any and all information contained
-herein regardless in any format shall remain the sole proprietary of
-Sigmastar Technology Corp. and be kept in strict confidence
-(Sigmastar Confidential Information) by the recipient.
-Any unauthorized act including without limitation unauthorized disclosure,
-copying, use, reproduction, sale, distribution, modification, disassembling,
-reverse engineering and compiling of the contents of Sigmastar Confidential
-Information is unlawful and strictly prohibited. Sigmastar hereby reserves the
-rights to any and all damages, losses, costs and expenses resulting therefrom.
+/*
+* cam_os_wrapper_linux_kernel_test.c- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
 */
 
 
@@ -1328,10 +1331,10 @@ static int __init KernelTestInit(void)
     CamOsPrintf("AtomicSet 10\n");
     CamOsAtomicSet(&tAtomic, 10);
     CamOsPrintf("AtomicRead                  : %d\n", CamOsAtomicRead(&tAtomic));
-    CamOsPrintf("CamOsAtomicAddReturn (5)    : %d\n", CamOsAtomicAddReturn(5, &tAtomic));
-    CamOsPrintf("CamOsAtomicSubReturn (3)    : %d\n", CamOsAtomicSubReturn(3, &tAtomic));
-    CamOsPrintf("CamOsAtomicSubAndTest (2)   : %d\n", CamOsAtomicSubAndTest(2, &tAtomic));
-    CamOsPrintf("CamOsAtomicSubAndTest (10)  : %d\n", CamOsAtomicSubAndTest(10, &tAtomic));
+    CamOsPrintf("CamOsAtomicAddReturn (5)    : %d\n", CamOsAtomicAddReturn(&tAtomic, 5));
+    CamOsPrintf("CamOsAtomicSubReturn (3)    : %d\n", CamOsAtomicSubReturn(&tAtomic, 3));
+    CamOsPrintf("CamOsAtomicSubAndTest (2)   : %d\n", CamOsAtomicSubAndTest(&tAtomic, 2));
+    CamOsPrintf("CamOsAtomicSubAndTest (10)  : %d\n", CamOsAtomicSubAndTest(&tAtomic, 10));
     CamOsPrintf("CamOsAtomicIncReturn        : %d\n", CamOsAtomicIncReturn(&tAtomic));
     CamOsPrintf("CamOsAtomicDecReturn        : %d\n", CamOsAtomicDecReturn(&tAtomic));
     CamOsPrintf("CamOsAtomicDecReturn        : %d\n", CamOsAtomicDecReturn(&tAtomic));
@@ -1339,9 +1342,9 @@ static int __init KernelTestInit(void)
     CamOsPrintf("CamOsAtomicIncAndTest       : %d\n", CamOsAtomicIncAndTest(&tAtomic));
     CamOsPrintf("CamOsAtomicDecAndTest       : %d\n", CamOsAtomicDecAndTest(&tAtomic));
     CamOsPrintf("CamOsAtomicDecAndTest       : %d\n", CamOsAtomicDecAndTest(&tAtomic));
-    CamOsPrintf("CamOsAtomicAddNegative (1)  : %d\n", CamOsAtomicAddNegative(1, &tAtomic));
-    CamOsPrintf("CamOsAtomicAddNegative (1)  : %d\n", CamOsAtomicAddNegative(1, &tAtomic));
-    CamOsPrintf("CamOsAtomicAddNegative (-3) : %d\n", CamOsAtomicAddNegative(-3, &tAtomic));
+    CamOsPrintf("CamOsAtomicAddNegative (1)  : %d\n", CamOsAtomicAddNegative(&tAtomic, 1));
+    CamOsPrintf("CamOsAtomicAddNegative (1)  : %d\n", CamOsAtomicAddNegative(&tAtomic, 1));
+    CamOsPrintf("CamOsAtomicAddNegative (-3) : %d\n", CamOsAtomicAddNegative(&tAtomic, -3));
 #endif
 
 #ifdef TEST_BITMAP

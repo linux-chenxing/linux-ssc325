@@ -1,9 +1,8 @@
 /*
 * mhal_gpio.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _MHAL_GPIO_H_
@@ -40,6 +39,7 @@ extern void MHal_GPIO_Set_Low(U8 u8IndexGPIO);
 extern void MHal_Enable_GPIO_INT(U8 u8IndexGPIO);
 extern int MHal_GPIO_To_Irq(U8 u8IndexGPIO);
 extern void MHal_GPIO_Set_POLARITY(U8 u8IndexGPIO, U8 reverse);
+extern void MHal_GPIO_Set_Driving(U8 u8IndexGPIO, U8 setHigh);
 extern void MHal_GPIO_PAD_32K_OUT(U8 u8Enable);
 
 #endif // _MHAL_GPIO_H_

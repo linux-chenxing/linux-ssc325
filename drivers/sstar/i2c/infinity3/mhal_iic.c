@@ -1,9 +1,8 @@
 /*
 * mhal_iic.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 //#include "MsCommon.h"
@@ -997,7 +996,7 @@ BOOL HAL_HWI2C_Master_Enable(U16 u16PortOffset)
     HAL_HWI2C_Reset(u16PortOffset,TRUE);
     HAL_HWI2C_Reset(u16PortOffset,FALSE);
     //(3) configuration
-    HAL_HWI2C_EnINT(u16PortOffset,TRUE);
+    HAL_HWI2C_EnINT(u16PortOffset,FALSE);
     HAL_HWI2C_EnClkStretch(u16PortOffset,TRUE);
     HAL_HWI2C_EnFilter(u16PortOffset,TRUE);
     HAL_HWI2C_EnPushSda(u16PortOffset,TRUE);
@@ -1780,4 +1779,26 @@ void HAL_HWI2C_Init_ExtraProc(void)
     HWI2C_HAL_FUNC();
     //Extra procedure TODO
 }
+
+BOOL HAL_HWI2C_CheckAbility(HAL_HWI2C_HW_FEATURE etype,mhal_i2c_feature_fp *fp)
+{
+	return FALSE;
+}
+void HAL_HWI2C_IrqFree(U32 u32irq)
+{
+	return;
+}
+void HAL_HWI2C_IrqRequest(U32 u32irq, U32 u32group, void *pdev)
+{
+	return;
+}
+void HAL_HWI2C_DMA_TsemInit(U8 u8Port)
+{
+	return;
+}
+void HAL_HWI2C_DMA_TsemDeinit(U8 u8Port)
+{
+	return;
+}
+
 #endif

@@ -1,20 +1,24 @@
 /*
- * Copyright (c) 2014 MundoReader S.L.
- * Author: Matthias Brugger <matthias.bgg@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
+* infinity6-ssc009a-s01a.dts- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
+*/
 
 /dts-v1/;
 #include "infinity6.dtsi"
+#include <../../../../drivers/sstar/include/infinity6/padmux.h>
+#include <../../../../drivers/sstar/include/mdrv_puse.h>
 
 / {
     model = "INFINITY6 SSC009A-S01A QFN88";
@@ -48,7 +52,7 @@
         Sstar-ehci-1 {
             compatible = "Sstar-ehci-1";
             dpdm_swap=<0>;
-            power-enable-pad = <PAD_UNKNOWN>;
+            power-enable-pad = <PAD_SAR_GPIO2>;
         };
 
         vif {
@@ -79,6 +83,14 @@
             vid_width = <1>;
             vid_gpios = <PAD_SAR_GPIO3>;
             vid_voltages = <900 1000>;  //2b'00 2b'01
+        };
+        padmux {
+            compatible = "sstar-padmux";
+            schematic = 
+                <PAD_PM_LED0        PINMUX_FOR_PM_LED_MODE          MDRV_PUSE_EMAC0_LED      >,
+                <PAD_PM_LED1        PINMUX_FOR_PM_LED_MODE          MDRV_PUSE_EMAC0_LED      >;
+            // status = "ok"; // ok or disable
+            status = "disable";
         };
     };
 

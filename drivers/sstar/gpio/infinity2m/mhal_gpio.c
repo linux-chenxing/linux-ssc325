@@ -1,9 +1,8 @@
 /*
 * mhal_gpio.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/kernel.h>
@@ -229,6 +228,28 @@ void MHal_Enable_GPIO_INT(U8 u8IndexGPIO)
 void MHal_GPIO_Set_POLARITY(U8 u8IndexGPIO, U8 reverse)
 {
     // TBD
+}
+
+void MHal_GPIO_Set_Driving(U8 u8IndexGPIO, U8 setHigh)
+{
+    U32 r_driving[] = {0x101E7E, 0x101E7E, 0x101E7E, 0x101E7E};
+    U8  m_driving[] = {BIT0,     BIT1,     BIT2,     BIT3};
+    int index = u8IndexGPIO - PAD_TTL16;
+
+    if (u8IndexGPIO < PAD_TTL16 || u8IndexGPIO > PAD_TTL19 )
+    {
+        printk("not support\n");
+        return;
+    }
+
+    if (setHigh)
+    {
+        MHal_RIU_REG(r_driving[index]) |= m_driving[index];
+    }
+    else
+    {
+        MHal_RIU_REG(r_driving[index]) &= (~m_driving[index]);
+    }
 }
 
 static int PMSLEEP_GPIO_To_Irq(U8 u8IndexGPIO)

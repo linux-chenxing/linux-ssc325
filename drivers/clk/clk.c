@@ -796,7 +796,7 @@ unlock_out:
 		clk_core_disable_unprepare(core->parent);
 }
 
-#ifdef	CONFIG_LH_RTOS
+#if defined(CONFIG_LH_RTOS) || defined(CONFIG_SS_AMP)
 /* for dual OS system, not to off clocks that may be used in RTOS. */
 static bool clk_ignore_unused = true;
 #else
@@ -1984,7 +1984,7 @@ EXPORT_SYMBOL_GPL(clk_is_match);
 
 /***        debugfs support        ***/
 
-#ifdef CONFIG_DEBUG_FS
+#if defined(CONFIG_DEBUG_FS) && !defined(CONFIG_DISABLE_CLK_DEBUGFS_SUPPORT)
 #include <linux/debugfs.h>
 
 static struct dentry *rootdir;

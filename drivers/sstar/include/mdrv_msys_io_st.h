@@ -1,9 +1,8 @@
 /*
 * mdrv_msys_io_st.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _MDRV_MSYS_IO_ST_H_
@@ -40,7 +39,13 @@ typedef struct
     unsigned int VerChk_Version;
     unsigned int VerChk_Size;
 } __attribute__ ((__packed__)) MSYS_DUMMY_INFO;
-
+typedef struct
+{
+    unsigned int IRQNumber; //reserved
+    void* action;
+    unsigned long long timeStart;
+    unsigned long long timeEnd;
+} __attribute__ ((__packed__)) MSYS_IRQ_INFO;
 typedef struct
 {
     unsigned int VerChk_Version;
@@ -116,7 +121,7 @@ typedef enum
     FREQ_37_5MHZ = 5,
     FREQ_54MHZ   = 6,
     FREQ_75MHZ   = 7,
-} MSYS_FREQ_TYPE;
+}MSYS_FREQ_TYPE;
 
 typedef enum
 {
@@ -174,6 +179,19 @@ typedef struct
     unsigned int width_dst;         // width of destination, set 0 to disable line offset
     unsigned int length;            // total size (bytes)
 } MSYS_DMA_BLIT;
+
+#if defined(CONFIG_MS_BDMA_LINE_OFFSET_ON)
+typedef struct
+{
+    unsigned long long phyaddr;     // MIU address of source
+    unsigned int length;            // total size (bytes)
+    //unsigned int lineofst_src;      // line-offset of source, set 0 to disable line offset
+    unsigned int lineofst_dst;      // line-offset of destination, set 0 to disable line offset
+    //unsigned int width_src;         // width of source, set 0 to disable line offset
+    unsigned int width_dst;         // width of destination, set 0 to disable line offset
+    unsigned int pattern;           // pattern (4-byte)
+} MSYS_DMA_FILL_BILT;
+#endif
 
 typedef struct
 {

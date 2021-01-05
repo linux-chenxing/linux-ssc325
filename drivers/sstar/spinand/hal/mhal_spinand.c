@@ -1,9 +1,8 @@
 /*
 * mhal_spinand.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/dma-mapping.h>
@@ -42,17 +41,6 @@ MS_U32 BASE_SPI_OFFSET = 0;
 //-------------------------------------------------------------------------------------------------
 typedef struct
 {
-    U32  u32FspBaseAddr;     // REG_ISP_BASE
-    U32  u32QspiBaseAddr;    // REG_QSPI_BASE
-    U32  u32PMBaseAddr;      // REG_PM_BASE
-    U32  u32CLK0BaseAddr;    // REG_PM_BASE
-    U32  u32CHIPBaseAddr;    // REG_CHIP_BASE
-    U32  u32RiuBaseAddr;     // REG_PM_BASE
-    U32  u32BDMABaseAddr;    // REG_BDMA_BASE
-} hal_fsp_t;
-
-typedef struct
-{
     U8  u8Clk;
     U16 eClkCkg;
 } hal_clk_ckg_t;
@@ -73,7 +61,7 @@ SPINAND_MODE gNandReadMode=E_SPINAND_QUAD_MODE;
 #endif
 
 
-static hal_fsp_t _hal_fsp =
+hal_fsp_t _hal_fsp =
 {
     .u32FspBaseAddr = I3_RIU_PM_BASE + BK_FSP,
     .u32QspiBaseAddr = I3_RIU_PM_BASE + BK_QSPI,
@@ -432,7 +420,7 @@ static U32 _HAL_SPINAND_BDMA_READ(U16 u16Addr, U32 u32DataSize, U8 *u8pData)
 
 void HAL_SPINAND_SetNormalMode(void)
 {
-    QSPI_WRITE(REG_SPI_CKG_SPI, REG_SPI_USER_DUMMY_EN|REG_SPI_DUMMY_CYC_SINGAL);
+    QSPI_WRITE(REG_SPI_CKG_SPI, REG_SPI_USER_DUMMY_EN|REG_SPI_DUMMY_CYC_SINGLE);
     QSPI_WRITE(REG_SPI_MODE_SEL, REG_SPI_NORMAL_MODE);
 }
 
@@ -442,13 +430,13 @@ void HAL_SPINAND_AssertNormalMode(void)
     BOOL bBug = FALSE;
 
     u16Reg = QSPI_READ(REG_SPI_CKG_SPI);
-    if((u16Reg & 0xF) != REG_SPI_DUMMY_CYC_SINGAL)
+    if((u16Reg & REG_SPI_USER_DUMMY_EN) && ((u16Reg & 0xF) != REG_SPI_DUMMY_CYC_SINGLE))
     {
         printk("Invalid REG_SPI_CKG_SPI %X\n", u16Reg);
         bBug = TRUE;
     }
     u16Reg = QSPI_READ(REG_SPI_MODE_SEL);
-    if((u16Reg & 0xF) != REG_SPI_NORMAL_MODE)
+    if(((u16Reg & 0xF) != REG_SPI_NORMAL_MODE) && ((u16Reg & 0xF) != REG_SPI_FAST_READ))
     {
         printk("Invalid REG_SPI_MODE_SEL %X\n", u16Reg);
         bBug = TRUE;
@@ -468,7 +456,7 @@ void HAL_SPINAND_PreHandle(SPINAND_MODE eMode)
     HAL_SPINAND_SetNormalMode();
 
     u16Reg = QSPI_READ(REG_SPI_CKG_SPI);
-    if((u16Reg & 0xF) != REG_SPI_DUMMY_CYC_SINGAL)
+    if((u16Reg & 0xF) != REG_SPI_DUMMY_CYC_SINGLE)
     {
         printk("Invalid REG_SPI_CKG_SPI %X\n", u16Reg);
         BUG();
@@ -510,6 +498,8 @@ void HAL_SPINAND_PreHandle(SPINAND_MODE eMode)
 U32 HAL_SPINAND_Init(void)
 {
     U8  u8Status = 0;
+
+    HAL_SPINAND_Chip_Config();
 
     //set pad mux for spinand
 //	    printk("MDrv_SPINAND_Init: Set pad mux\n");
@@ -575,6 +565,37 @@ BOOL HAL_SPINAND_PLANE_HANDLER(U32 u32Addr)
         QSPI_WRITE(REG_SPI_WRAP_VAL, u32Addr);
     }
     return TRUE;
+}
+
+void HAL_SPINAND_DieSelect (U8 u8Die)
+{
+    if(u8Die != 0)//only 2 die
+        u8Die = 1;
+
+    //FSP init config
+    FSP_WRITE(REG_FSP_CTRL, (ENABLE_FSP|RESET_FSP|INT_FSP));
+    FSP_WRITE(REG_FSP_CTRL2, 0);
+    FSP_WRITE(REG_FSP_CTRL4, 0);
+
+    //Set FSP Read Command
+    FSP_WRITE_BYTE(REG_FSP_WRITE_BUFF, SPI_NAND_CMD_DIESELECT);
+    //Set Start Address
+    FSP_WRITE_BYTE(REG_FSP_WRITE_BUFF + 1, u8Die);
+    //Set Write & Read Length
+    FSP_WRITE(REG_FSP_WRITE_SIZE, 2);
+    FSP_WRITE(REG_FSP_READ_SIZE, 0);
+
+    //Trigger FSP
+    FSP_WRITE_BYTE(REG_FSP_TRIGGER, TRIGGER_FSP);
+
+    //Check FSP done flag
+    if (_HAL_FSP_ChkWaitDone() == FALSE)
+    {
+        DEBUG_SPINAND(E_SPINAND_DBGLV_ERR, printk("RID Wait FSP Done Time Out !!!!\r\n"));
+    }
+
+    //Clear FSP done flag
+    FSP_WRITE_BYTE(REG_FSP_CLEAR_DONE, CLEAR_DONE_FSP);
 }
 
 U32 HAL_SPINAND_RFC(U32 u32Addr, U8 *pu8Data)
@@ -1113,7 +1134,7 @@ U32 HAL_SPINAND_Write(U32 u32_PageIdx, U8 *u8Data, U8 *pu8_SpareBuf)
      HAL_SPINAND_PreHandle(E_SPINAND_QUAD_MODE);
 #endif
 
-    if (BDMA_W_FLAG)
+    if (BDMA_W_FLAG && (PAGE_SIZE <= 2048)) // outsize bit number is insufficient for 4KB page, force using RIU mode
     {
         memcpy(ALLOC_DMEM.bdma_vir_addr, u8Data, PAGE_SIZE);
         memcpy(ALLOC_DMEM.bdma_vir_addr+PAGE_SIZE, pu8_SpareBuf, SPARE_SIZE);
@@ -1334,19 +1355,19 @@ U32 HAL_SPINAND_SetMode(SPINAND_MODE eMode)
     {
     case E_SPINAND_SINGLE_MODE:
         HAL_SPINAND_PreHandle(E_SPINAND_SINGLE_MODE);
-        QSPI_WRITE(REG_SPI_CKG_SPI, REG_SPI_USER_DUMMY_EN|REG_SPI_DUMMY_CYC_SINGAL);
+        QSPI_WRITE(REG_SPI_CKG_SPI, REG_SPI_USER_DUMMY_EN|REG_SPI_DUMMY_CYC_SINGLE);
         QSPI_WRITE(REG_SPI_MODE_SEL, REG_SPI_NORMAL_MODE);
 //	 PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_HOLD_IS_GPIO, PM_SPI_HOLD_GPIO_MASK);
 //	 PM_WRITE_MASK(REG_PM_SPI_IS_GPIO, PM_SPI_WP_IS_GPIO, PM_SPI_WP_GPIO_MASK);
         break;
     case E_SPINAND_FAST_MODE:
         HAL_SPINAND_PreHandle(E_SPINAND_FAST_MODE);
-        QSPI_WRITE(REG_SPI_CKG_SPI, REG_SPI_USER_DUMMY_EN|REG_SPI_DUMMY_CYC_SINGAL);
+        QSPI_WRITE(REG_SPI_CKG_SPI, REG_SPI_USER_DUMMY_EN|REG_SPI_DUMMY_CYC_SINGLE);
         QSPI_WRITE(REG_SPI_MODE_SEL, REG_SPI_FAST_READ);
         break;
     case E_SPINAND_DUAL_MODE:
         HAL_SPINAND_PreHandle(E_SPINAND_DUAL_MODE);
-        QSPI_WRITE(REG_SPI_CKG_SPI, REG_SPI_USER_DUMMY_EN|REG_SPI_DUMMY_CYC_SINGAL);
+        QSPI_WRITE(REG_SPI_CKG_SPI, REG_SPI_USER_DUMMY_EN|REG_SPI_DUMMY_CYC_SINGLE);
         QSPI_WRITE(REG_SPI_MODE_SEL, REG_SPI_CMD_3B);
         break;
     case E_SPINAND_DUAL_MODE_IO:
@@ -1356,7 +1377,7 @@ U32 HAL_SPINAND_SetMode(SPINAND_MODE eMode)
         break;
     case E_SPINAND_QUAD_MODE:
         HAL_SPINAND_PreHandle(E_SPINAND_QUAD_MODE);
-        QSPI_WRITE(REG_SPI_CKG_SPI, REG_SPI_USER_DUMMY_EN|REG_SPI_DUMMY_CYC_SINGAL);
+        QSPI_WRITE(REG_SPI_CKG_SPI, REG_SPI_USER_DUMMY_EN|REG_SPI_DUMMY_CYC_SINGLE);
         QSPI_WRITE(REG_SPI_MODE_SEL, REG_SPI_CMD_6B);
         break;
     case E_SPINAND_QUAD_MODE_IO:

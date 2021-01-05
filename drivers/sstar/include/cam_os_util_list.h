@@ -1,15 +1,18 @@
-/* Copyright (c) 2018-2019 Sigmastar Technology Corp.
- All rights reserved.
-
- Unless otherwise stipulated in writing, any and all information contained
-herein regardless in any format shall remain the sole proprietary of
-Sigmastar Technology Corp. and be kept in strict confidence
-(Sigmastar Confidential Information) by the recipient.
-Any unauthorized act including without limitation unauthorized disclosure,
-copying, use, reproduction, sale, distribution, modification, disassembling,
-reverse engineering and compiling of the contents of Sigmastar Confidential
-Information is unlawful and strictly prohibited. Sigmastar hereby reserves the
-rights to any and all damages, losses, costs and expenses resulting therefrom.
+/*
+* cam_os_util_list.h- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
 */
 
 
@@ -53,16 +56,16 @@ struct CamOsListHead_t
     CAM_OS_LIST_ENTRY((ptr)->pPrev, type, member)
 
 #define CAM_OS_LIST_NEXT_ENTRY(pos, member) \
-    CAM_OS_LIST_ENTRY((pos)->member.pNext, typeof(*(pos)), member)
+    CAM_OS_LIST_ENTRY((pos)->member.pNext, __typeof__(*(pos)), member)
 
 #define CAM_OS_LIST_FOR_EACH_ENTRY_SAFE(pos, n, head, member)                  \
-    for (pos = CAM_OS_LIST_FIRST_ENTRY(head, typeof(*pos), member),        \
+    for (pos = CAM_OS_LIST_FIRST_ENTRY(head, __typeof__(*pos), member),        \
             n = CAM_OS_LIST_NEXT_ENTRY(pos, member);                       \
             &pos->member != (head);                                    \
             pos = n, n = CAM_OS_LIST_NEXT_ENTRY(n, member))
 
 #define CAM_OS_LIST_FOR_EACH_ENTRY(pos, head, member)                          \
-    for (pos = CAM_OS_LIST_FIRST_ENTRY(head, typeof(*pos), member);        \
+    for (pos = CAM_OS_LIST_FIRST_ENTRY(head, __typeof__(*pos), member);        \
             &pos->member != (head);                                    \
             pos = CAM_OS_LIST_NEXT_ENTRY(pos, member))
 
@@ -73,25 +76,25 @@ struct CamOsListHead_t
         pList->pPrev = pList;
     }
 
-    static inline void _CAM_OS_LIST_ADD(struct CamOsListHead_t *new,
+    static inline void _CAM_OS_LIST_ADD(struct CamOsListHead_t *pNew,
                                 struct CamOsListHead_t *pPrev,
                                 struct CamOsListHead_t *pNext)
     {
-        pNext->pPrev = new;
-        new->pNext = pNext;
-        new->pPrev = pPrev;
-        pPrev->pNext = new;
+        pNext->pPrev = pNew;
+        pNew->pNext = pNext;
+        pNew->pPrev = pPrev;
+        pPrev->pNext = pNew;
     }
 
-    static inline void CAM_OS_LIST_ADD(struct CamOsListHead_t *new, struct CamOsListHead_t *head)
+    static inline void CAM_OS_LIST_ADD(struct CamOsListHead_t *pNew, struct CamOsListHead_t *head)
     {
-        _CAM_OS_LIST_ADD(new, head, head->pNext);
+        _CAM_OS_LIST_ADD(pNew, head, head->pNext);
     }
 
 
-    static inline void CAM_OS_LIST_ADD_TAIL(struct CamOsListHead_t *new, struct CamOsListHead_t *head)
+    static inline void CAM_OS_LIST_ADD_TAIL(struct CamOsListHead_t *pNew, struct CamOsListHead_t *head)
     {
-        _CAM_OS_LIST_ADD(new, head->pPrev, head);
+        _CAM_OS_LIST_ADD(pNew, head->pPrev, head);
     }
 
     static inline void _CAM_OS_LIST_DEL(struct CamOsListHead_t * pPrev, struct CamOsListHead_t * pNext)
@@ -109,8 +112,8 @@ struct CamOsListHead_t
     static inline void CAM_OS_LIST_DEL(struct CamOsListHead_t *pEntry)
     {
         _CAM_OS_LIST_DEL(pEntry->pPrev, pEntry->pNext);
-        pEntry->pNext = CAM_OS_LIST_POISON1;
-        pEntry->pPrev = CAM_OS_LIST_POISON2;
+        pEntry->pNext = (struct CamOsListHead_t *)CAM_OS_LIST_POISON1;
+        pEntry->pPrev = (struct CamOsListHead_t *)CAM_OS_LIST_POISON2;
     }
 
     static inline void CAM_OS_LIST_DEL_INIT(struct CamOsListHead_t *entry)
@@ -159,7 +162,7 @@ void _CAM_OS_READ_ONCE_SIZE(const volatile void *p, void *res, int size)
 
 #define CAM_OS_READ_ONCE(x)						\
 ({									\
-	union { typeof(x) __val; char __c[1]; } __u;			\
+	union { __typeof__(x) __val; char __c[1]; } __u = {0};			\
     _CAM_OS_READ_ONCE_SIZE(&(x), __u.__c, sizeof(x));		\
     __u.__val;							\
 })
@@ -180,8 +183,8 @@ static FORCE_INLINE void _CAM_OS_WRITE_ONCE_SIZE(volatile void *p, void *res, in
 
 #define CAM_OS_WRITE_ONCE(x, val) \
 ({							\
-	union { typeof(x) __val; char __c[1]; } __u =	\
-		{ .__val = (typeof(x)) (val) }; \
+	union { struct CamOsHListNode_t * __val; char __c[1]; } __u =	\
+		{ .__val = (struct CamOsHListNode_t *) (val) }; \
 	_CAM_OS_WRITE_ONCE_SIZE(&(x), __u.__c, sizeof(x));	\
 	__u.__val;					\
 })
@@ -282,14 +285,14 @@ static inline void CAM_OS_HLIST_ADD_HEAD(struct CamOsHListNode_t *n, struct CamO
 #define CAM_OS_HLIST_ENTRY(ptr, type, member) CAM_OS_CONTAINER_OF(ptr,type,member)
 
 #define CAM_OS_HLIST_ENTRY_SAFE(ptr, type, member) \
-	({ typeof(ptr) ____ptr = (ptr); \
+	({ __typeof__(ptr) ____ptr = (ptr); \
 	   ____ptr ? CAM_OS_HLIST_ENTRY(____ptr, type, member) : NULL; \
 	})
 
 #define CAM_OS_HLIST_FOR_EACH_ENTRY(pos, head, member)				\
-	for (pos = CAM_OS_HLIST_ENTRY_SAFE((head)->pFirst, typeof(*(pos)), member);\
+	for (pos = CAM_OS_HLIST_ENTRY_SAFE((head)->pFirst, __typeof__(*(pos)), member);\
 	     pos;							\
-	     pos = CAM_OS_HLIST_ENTRY_SAFE((pos)->member.pNext, typeof(*(pos)), member))
+	     pos = CAM_OS_HLIST_ENTRY_SAFE((pos)->member.pNext, __typeof__(*(pos)), member))
 
 #ifdef __cplusplus
 }

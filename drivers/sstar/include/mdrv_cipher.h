@@ -1,9 +1,8 @@
 /*
 * mdrv_cipher.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -34,6 +33,12 @@ typedef enum
     E_AES_ALGO_CBC,
     E_AES_ALGO_CTR,
 } MDRV_AES_ALGO_MODE;
+
+typedef enum
+{
+    E_AES_KEY_SRC_INT_UNI = 1,
+    E_AES_KEY_SRC_INT_CONST,
+} MDRV_AES_KEY_SOURCE;
 
 // AES handle
 typedef struct
