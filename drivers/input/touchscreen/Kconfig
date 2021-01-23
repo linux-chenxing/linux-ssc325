@@ -331,6 +331,8 @@ config TOUCHSCREEN_GOODIX
 	tristate "Goodix I2C touchscreen"
 	depends on I2C
 	depends on GPIOLIB || COMPILE_TEST
+	select FW_LOADER
+	select INPUT_EVDEV
 	help
 	  Say Y here if you have the Goodix touchscreen (such as one
 	  installed in Onda v975w tablets) connected to your
@@ -341,6 +343,38 @@ config TOUCHSCREEN_GOODIX
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called goodix.
+
+config TOUCHSCREEN_GSLX680
+    tristate "GSLX680 I2C touchscreen"
+    depends on I2C
+    depends on GPIOLIB || COMPILE_TEST
+    select FW_LOADER
+    select INPUT_EVDEV
+    help
+      Say Y here if you have the GXLX680 touchscreen (such as one
+      installed in Onda v975w tablets) connected to your
+      system.
+
+      If unsure, say N.
+
+      To compile this driver as a module, choose M here: the
+      module will be called GSLX680.
+
+config TOUCHSCREEN_ICN85XX
+    tristate "ICN85XX I2C touchscreen"
+    depends on I2C
+    depends on GPIOLIB || COMPILE_TEST
+    select FW_LOADER
+    select INPUT_EVDEV
+    help
+      Say Y here if you have the ICN85XX touchscreen (such as one
+      installed in Onda v975w tablets) connected to your
+      system.
+
+      If unsure, say N.
+
+      To compile this driver as a module, choose M here: the
+      module will be called ICN85XX.
 
 config TOUCHSCREEN_ILI210X
 	tristate "Ilitek ILI210X based touchscreen"
