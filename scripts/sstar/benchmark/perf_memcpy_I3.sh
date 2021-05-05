@@ -34,6 +34,8 @@ LOOP_COUNT=$((64*1024*$LOOP_BASE/$BUFFER_SIZE))
 echo 'R/W:' $2 ', BUFFER_SIZE: ' $BUFFER_SIZE ', LOOP_COUNT: ' $LOOP_COUNT ', neon: ' $3 ', mem type: ' $4 ', cachable: ' $5
 
 FILTER_EX="-e LLC-loads -e LLC-load-misses -e LLC-stores -e LLC-store-misses"
+FILTER_EX2="-e armv7_cortex_a7/l1d_cache/ -e armv7_cortex_a7/l1d_cache_refill/ -e armv7_cortex_a7/l1d_cache_wb/ -e armv7_cortex_a7/l2d_cache/ -e armv7_cortex_a7/l2d_cache_refill/ -e armv7_cortex_a7/l2d_cache_wb/ -e armv7_cortex_a7/ld_retired/ -e armv7_cortex_a7/st_retired/"
+FILTER_RAW="-e r013 -e r015 -e r019 -e r01d -e r060 -e r061 -e r0c0 -e r0c1 -e r0c2 -e r0c3 -e r0c4 -e r0c5"
 
 if [ "$4" = "IMI" ] || [ "$4" = "MIU" ]
 then
@@ -49,4 +51,4 @@ else
   CACHABLE="1"
 fi
 
-./perf stat $VERBOSE $FILTER_BASIC $FILTER_EX echo $MEM_TYPE $CACHABLE $MEM_TYPE $CACHABLE $LOOP_COUNT $BUFFER_SIZE $3 > /sys/devices/virtual/sstar/msys/perf_test
+./perf stat $VERBOSE $FILTER_BASIC $FILTER_EX $FILTER_EX2 $FILTER_RAW echo $MEM_TYPE $CACHABLE $MEM_TYPE $CACHABLE $LOOP_COUNT $BUFFER_SIZE $3 > /sys/devices/virtual/sstar/msys/perf_test

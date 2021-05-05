@@ -32,7 +32,7 @@
 #if defined (CONFIG_MS_CPU_FREQ) && defined (CONFIG_MS_GPIO)
 extern u8 enable_scaling_voltage;
 #include "infinity/gpio.h"
-#include "../../gpio/mdrv_gpio.h"
+#include "mdrv_gpio.h"
 int bga_vid_0 = PAD_PM_GPIO7;
 int bga_vid_1 = PAD_PM_GPIO8;
 int qfp_vid_0 = PAD_SAR_GPIO3;
@@ -448,7 +448,7 @@ static void __init ms_clk_complex_init(struct device_node *node)
     init->num_parents = of_clk_get_parent_count(node);
     if (init->num_parents < 1)
     {
-        CLK_ERR("[%s] %s must have at least one parent\n", __func__, node->name);
+        CLK_ERR("[%s] %s have no parent\n", __func__, node->name);
         goto fail;
     }
 
@@ -468,7 +468,7 @@ static void __init ms_clk_complex_init(struct device_node *node)
     }
     else
     {
-        CLK_DBG("[%s] %s register successfully\n", __func__, node->name);
+        CLK_DBG("[%s] %s register success\n", __func__, node->name);
     }
     of_clk_add_provider(node, of_clk_src_simple_get, clk);
     clk_register_clkdev(clk, node->name, NULL);

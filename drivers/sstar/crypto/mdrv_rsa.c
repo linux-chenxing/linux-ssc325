@@ -62,6 +62,7 @@ struct rsaConfig{
 int rsa_crypto(struct rsa_config *op)
 {
     int out_size = 32, i = 0;
+    unsigned long timeout;
 
     HAL_RSA_Reset();
     msleep(1);
@@ -84,7 +85,17 @@ int rsa_crypto(struct rsa_config *op)
     RSA_DBG("\n\n");
 #endif
 
-    while((HAL_RSA_GetStatus() & RSA_STATUS_RSA_DONE) != RSA_STATUS_RSA_DONE);
+    timeout = jiffies + msecs_to_jiffies(5000);
+    while((HAL_RSA_GetStatus() & RSA_STATUS_RSA_DONE) != RSA_STATUS_RSA_DONE)
+    {
+        if (time_after_eq(jiffies, timeout))
+        {
+            printk("rsa timeout!!!\n");
+            goto err;
+        }
+
+    }
+
     if(op->u32RSA_KeyNLen == 0x40)
     {
         out_size = 64;
@@ -108,6 +119,7 @@ int rsa_crypto(struct rsa_config *op)
 #endif
 
     HAL_RSA_FileOutEnd();
+err:
     HAL_RSA_ClearInt();
     HAL_RSA_Reset();
 
@@ -122,6 +134,7 @@ static long rsa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
     int nOutSize = 0;
 	int i = 0;
 	bool bRSAHwKey = FALSE;
+    unsigned long timeout;
 
 //	unsigned char* val;
     memset(&data, 0, sizeof(data));
@@ -232,7 +245,15 @@ static long rsa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
             HAL_RSA_ExponetialStart();
 
-            while((HAL_RSA_GetStatus() & RSA_STATUS_RSA_DONE) != RSA_STATUS_RSA_DONE);
+            timeout = jiffies + msecs_to_jiffies(1000);
+            while((HAL_RSA_GetStatus() & RSA_STATUS_RSA_DONE) != RSA_STATUS_RSA_DONE)
+            {
+                if (time_after_eq(jiffies, timeout))
+                {
+                    printk("rsa timeout!!!\n");
+                    break;
+                }
+            }
 
             if((bRSAHwKey) || (ioctl_data->u8RSA_KeyNLen == 64))
             {

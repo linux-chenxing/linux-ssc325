@@ -15,8 +15,9 @@
 * GNU General Public License for more details.
 *
 */
-#ifndef _MDRV_POLLSAMPLE_MODULE_H_
-#define _MDRV_POLLSAMPLE_MODULE_H_
+
+#ifndef __MDRV_POLLSAMPLE_MODULE_H__
+#define __MDRV_POLLSAMPLE_MODULE_H__
 
 #include "cam_os_wrapper.h"
 #include "cam_drv_poll.h"
@@ -41,4 +42,4 @@ int pollsamp_release(struct inode *inode, struct file *filp);
 long pollsamp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 unsigned int pollsamp_poll(struct file *filp, poll_table *tpoll);
 
-#endif /* _MDRV_POLLSAMPLE_MODULE_H_ */
+#endif /* __MDRV_POLLSAMPLE_MODULE_H__ */

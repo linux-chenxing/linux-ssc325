@@ -22,6 +22,7 @@
 //#include "mach/platform.h"
 #include "../include/ms_types.h"
 #include "../include/ms_platform.h"
+#include "mdrv_sar_io.h"
 
 #define DEVICE_NAME    "sar"
 
@@ -32,17 +33,6 @@
 
 static int channel = 1;
 //static int mode = 0;
-
-typedef struct
-{
-    int channel_value;
-	int adc_value;
-}ADC_CONFIG_READ_ADC;
-
-
-#define SARADC_IOC_MAGIC               'a'
-#define MS_SAR_INIT                         _IO(SARADC_IOC_MAGIC, 0)
-#define MS_SAR_SET_CHANNEL_READ_VALUE     _IO(SARADC_IOC_MAGIC, 1)
 
 #define SARADC_IOC_MAXNR               2
 

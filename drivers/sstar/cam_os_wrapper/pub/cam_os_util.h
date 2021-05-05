@@ -38,9 +38,9 @@ extern "C" {
 #endif
 #endif
 
-#define CAM_OS_CONTAINER_OF(ptr, type, member) ({          \
-        const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
-        (type *)( (char *)__mptr - offsetof(type,member) );})
+#define CAM_OS_CONTAINER_OF(ptr, type, member) ({              \
+        void *__mptr = (void *)(ptr);                   \
+        ((type *)(__mptr - offsetof(type, member))); })
 
 #ifndef likely
 #define CAM_OS_LIKELY(x) __builtin_expect(!!(x), 1)
@@ -137,5 +137,8 @@ static FORCE_INLINE s32 CAM_OS_FLS64(u64 x)
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
+
+#define CAM_OS_MIN(a,b) (((a)<(b))?(a):(b))
+#define CAM_OS_MAX(a,b) (((a)>(b))?(a):(b))
 
 #endif //__CAM_OS_UTIL_H__

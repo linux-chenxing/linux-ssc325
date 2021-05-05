@@ -18,7 +18,10 @@
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include "skeleton.dtsi"
-
+#include <../../../../include/generated/autoconf.h>
+#ifdef CONFIG_CAM_CLK
+#include <../../../../drivers/sstar/include/infinity5/camclk.h>
+#endif
 
 / {
     cpus {
@@ -29,6 +32,9 @@
             device_type = "cpu";
             compatible = "arm,cortex-a7";
             clocks = <&CLK_cpupll_clk>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_cpupll_clk>;
+#endif
         };
     };
 
@@ -105,6 +111,9 @@
             reg = <0x1F006040 0x100>;
             interrupts=<GIC_SPI INT_FIQ_TIMER_0 IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_xtali_12m>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_xtali_12m>;
+#endif
         };
 */
 
@@ -118,6 +127,9 @@
             interrupt-parent = <&ms_main_intc>;
             interrupt-names = "mhe-irq", "mfe-irq";
             clocks = <&CLK_vhe>, <&CLK_miu_vhe>, <&CLK_riu_vhe_gp>, <&CLK_riu_w_clk_vhe_gp>, <&CLK_miu_vhe_gp_p>, <&CLK_miu_vhe_gp>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_vhe CAMCLK_miu_vhe CAMCLK_riu_vhe_gp CAMCLK_riu_w_clk_vhe_gp CAMCLK_miu_vhe_gp_p CAMCLK_miu_vhe_gp>;
+#endif
             clock-names = "CKG_venc";
             status = "ok";
         };
@@ -127,6 +139,9 @@
             //reg = <0x1F000000 0x100>;
             //clk,chiptop,hvsp0,sc0,dnr,ldc
             clocks = <&CLK_idclk>,<&CLK_fclk1>,<&CLK_fclk2>,<&CLK_odclk>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_idclk CAMCLK_fclk1 CAMCLK_fclk2 CAMCLK_odclk>;
+#endif
             clock-names = "CLK_idclk","CLK_fclk1","CLK_fclk2","CLK_odclk";
             status = "ok";
             interrupts = <GIC_SPI INT_IRQ_SC_TOP IRQ_TYPE_LEVEL_HIGH>, <GIC_SPI INT_IRQ_SC1_TOP_INT IRQ_TYPE_LEVEL_HIGH>;
@@ -137,6 +152,9 @@
             //reg = <0x1F000000 0x100>;
             //clk,chiptop,scldma
             clocks =  <&CLK_idclk>,<&CLK_fclk1>,<&CLK_fclk2>,<&CLK_odclk>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_idclk CAMCLK_fclk1 CAMCLK_fclk2 CAMCLK_odclk>;
+#endif
             clock-names = "CLK_idclk","CLK_fclk1","CLK_fclk2","CLK_odclk";
             status = "ok";
             interrupts = <GIC_SPI INT_IRQ_SC_TOP IRQ_TYPE_LEVEL_HIGH>;
@@ -146,6 +164,9 @@
             //reg = <0x1F000000 0x100>;
             //clk,chiptop,scldma
             clocks =  <&CLK_idclk>,<&CLK_fclk1>,<&CLK_fclk2>,<&CLK_odclk>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_idclk CAMCLK_fclk1 CAMCLK_fclk2 CAMCLK_odclk>;
+#endif
             clock-names = "CLK_idclk","CLK_fclk1","CLK_fclk2","CLK_odclk";
             status = "ok";
             interrupts = <GIC_SPI INT_IRQ_SC_TOP IRQ_TYPE_LEVEL_HIGH>;
@@ -155,6 +176,9 @@
             //reg = <0x1F000000 0x100>;
             //clk,chiptop,scldma
             clocks =  <&CLK_idclk>,<&CLK_fclk1>,<&CLK_fclk2>,<&CLK_odclk>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_idclk CAMCLK_fclk1 CAMCLK_fclk2 CAMCLK_odclk>;
+#endif
             clock-names = "CLK_idclk","CLK_fclk1","CLK_fclk2","CLK_odclk";
             status = "ok";
             interrupts = <GIC_SPI INT_IRQ_SC_TOP IRQ_TYPE_LEVEL_HIGH>;
@@ -164,6 +188,9 @@
             //reg = <0x1F000000 0x100>;
             //clk,chiptop,scldma
             clocks =  <&CLK_idclk>,<&CLK_fclk1>,<&CLK_fclk2>,<&CLK_odclk>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_idclk CAMCLK_fclk1 CAMCLK_fclk2 CAMCLK_odclk>;
+#endif
             clock-names = "CLK_idclk","CLK_fclk1","CLK_fclk2","CLK_odclk";
             status = "ok";
             interrupts = <GIC_SPI INT_IRQ_SC_TOP IRQ_TYPE_LEVEL_HIGH>;
@@ -190,6 +217,9 @@
             reg = <0x1F221000 0x100>;
             interrupts = <GIC_SPI INT_IRQ_UART_0 IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_uart0>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_uart0>;
+#endif
             status = "ok";
         };
         uart1: uart1@1F221200 {
@@ -197,6 +227,9 @@
             reg = <0x1F221200 0x100>;
             interrupts = <GIC_SPI INT_IRQ_UART_1 IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_uart1>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_uart1>;
+#endif
             pad = <PAD_UART1_TX>;
             //pad = <PAD_FUART_RTS>;
             //pad = <PAD_GPIO6>;
@@ -207,6 +240,9 @@
             reg = <0x1F220400 0x100>, <0x1F220600 0x100>;
             interrupts = <GIC_SPI INT_IRQ_FUART IRQ_TYPE_LEVEL_HIGH>, <GIC_SPI INT_IRQ_URDMA IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_fuart>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_fuart>;
+#endif
             dma = <1>;
             pad = <PAD_UART0_TX>;
             //pad = <PAD_FUART_TX>;
@@ -219,6 +255,9 @@
             compatible = "sstar-emac";
             interrupts = <GIC_SPI INT_IRQ_EMAC IRQ_TYPE_LEVEL_HIGH>, <GIC_SPI INT_FIQ_LAN_ESD IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_emac_ahb>,<&CLK_emac_tx>,<&CLK_emac_rx>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_emac_ahb CAMCLK_emac_tx CAMCLK_emac_rx>;
+#endif
             //led-orange = <PAD_SPI0_DI>; //software toggle GPIO LED For QFN
             //led-green = <PAD_SPI0_DO>;  //software toggle GPIO LED For QFN
             status = "ok";
@@ -229,6 +268,9 @@
             compatible = "sstar-emac";
             interrupts = <GIC_SPI INT_IRQ_EMAC IRQ_TYPE_LEVEL_HIGH>, <GIC_SPI INT_FIQ_LAN_ESD IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_emac_ahb>,<&CLK_emac_tx>,<&CLK_emac_rx>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_emac_ahb CAMCLK_emac_tx CAMCLK_emac_rx>;
+#endif
             reg = <0x1F2A2000 0x800>, <0x1F343C00 0x600>, <0x1F006200 0x600>;
             pad = <0x1F203C3C 0x0004 0x0000>;
             phy-handle = <&phy0>;
@@ -244,6 +286,9 @@
         flashisp {
             compatible = "mtd-flashisp";
             clocks = <&CLK_bdma>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_bdma>;
+#endif
             quadread = <0>;
             status = "ok";
         };
@@ -251,6 +296,9 @@
         nandflash {
             compatible = "ms-nand";
             clocks =<&CLK_fcie>, <&CLK_ecc>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_fcie CAMCLK_ecc>;
+#endif
             interrupts =  <GIC_SPI INT_IRQ_FCIE IRQ_TYPE_LEVEL_HIGH>;
             status = "ok";
         };
@@ -258,6 +306,9 @@
         emmc {
             compatible = "sstar_mci";
             clocks =<&CLK_fcie>, <&CLK_ecc>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_fcie CAMCLK_ecc>;
+#endif
             interrupts =  <GIC_SPI INT_IRQ_FCIE IRQ_TYPE_LEVEL_HIGH>;
             bus-width = <8>;
             status = "ok";
@@ -267,12 +318,18 @@
         spinandflash {
             compatible = "ms-spinand";
             clocks =<&CLK_bdma>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_bdma>;
+#endif
             status = "ok";
         };
 
         Sstar-ehci-1 {
             compatible = "Sstar-ehci-1";
             clocks = <&CLK_utmi>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_utmi>;
+#endif
             interrupts = <GIC_SPI INT_IRQ_UHC IRQ_TYPE_LEVEL_HIGH>;
             status = "ok";
         };
@@ -280,6 +337,9 @@
         Sstar-ehci-2 {
             compatible = "Sstar-ehci-2";
             clocks = <&CLK_utmi>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_utmi>;
+#endif
             interrupts = <GIC_SPI INT_IRQ_UHC_INT_P1 IRQ_TYPE_LEVEL_HIGH>;
             status = "ok";
         };
@@ -290,6 +350,9 @@
             banks = <0x1302>;
             interrupts = <GIC_SPI INT_IRQ_ISP IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_isp>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_isp>;
+#endif
             status = "ok";
             clock-frequency-index = <8>;
         };
@@ -314,6 +377,12 @@
             banks = <0x1202>,<0x1203>,<0x1204>,<0x1205>,<0x1206>,<0x1207>,<0x1038>;
             interrupts = <GIC_SPI INT_IRQ_MIPI_CSI2_0 IRQ_TYPE_LEVEL_HIGH>,<GIC_SPI INT_IRQ_MIPI_CSI2_1 IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_csi_mac_lptx_top_i_0>,<&CLK_csi_mac_top_i_0>,<&CLK_csi_ns_top_i_0>,<&CLK_csi_mac_lptx_top_i_1>,<&CLK_csi_mac_top_i_1>,<&CLK_csi_ns_top_i_1>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_csi_mac_lptx_top_i_0 CAMCLK_csi_mac_top_i_0 CAMCLK_csi_ns_top_i_0 CAMCLK_csi_mac_lptx_top_i_1 CAMCLK_csi_mac_top_i_1 CAMCLK_csi_ns_top_i_1>;
+#endif
+            /* Config max lane number */
+            csi_sr0_lane_num = <4>;
+            csi_sr1_lane_num = <2>;
             status = "ok";
         };
 
@@ -322,6 +391,9 @@
             status = "ok";
             reg = <0x1F263800 0x600>, <0x0 0x0>, <0x0 0x0>, <0x0 0x0>, <0x0 0x0>, <0x0 0x0>, <0x1F203C00 0x200>, <0x1F226600 0x200>, <0x1F207000 0x200>, <0x1F000000 0x400000>;
             clocks = <&CLK_sr_mclk>,<&CLK_sr_mclk1>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_sr_mclk CAMCLK_sr_mclk1>;
+#endif
             interrupts = <GIC_SPI INT_IRQ_VIF IRQ_TYPE_LEVEL_HIGH>;
             /* Config sensor 0 pad mux */
             vif_sr0_par_mode = <6>;
@@ -333,6 +405,9 @@
             vif_sr1_mipi_mode_1lane = <2>;
             vif_sr1_mipi_mode_2lane = <1>;
             vif_sr1_bt656_mode = <1>;
+            /* Config mclk 37.125MHz supported */
+            vif_sr0_mclk_37p125 = <1>;
+            vif_sr1_mclk_37p125 = <1>;
         };
 
         ispalgo: ispalgo {
@@ -362,16 +437,22 @@
             reg = <0x1F264000 0x100>;
             interrupts = <GIC_SPI INT_IRQ_JPE IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_jpe>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_jpe>;
+#endif
             clock-names = "CKG_jpe";
             clk-select = <0>; // 0: 384Mhz  1: 288MHz  2: 192MHz  3: 27MHz
             status = "ok";
         };
 
         ive0: ive@0x1F2A4000 {
-            compatible = "sstar,infinity5-ive";
+            compatible = "sstar,infinity-ive";
             reg = <0x1F2A4000 0x100>,<0x1F2A4200 0x100>;
             interrupts = <GIC_SPI INT_IRQ_IVE_INT IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_ive>,<&CLK_miu_ive>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_ive CAMCLK_miu_ive>;
+#endif
             status = "ok";
         };
 
@@ -381,6 +462,9 @@
                 #address-cells = <1>;
                 #size-cells = <0>;
             clocks = <&CLK_miic0>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_miic0>;
+#endif
             i2c-group = <0>;
             status = "ok";
             /*
@@ -403,6 +487,9 @@
                 #address-cells = <1>;
                 #size-cells = <0>;
             clocks = <&CLK_miic1>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_miic1>;
+#endif
             i2c-group = <1>;
             /*
              * padmux: 1 -> PAD_I2C1_SCL, PAD_I2C1_SDA
@@ -420,6 +507,9 @@
                 #address-cells = <1>;
                 #size-cells = <0>;
             clocks = <&CLK_miic2>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_miic2>;
+#endif
             i2c-group = <2>;
             /*
              * padmux: 1 -> PAD_SNR1_GPIO5, PAD_SNR1_GPIO6
@@ -436,6 +526,9 @@
                 #address-cells = <1>;
                 #size = <0>;
             clocks = <&CLK_miic3>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_miic3>;
+#endif
             i2c-group = <3>;
             /*
              * padmux: 1 -> PAD_I2C0_SCL, PAD_I2C0_SDA
@@ -472,12 +565,27 @@
             linein-gain-level=<2>;  //0~7
             amp-gpio = <PAD_PM_GPIO1  1>;
             clocks = <&CLK_upll_384m>;
-           // playback-dma-buffer=<98304>; //512(ms)*48(kHz)*2(ch)*2(16bits)
-           // capture-dma-buffer=<122880>; //640(ms)*48(kHz)*2(ch)*2(16bits)
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_upll_384m>;
+#endif
+
             digmic-padmux = <6>; //1~6
             i2stdm-padmux = <1>; //only 1 mode
             i2smck-padmux = <1>; //only 1 mode
             i2smod-padmux = <0>; //0:i2s tdm, 1:i2s normal
+            keep-i2s-clk = <0>;
+
+            //I2S RX TDM
+            i2s-rx-tdm-ws-pgm = <0>; // 0: OFF  1: ON
+            i2s-rx-tdm-ws-width = <0>; // value: 0~31 (width = value + 1)
+            i2s-rx-tdm-ch-swap = <0 0>; // 0: OFF  1: ON
+
+            //I2S TX TDM
+            i2s-tx-tdm-ws-pgm = <0>; // 0: OFF  1: ON
+            i2s-tx-tdm-ws-width = <0>; // value: 0~31 (width = value + 1)
+            i2s-tx-tdm-ch-swap = <0 0>; // 0: OFF  1: ON
+            i2s-tx-tdm-active-slot = <0x03>; // value: 0x00 ~ 0xFF (bit0->slot0, bit1->slot1, ... )
+
             status = "ok";
         };
 
@@ -492,7 +600,13 @@
             slot-max-clks = <48000000>,<48000000>,<48000000>;
             slot-intcdzs = <1>,<1>,<1>;
             slot-fakecdzs = <0>,<0>,<0>;
-            slot-pwr-gpios = <19>,<0>,<0>;
+            slot-cdzs-gpios = <PAD_PM_IRIN>,<PAD_PM_SD_CDZ>,<0>; // Pad 0: PAD_PM_SD_CDZ
+            slot-pwr-gpios = <PAD_PM_GPIO12>,<PAD_FUART_RTS>,<0>; // Pad 0: PAD_FUART_RTS
+            slot-pwr-off-delay = <30>,<30>,<30>;
+            slot-pwr-on-delay = <1>,<1>,<1>;
+            slot-sdio-use = <0>,<0>,<0>;
+            slot-removable = <1>,<1>,<1>;
+						
             interrupts-extended = <&ms_main_intc GIC_SPI INT_IRQ_SDIO IRQ_TYPE_LEVEL_HIGH>,
                                  <&ms_main_intc GIC_SPI INT_IRQ_FCIE IRQ_TYPE_LEVEL_HIGH>,
                                  <&ms_main_intc GIC_SPI INT_IRQ_FCIE IRQ_TYPE_LEVEL_HIGH>,
@@ -500,15 +614,21 @@
                                  <&ms_main_intc GIC_SPI INT_FIQ_SD_CDZ IRQ_TYPE_LEVEL_HIGH>,
                                  <&ms_main_intc GIC_SPI INT_FIQ_SD_CDZ IRQ_TYPE_LEVEL_HIGH>;
             interrupt-names = "mie0_irq", "mie1_irq", "mie2_irq", "cdz_slot0_irq", "cdz_slot1_irq", "cdz_slot2_irq";
-            clocks = <&CLK_sdio>,<&CLK_fcie>,<&CLK_fcie>,
-                     <&CLK_sdio>,<&CLK_fcie>,<&CLK_fcie>,
-                     <&CLK_sdio>,<&CLK_fcie>,<&CLK_fcie>;
+            clocks = <&CLK_sdio>,<&CLK_fcie>,<&CLK_fcie>;
+            
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_sdio CAMCLK_fcie CAMCLK_fcie>;
+#endif
             status = "ok";
         };
 
         aesdma {
             compatible = "sstar,infinity-aes";
+            interrupts=<GIC_SPI INT_IRQ_WADR_ERROR IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_aesdma>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_aesdma>;
+#endif
             status = "ok";
         };
 
@@ -516,6 +636,9 @@
             compatible = "sstar,bdma0";
             interrupts=<GIC_SPI INT_IRQ_BDMA_0 IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_bdma>,<&CLK_miu_bdma>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_bdma CAMCLK_miu_bdma>;
+#endif
             status = "ok";
         };
 
@@ -523,6 +646,9 @@
             compatible = "sstar,bdma1";
             interrupts=<GIC_SPI INT_IRQ_BDMA_1 IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_bdma>,<&CLK_miu_bdma>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_bdma CAMCLK_miu_bdma>;
+#endif
             status = "ok";
         };
 
@@ -530,6 +656,9 @@
             compatible = "sstar,bdma2";
             interrupts=<GIC_SPI INT_IRQ_BDMA_2 IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_bdma>,<&CLK_miu_bdma>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_bdma CAMCLK_miu_bdma>;
+#endif
             status = "ok";
         };
 
@@ -537,6 +666,9 @@
             compatible = "sstar,bdma3";
             interrupts=<GIC_SPI INT_IRQ_BDMA_3 IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_bdma>,<&CLK_miu_bdma>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_bdma CAMCLK_miu_bdma>;
+#endif
             status = "ok";
         };
 
@@ -544,24 +676,36 @@
             compatible = "sstar,movdma";
             interrupts=<GIC_SPI INT_IRQ_MOVEDMA IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_miu>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_miu>;
+#endif
             status = "ok";
         };
 
         gop {
             compatible = "sstar,infinity-gop";
             clocks = <&CLK_gop0>,<&CLK_fclk1>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_gop0 CAMCLK_fclk1>;
+#endif
             status = "ok";
         };
 
         gop1 {
             compatible = "sstar,infinity-gop1";
             clocks = <&CLK_gop1>,<&CLK_fclk1>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_gop1 CAMCLK_fclk1>;
+#endif
             status = "ok";
         };
 
         gop2 {
             compatible = "sstar,infinity-gop2";
             clocks = <&CLK_gop2>,<&CLK_fclk2>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_gop2 CAMCLK_fclk2>;
+#endif
             status = "ok";
         };
 
@@ -570,6 +714,9 @@
             reg = <0x1F002400 0x40>;
             interrupts=<GIC_SPI INT_IRQ_RTC IRQ_TYPE_LEVEL_HIGH>;
             clocks = <&CLK_rtc>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_rtc>;
+#endif
             status = "ok";
         };
 
@@ -578,12 +725,18 @@
             reg = <0x1F006800 0x200>;
             interrupts=<GIC_SPI INT_IRQ_RTC IRQ_TYPE_LEVEL_HIGH>; //need to check
             clocks = <&CLK_rtc>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_rtc>;
+#endif
             status = "ok";
         };
         cpufreq {
             compatible = "sstar,infinity-cpufreq";
             vid0-gpio = <PAD_PM_GPIO7>;
             vid1-gpio = <PAD_PM_GPIO8>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_cpupll_clk>;
+#endif
             status = "ok";
         };
 
@@ -599,11 +752,6 @@
             status = "ok";
         };
 
-        uio@0{
-            compatible = "fsl,elbc-gpcm-uio";
-            status = "ok";
-        };
-
         ircut {
             compatible = "sstar,infinity-ircut";
             ircut-gpio-num = <PAD_PM_IRIN>;///PM_GPIO_IRIN
@@ -616,6 +764,9 @@
             compatible = "sstar,infinity-pwm";
             reg = <0x1F003400 0x400>;
             clocks = <&CLK_xtali_12m>;
+#ifdef CONFIG_CAM_CLK
+            camclk = <CAMCLK_xtali_12m>;
+#endif
             npwm = <8>;
             pad-ctrl = <PAD_PWM0 PAD_PWM1 PAD_UNKNOWN PAD_UNKNOWN PAD_NAND_DA4 PAD_UNKNOWN PAD_UNKNOWN PAD_NAND_DA7>;
             status = "ok";

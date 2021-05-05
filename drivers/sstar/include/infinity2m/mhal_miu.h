@@ -38,7 +38,6 @@
 #define MMU_MAX_CLIENT_NUM          (8)
 #define MMU_INVALID_ENTRY_VAL       (0x1FF)
 
-
 #ifndef BIT0
 #define BIT0  0x0001UL
 #define BIT1  0x0002UL
@@ -80,6 +79,16 @@ typedef enum
     E_HAL_MMU_STATUS_NUM,
 } HAL_MMU_STATUS;
 
+typedef struct
+{
+    unsigned int    size;           // bytes
+    unsigned int    dram_freq;      // MHz
+    unsigned int    miupll_freq;    // MHz
+    unsigned char   type;           // 2:DDR2, 3:DDR3
+    unsigned char   data_rate;      // 4:4x mode, 8:8x mode,
+    unsigned char   bus_width;      // 16:16bit, 32:32bit, 64:64bit
+    unsigned char   ssc;            // 0:off, 1:on
+} MIU_DramInfo_Hal;
 
 //-------------------------------------------------------------------------------------------------
 //  Function and Variable
@@ -94,9 +103,12 @@ MS_BOOL HAL_MIU_Protect(    MS_U8   u8Blockx,
 MS_BOOL HAL_MIU_ParseOccupiedResource(void);
 unsigned int HAL_MIU_ProtectDramSize(void);
 int HAL_MIU_ClientIdToName(MS_U16 clientId, char *clientName);
+int HAL_MIU_Info(MIU_DramInfo_Hal *pDramInfo);
 
 // MMU HAL Function
+int __HAL_MMU_GetChipId(void);
 int HAL_MMU_SetRegion(unsigned short u16Region);
+int HAL_MMU_SetRegionReplaceable(unsigned short u16Region, unsigned short u16ReplaceRegion);
 int HAL_MMU_Map(unsigned short u16PhyAddrEntry, unsigned short u16VirtAddrEntry);
 unsigned short HAL_MMU_MapQuery(unsigned short u16PhyAddrEntry);
 int HAL_MMU_UnMap(unsigned short u16PhyAddrEntry);

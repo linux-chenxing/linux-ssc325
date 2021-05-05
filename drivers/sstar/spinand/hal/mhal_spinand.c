@@ -42,17 +42,6 @@ MS_U32 BASE_SPI_OFFSET = 0;
 //-------------------------------------------------------------------------------------------------
 typedef struct
 {
-    U32  u32FspBaseAddr;     // REG_ISP_BASE
-    U32  u32QspiBaseAddr;    // REG_QSPI_BASE
-    U32  u32PMBaseAddr;      // REG_PM_BASE
-    U32  u32CLK0BaseAddr;    // REG_PM_BASE
-    U32  u32CHIPBaseAddr;    // REG_CHIP_BASE
-    U32  u32RiuBaseAddr;     // REG_PM_BASE
-    U32  u32BDMABaseAddr;    // REG_BDMA_BASE
-} hal_fsp_t;
-
-typedef struct
-{
     U8  u8Clk;
     U16 eClkCkg;
 } hal_clk_ckg_t;
@@ -73,7 +62,7 @@ SPINAND_MODE gNandReadMode=E_SPINAND_QUAD_MODE;
 #endif
 
 
-static hal_fsp_t _hal_fsp =
+hal_fsp_t _hal_fsp =
 {
     .u32FspBaseAddr = I3_RIU_PM_BASE + BK_FSP,
     .u32QspiBaseAddr = I3_RIU_PM_BASE + BK_QSPI,
@@ -511,6 +500,8 @@ U32 HAL_SPINAND_Init(void)
 {
     U8  u8Status = 0;
 
+    HAL_SPINAND_Chip_Config();
+
     //set pad mux for spinand
 //	    printk("MDrv_SPINAND_Init: Set pad mux\n");
     CHIP_WRITE(0x50, 0x000);//disable all pad in
@@ -519,6 +510,10 @@ U32 HAL_SPINAND_Init(void)
     if(BDMA_FLAG)
         _HAL_SPINAND_BDMA_INIT(2048+64);
 //	    printk("MDrv_SPINAND_Init: Set pad mux end");
+
+    //chip section timeout
+    QSPI_WRITE(0x66, 0x000F);
+    QSPI_WRITE(0x67, 0x8000);
 
     // reset spinand
     // FSP init config
@@ -575,6 +570,37 @@ BOOL HAL_SPINAND_PLANE_HANDLER(U32 u32Addr)
         QSPI_WRITE(REG_SPI_WRAP_VAL, u32Addr);
     }
     return TRUE;
+}
+
+void HAL_SPINAND_DieSelect (U8 u8Die)
+{
+    if(u8Die != 0)//only 2 die
+        u8Die = 1;
+
+    //FSP init config
+    FSP_WRITE(REG_FSP_CTRL, (ENABLE_FSP|RESET_FSP|INT_FSP));
+    FSP_WRITE(REG_FSP_CTRL2, 0);
+    FSP_WRITE(REG_FSP_CTRL4, 0);
+
+    //Set FSP Read Command
+    FSP_WRITE_BYTE(REG_FSP_WRITE_BUFF, SPI_NAND_CMD_DIESELECT);
+    //Set Start Address
+    FSP_WRITE_BYTE(REG_FSP_WRITE_BUFF + 1, u8Die);
+    //Set Write & Read Length
+    FSP_WRITE(REG_FSP_WRITE_SIZE, 2);
+    FSP_WRITE(REG_FSP_READ_SIZE, 0);
+
+    //Trigger FSP
+    FSP_WRITE_BYTE(REG_FSP_TRIGGER, TRIGGER_FSP);
+
+    //Check FSP done flag
+    if (_HAL_FSP_ChkWaitDone() == FALSE)
+    {
+        DEBUG_SPINAND(E_SPINAND_DBGLV_ERR, printk("RID Wait FSP Done Time Out !!!!\r\n"));
+    }
+
+    //Clear FSP done flag
+    FSP_WRITE_BYTE(REG_FSP_CLEAR_DONE, CLEAR_DONE_FSP);
 }
 
 U32 HAL_SPINAND_RFC(U32 u32Addr, U8 *pu8Data)
@@ -806,7 +832,7 @@ U32 HAL_SPINAND_PROGRAM_BY_BDMA4(U16 u16ColumnAddr, U16 u16DataSize)
 
     FSP_WRITE(REG_FSP_WBF_SIZE_OUTSIDE, (u16DataSize+1) & 0x0FFF);
     FSP_WRITE(REG_FSP_WBF_OUTSIDE, 0x1000);//reg_fsp_wbf_outside_en = 1, reg_fsp_wbf_mode = 0, reg_fsp_wbf_replaced = 3.
-    QSPI_WRITE(REG_SPI_BURST_WRITE,REG_SPI_ENABLE_BURST);    
+    QSPI_WRITE(REG_SPI_BURST_WRITE,REG_SPI_ENABLE_BURST);
     FSP_WRITE(REG_FSP_WRITE_SIZE, 0x0);
     FSP_WRITE(REG_FSP_READ_SIZE, 0x0);
     FSP_WRITE_BYTE(REG_FSP_QUAD_MODE, ENABLE_FSP_QUAD);
@@ -1113,12 +1139,12 @@ U32 HAL_SPINAND_Write(U32 u32_PageIdx, U8 *u8Data, U8 *pu8_SpareBuf)
      HAL_SPINAND_PreHandle(E_SPINAND_QUAD_MODE);
 #endif
 
-    if (BDMA_W_FLAG)
+    if (BDMA_W_FLAG && (PAGE_SIZE <= 2048)) // outsize bit number is insufficient for 4KB page, force using RIU mode
     {
         memcpy(ALLOC_DMEM.bdma_vir_addr, u8Data, PAGE_SIZE);
         memcpy(ALLOC_DMEM.bdma_vir_addr+PAGE_SIZE, pu8_SpareBuf, SPARE_SIZE);
         Chip_Flush_MIU_Pipe();
-#if defined	(CONFIG_NAND_QUAL_READ)|| defined(CONFIG_NAND_QUAL_WRITE)
+#if defined	(CONFIG_NAND_QUAL_WRITE)
         u32Ret = HAL_SPINAND_PROGRAM_BY_BDMA4(u16ColumnAddr, u16DataSize);
 #else
         u32Ret = HAL_SPINAND_PROGRAM_BY_BDMA(u16ColumnAddr, u16DataSize);
@@ -1227,8 +1253,6 @@ U32 HAL_SPINAND_Read (U32 u32Addr, U32 u32DataSize, U8 *pu8Data)
         }
         if(BASE_SPI_OFFSET)
         {
-//                Chip_Clean_Cache_Range_VA_PA((u32)pu8Data, __pa((u32)pu8Data), u32DataSize);
-//                Chip_Inv_Cache_Range((u32)pu8Data, u32DataSize);
                 memcpy((void *)pu8Data, (const void *)(BASE_SPI_OFFSET)+u16Addr , u32DataSize);
         }
 

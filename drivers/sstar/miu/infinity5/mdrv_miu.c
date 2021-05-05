@@ -44,6 +44,7 @@ MS_BOOL HAL_MIU_Protect(MS_U8 u8Blockx, MS_U16 *pu8ProtectId, MS_U32 u32BusStart
 MS_BOOL HAL_MIU_GetHitProtectInfo(MS_U8 u8MiuSel, MIU_PortectInfo *pInfo) __attribute__((weak));
 MS_BOOL HAL_MIU_ParseOccupiedResource(void) __attribute__((weak));
 MS_U16* HAL_MIU_GetDefaultKernelProtectClientID(void) __attribute__((weak));
+MS_U16* HAL_MIU_GetKernelProtectClientID(MS_U8 u8MiuSel) __attribute__((weak));
 
 MS_BOOL HAL_MIU_SlitInit(void) __attribute__((weak));
 MS_BOOL HAL_MIU_SetSlitRange(MS_U8 u8Blockx, MS_U16 *pu8ProtectId, MS_PHY u64BusStart, MS_PHY u64BusEnd, MS_BOOL  bSetFlag) __attribute__((weak));
@@ -113,6 +114,16 @@ MS_U16* MDrv_MIU_GetDefaultClientID_KernelProtect(void)
 {
     if (HAL_MIU_GetDefaultKernelProtectClientID) {
         return HAL_MIU_GetDefaultKernelProtectClientID();
+    }
+    else {
+        return NULL;
+    }
+}
+
+MS_U16* MDrv_MIU_GetClientID_KernelProtect(MS_U8 u8MiuSel)
+{
+    if (HAL_MIU_GetKernelProtectClientID) {
+        return HAL_MIU_GetKernelProtectClientID(u8MiuSel);
     }
     else {
         return NULL;
@@ -231,13 +242,20 @@ MS_BOOL MDrv_MIU_Slits(MS_U8 u8Blockx, MS_PHY u64SlitsStart, MS_PHY u64SlitsEnd,
     return Result;
 }
 
+int MDrv_MIU_Info(MIU_DramInfo *pDramInfo)
+{
+    return HAL_MIU_Info((MIU_DramInfo_Hal *)pDramInfo);
+}
+
 #ifdef CONFIG_MSTAR_MMAHEAP
 EXPORT_SYMBOL(MDrv_MIU_Init);
 EXPORT_SYMBOL(u8_MiuWhiteListNum);
 EXPORT_SYMBOL(MDrv_MIU_GetDefaultClientID_KernelProtect);
+EXPORT_SYMBOL(MDrv_MIU_GetClientID_KernelProtect);
 EXPORT_SYMBOL(MDrv_MIU_Protect);
 #endif
 EXPORT_SYMBOL(MDrv_MIU_Get_IDEnables_Value);
+EXPORT_SYMBOL(MDrv_MIU_Info);
 
 static int mstar_miu_drv_probe(struct platform_device *pdev)
 {
@@ -288,7 +306,7 @@ static int __init mstar_miu_drv_init_module(void)
     ret = platform_driver_register(&Sstar_miu_driver);
 
     if (ret) {
-        printk("Register Sstar MIU Platform Driver Failed!");
+        printk("Register MIU Driver Fail");
     }
     return ret;
 }

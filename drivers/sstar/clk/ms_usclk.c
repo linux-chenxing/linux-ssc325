@@ -150,7 +150,7 @@ static int usclk_setup(void)
 
     g_clk_class = class_create(THIS_MODULE, "usclk");
     if (!g_clk_class) {
-        pr_err("unable to create class\n");
+        pr_err("create class fail\n");
         goto err_free;
     }
 

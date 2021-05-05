@@ -15,6 +15,7 @@
 * GNU General Public License for more details.
 *
 */
+
 #ifndef __eMMC_HAL_H__
 #define __eMMC_HAL_H__
 
@@ -25,26 +26,26 @@
 
 #define _START_TXMIT                0x40 // transmission bit
 
-#define eMMC_GO_IDLE_STATE		(_START_TXMIT+0)
-#define eMMC_SEND_OP_COND		(_START_TXMIT+1)
-#define eMMC_ALL_SEND_CID		(_START_TXMIT+2)
-#define eMMC_SET_RLT_ADDR		(_START_TXMIT+3)
-#define eMMC_SEL_DESEL_CARD		(_START_TXMIT+7)
-#define eMMC_SEND_EXT_CSD		(_START_TXMIT+8)
-#define eMMC_SEND_CSD			(_START_TXMIT+9)
-#define eMMC_SWITCH				(_START_TXMIT+6)
-#define eMMC_ERASE_GROUP_S		(_START_TXMIT+35)
-#define eMMC_ERASE_GROUP_E		(_START_TXMIT+36)
-#define eMMC_ERASE				(_START_TXMIT+38)
-#define eMMC_SEND_STATUS		(_START_TXMIT+13)
-#define eMMC_R_SINGLE_BLOCK		(_START_TXMIT+17)
-#define eMMC_R_MULTIP_BLOCK		(_START_TXMIT+18)
-#define eMMC_STOP_TRANSMIT		(_START_TXMIT+12)
-#define eMMC_W_SINGLE_BLOCK		(_START_TXMIT+24)
-#define eMMC_W_MULTIP_BLOCK		(_START_TXMIT+25)
-#define eMMC_SEND_TUNING_BLK	(_START_TXMIT+21)
+#define eMMC_GO_IDLE_STATE      (_START_TXMIT+0)
+#define eMMC_SEND_OP_COND       (_START_TXMIT+1)
+#define eMMC_ALL_SEND_CID       (_START_TXMIT+2)
+#define eMMC_SET_RLT_ADDR       (_START_TXMIT+3)
+#define eMMC_SEL_DESEL_CARD     (_START_TXMIT+7)
+#define eMMC_SEND_EXT_CSD       (_START_TXMIT+8)
+#define eMMC_SEND_CSD           (_START_TXMIT+9)
+#define eMMC_SWITCH             (_START_TXMIT+6)
+#define eMMC_ERASE_GROUP_S      (_START_TXMIT+35)
+#define eMMC_ERASE_GROUP_E      (_START_TXMIT+36)
+#define eMMC_ERASE              (_START_TXMIT+38)
+#define eMMC_SEND_STATUS        (_START_TXMIT+13)
+#define eMMC_R_SINGLE_BLOCK     (_START_TXMIT+17)
+#define eMMC_R_MULTIP_BLOCK     (_START_TXMIT+18)
+#define eMMC_STOP_TRANSMIT      (_START_TXMIT+12)
+#define eMMC_W_SINGLE_BLOCK     (_START_TXMIT+24)
+#define eMMC_W_MULTIP_BLOCK     (_START_TXMIT+25)
+#define eMMC_SEND_TUNING_BLK    (_START_TXMIT+21)
 
-#define STUFF_BITS			0x00000000
+#define STUFF_BITS          0x00000000
 
 extern  U32 eMMC_FCIE_WaitEvents(uintptr_t ulongRegAddr, U16 u16_Events, U32 u32_MicroSec);
 extern  U32 eMMC_FCIE_PollingEvents(uintptr_t ulongRegAddr, U16 u16_Events, U32 u32_MicroSec);
@@ -160,13 +161,13 @@ extern void eMMC_TuningSkew4ForHS200(void);
 extern  U32 eMMC_FCIE_PollingFifoClkReady(void);
 extern  U32 eMMC_FCIE_PollingMIULastDone(void);
 
-extern 	void HalFcie_SetFlag4Kernel2RuneMMC(void);
-extern 	bool HalFcie_CheckIfeMMCRun4Kernel(void);
+extern  void HalFcie_SetFlag4Kernel2RuneMMC(void);
+extern  bool HalFcie_CheckIfeMMCRun4Kernel(void);
 
 extern  void eMMC_DumpATopTable(void);
 extern  void eMMC_FCIE_SymmetrySkew4(void);
 
 extern U8 sgu8_IfNeedRestorePadType; // = 0xff
-extern U8 u8_sdr_retry_count;	// = 0
+extern U8 u8_sdr_retry_count;   // = 0
 
 #endif // __eMMC_HAL_H__

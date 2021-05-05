@@ -73,9 +73,9 @@
 #define REG_UTMI_FL_XVR_PDN    0x0
     #define REG_UTMI_FL_XVR_PDN_MASK BIT12
 #define REG_UTMI_REG_PDN       0x0
-    #define REG_UTMI_REG_PDN_MASK BIT15
+    #define REG_UTMI_REG_PDN_MASK BIT15             // 1: power doen 0: enable
 #define REG_UTMI_CLK_EXTRA0_EN 0x4
-    #define REG_UTMI_CLK_EXTRA0_EN_MASK BIT7
+    #define REG_UTMI_CLK_EXTRA0_EN_MASK BIT7        // 1: power down 0: enable
 #define REG_UTMI_GPIO_EN       0x1f
     #define REG_UTMI_GPIO_EN_MASK  BIT14
 
@@ -149,8 +149,8 @@ static S32 HalPadSetMode_General(U32 u32PadID, U32 u32Mode)
 
                 if (u16RegVal == m_stPadMuxTbl[i].val)
                 {
-                    printk(KERN_INFO"[Padmux]reset PAD%d(reg 0x%x:%x; mask0x%x) t0 %s (org: %s)\n",
-                            u32PadID, m_stPadMuxTbl[i].base, m_stPadMuxTbl[i].offset, m_stPadMuxTbl[i].mask,
+                    printk(KERN_INFO"[Padmux]reset Pad_%d(reg 0x%x; mask0x%x) to %s(org: %s)\n",
+                            u32PadID, m_stPadMuxTbl[i].base+m_stPadMuxTbl[i].offset, m_stPadMuxTbl[i].mask,
                                 m_stPadModeInfoTbl[u32Mode].u8PadName,
                                 m_stPadModeInfoTbl[m_stPadMuxTbl[i].mode].u8PadName
                                );
@@ -160,7 +160,7 @@ static S32 HalPadSetMode_General(U32 u32PadID, U32 u32Mode)
                     }
                     else
                     {
-                        _GPIO_W_WORD_MASK(u32RegAddr, 1, m_stPadMuxTbl[i].mask);
+                        _GPIO_W_WORD_MASK(u32RegAddr, m_stPadMuxTbl[i].mask, m_stPadMuxTbl[i].mask);
                     }
                 }
             }
@@ -205,13 +205,13 @@ static S32 HalPadSetMode_MISC(U32 u32PadID, U32 u32Mode)
         if (u32Mode == PINMUX_FOR_GPIO_MODE) {
             _HalPadDisablePadMux(PINMUX_FOR_TEST_IN_MODE_2);
             _HalPadDisablePadMux(PINMUX_FOR_TEST_OUT_MODE_2);
-            _GPIO_W_WORD_MASK(REG_PM_SPICSZ2_MODE, 0, REG_PM_SPICSZ2_MODE_MASK);
+            _GPIO_W_WORD_MASK(_RIUA_16BIT(PMSLEEP_BANK,REG_PM_SPICSZ2_MODE), 0, REG_PM_SPICSZ2_MODE_MASK);
             _HalSARGPIOWriteRegBit(REG_SAR_AISEL_8BIT, 0, REG_SAR_CH0_AISEL);
         }
         else if (u32Mode == PINMUX_FOR_SAR_MODE) {
             _HalPadDisablePadMux(PINMUX_FOR_TEST_IN_MODE_2);
             _HalPadDisablePadMux(PINMUX_FOR_TEST_OUT_MODE_2);
-            _GPIO_W_WORD_MASK(REG_PM_SPICSZ2_MODE, 0, REG_PM_SPICSZ2_MODE_MASK);
+            _GPIO_W_WORD_MASK(_RIUA_16BIT(PMSLEEP_BANK,REG_PM_SPICSZ2_MODE), 0, REG_PM_SPICSZ2_MODE_MASK);
             _HalSARGPIOWriteRegBit(REG_SAR_AISEL_8BIT, REG_SAR_CH0_AISEL, REG_SAR_CH0_AISEL);
         }
         else {
@@ -290,14 +290,14 @@ static S32 HalPadSetMode_MISC(U32 u32PadID, U32 u32Mode)
             //_HalPadDisablePadMux(PINMUX_FOR_TEST_IN_MODE);
             //_HalPadDisablePadMux(PINMUX_FOR_TEST_OUT_MODE);
             _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_GPIO_EN), REG_UTMI_GPIO_EN_MASK, REG_UTMI_GPIO_EN_MASK);
-            _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_CLK_EXTRA0_EN), ~REG_UTMI_CLK_EXTRA0_EN_MASK, REG_UTMI_CLK_EXTRA0_EN_MASK);
-            _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_REG_PDN), ~REG_UTMI_REG_PDN_MASK, REG_UTMI_REG_PDN_MASK);
-            _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_FL_XVR_PDN), ~REG_UTMI_FL_XVR_PDN_MASK, REG_UTMI_FL_XVR_PDN_MASK);
+            _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_CLK_EXTRA0_EN), REG_UTMI_CLK_EXTRA0_EN_MASK, REG_UTMI_CLK_EXTRA0_EN_MASK);
+            _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_REG_PDN), REG_UTMI_REG_PDN_MASK, REG_UTMI_REG_PDN_MASK);
+            _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_FL_XVR_PDN), REG_UTMI_FL_XVR_PDN_MASK, REG_UTMI_FL_XVR_PDN_MASK);
         }
         else if (u32Mode == PINMUX_FOR_USB_MODE) {
             _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_GPIO_EN), ~REG_UTMI_GPIO_EN_MASK, REG_UTMI_GPIO_EN_MASK);
-            _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_CLK_EXTRA0_EN), REG_UTMI_CLK_EXTRA0_EN_MASK, REG_UTMI_CLK_EXTRA0_EN_MASK);
-            _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_REG_PDN), REG_UTMI_REG_PDN_MASK, REG_UTMI_REG_PDN_MASK);
+            _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_CLK_EXTRA0_EN), ~REG_UTMI_CLK_EXTRA0_EN_MASK, REG_UTMI_CLK_EXTRA0_EN_MASK);
+            _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_REG_PDN), ~REG_UTMI_REG_PDN_MASK, REG_UTMI_REG_PDN_MASK);
             _GPIO_W_WORD_MASK(_RIUA_16BIT(utmi_bank,REG_UTMI_FL_XVR_PDN), REG_UTMI_FL_XVR_PDN_MASK, REG_UTMI_FL_XVR_PDN_MASK);
         }
         else {
@@ -322,7 +322,7 @@ S32 HalPadSetVal(U32 u32PadID, U32 u32Mode)
         return FALSE;
     }
 
-    if ((u32PadID >= PAD_PM_IRIN && u32PadID <= PAD_PM_SPI_HLD) ||
+    if ((u32PadID >= PADA_IDAC_OUT_B && u32PadID <= PADA_IDAC_OUT_R) ||
         (u32PadID >= PAD_SAR_GPIO0 && u32PadID <= PAD_DP_P3)) {
         return HalPadSetMode_MISC(u32PadID, u32Mode);
     }

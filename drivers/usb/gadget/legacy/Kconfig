@@ -488,17 +488,33 @@ config USB_G_WEBCAM
 	  dynamically linked module called "g_webcam".
 
 config USB_WEBCAM_UVC
-    bool "Include configuration with UVC (Video)"
-    depends on USB_G_WEBCAM && VIDEO_DEV
+	bool "Include configuration with UVC (Video)"
+	depends on USB_G_WEBCAM && VIDEO_DEV
 	select VIDEOBUF2_VMALLOC
 	select USB_F_UVC
-    help
-      external uvc function for webcam
+	help
+	  external uvc function for webcam
 
 config USB_WEBCAM_UAC
-    bool "Include configuration with UAC (Audio)"
-    depends on USB_G_WEBCAM && SND
-    select SND_PCM
-    select USB_F_UAC1
-    help
-      external uac1 function for webcam
+	bool "Include configuration with UAC (Audio)"
+	depends on USB_G_WEBCAM && SND
+	select SND_PCM
+	select USB_F_UAC1
+	help
+	  external uac1 function for webcam
+
+config USB_WEBCAM_RNDIS
+	bool "Include configuration with RNDIS"
+	depends on USB_G_WEBCAM && NET
+	select USB_U_ETHER
+	select USB_F_RNDIS
+	select CRC32
+	help
+	  external rndis function for webcam
+
+config USB_WEBCAM_DFU
+	bool "Include configuration with (DFU)"
+	depends on USB_G_WEBCAM
+	select USB_F_DFU
+	help
+		external dfu function for webcam

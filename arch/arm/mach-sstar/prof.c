@@ -26,7 +26,8 @@
 #define RECORD_BL_ADDR  0xF900F400 //BL
 #define RECORD_ADDR     0xF900F800 //LINUX 0XA0
 
-#define MAX_RECORD 50
+
+#define MAX_RECORD 800  /*max:(0x18000-0xF800)/40~=870*/
 #define MAX_LANGTH 32
 struct timestamp {
     unsigned int timestamp_us;      /* 4                 */
@@ -103,14 +104,14 @@ void recode_show(void)
     int i=0;
 
     tc = (struct timecrecord *) (RECORD_IPL_ADDR); // IMI SRAM
-    if( tc->count < MAX_RECORD && tc->count>0)
+    if( tc->count <= MAX_RECORD && tc->count>0)
     {
         printk(KERN_CRIT"IPL: 0x%p\n", tc);
         for( i=0; i<tc->count; i++)
         {
             tc->tt[i].name[MAX_LANGTH-1]='\0';
 
-            printk(KERN_CRIT"%02d st:%8u, diff:%8u, %s, %d\n", 
+            printk(KERN_CRIT"%03d time:%8u, diff:%8u, %s, %d\n", 
                 i, 
                 tc->tt[i].timestamp_us, 
                 tc->tt[i].timestamp_us-tc->tt[i?i-1:i].timestamp_us,
@@ -121,15 +122,16 @@ void recode_show(void)
         printk(KERN_CRIT"Total cost:%8u(us)\n",  tc->tt[tc->count-1].timestamp_us - tc->tt[0].timestamp_us );
     }
 
+    Chip_Inv_Cache_Range(RECORD_BL_ADDR, RECORD_ADDR - RECORD_BL_ADDR);
     tc = (struct timecrecord *) (RECORD_BL_ADDR); // IMI SRAM
-    if( tc->count < MAX_RECORD && tc->count>0)
+    if( tc->count <= MAX_RECORD && tc->count>0)
     {
         printk(KERN_CRIT"BL: 0x%p\n", tc);
         for( i=0; i<tc->count; i++)
         {
             tc->tt[i].name[MAX_LANGTH-1]='\0';
 
-            printk(KERN_CRIT"%02d st:%8u, diff:%8u, %s, %d\n", 
+            printk(KERN_CRIT"%03d time:%8u, diff:%8u, %s, %d\n", 
                 i, 
                 tc->tt[i].timestamp_us, 
                 tc->tt[i].timestamp_us-tc->tt[i?i-1:i].timestamp_us,
@@ -141,14 +143,14 @@ void recode_show(void)
     }
 
     tc = (struct timecrecord *) (RECORD_ADDR); // IMI SRAM
-    if( tc->count < MAX_RECORD && tc->count>0)
+    if( tc->count <= MAX_RECORD && tc->count>0)
     {
         printk(KERN_CRIT"Linux:0x%p\n", tc);
         for( i=0; i<tc->count; i++)
         {
             tc->tt[i].name[MAX_LANGTH-1]='\0';
 
-            printk(KERN_CRIT"%02d st:%8u, diff:%8u, %s, %d\n", 
+            printk(KERN_CRIT"%03d time:%8u, diff:%8u, %s, %d\n", 
                 i, 
                 tc->tt[i].timestamp_us, 
                 tc->tt[i].timestamp_us-tc->tt[i?i-1:i].timestamp_us,

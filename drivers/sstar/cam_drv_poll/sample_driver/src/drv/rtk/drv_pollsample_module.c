@@ -15,6 +15,7 @@
 * GNU General Public License for more details.
 *
 */
+
 #include <cam_dev_register.h>
 #include "mdrv_pollsample_module.h"
 

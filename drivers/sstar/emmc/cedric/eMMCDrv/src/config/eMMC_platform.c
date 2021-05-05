@@ -28,12 +28,12 @@ U32 eMMCTest_BlkWRC_ProbeDDR(U32 u32_eMMC_Addr)
 	U32 u32_err;
 	U32 u32_i, u32_j, *pu32_W=(U32*)gau8_WBuf_DDR, *pu32_R=(U32*)gau8_RBuf_DDR;
 	U32 u32_BlkCnt=eMMC_TEST_BLK_CNT, u32_BufByteCnt;
-	
+
 	//eMMC_printf("eMMCTest_BlkWRC_ProbeDDR\r\n");
-	
+
     u32_BlkCnt = u32_BlkCnt > DDR_TEST_BLK_CNT ? DDR_TEST_BLK_CNT : u32_BlkCnt;
     u32_BufByteCnt = u32_BlkCnt << eMMC_SECTOR_512BYTE_BITS;
-	
+
 	for(u32_i=0; u32_i<u32_BufByteCnt>>2; u32_i++)
 	    pu32_R[u32_i] = 0;
 
@@ -45,7 +45,7 @@ U32 eMMCTest_BlkWRC_ProbeDDR(U32 u32_eMMC_Addr)
 			case 0: // increase
                 for(u32_i=0; u32_i<u32_BufByteCnt>>2; u32_i++)
 	                pu32_W[u32_i] = u32_i+1;
-			    break;			
+			    break;
 			case 1: // decrease
 			    #if 0
 				for(u32_i=0; u32_i<u32_BufByteCnt>>2; u32_i++)
@@ -53,7 +53,7 @@ U32 eMMCTest_BlkWRC_ProbeDDR(U32 u32_eMMC_Addr)
 				break;
 				#else
 				continue;
-				#endif				
+				#endif
 			case 2: // 0xF00F
 				for(u32_i=0; u32_i<u32_BufByteCnt>>2; u32_i++)
 				    pu32_W[u32_i]=0xF00FF00F;
@@ -61,32 +61,32 @@ U32 eMMCTest_BlkWRC_ProbeDDR(U32 u32_eMMC_Addr)
 			case 3: // 0xFF00
 				for(u32_i=0; u32_i<u32_BufByteCnt>>2; u32_i++)
 				    pu32_W[u32_i]=0xFF00FF00;
-				break;				
+				break;
 			case 4: // 0x5AA5
 				for(u32_i=0; u32_i<u32_BufByteCnt>>2; u32_i++)
 				    pu32_W[u32_i]=0x5AA55AA5;
-				break;				
+				break;
 			case 5: // 0x55AA
 				for(u32_i=0; u32_i<u32_BufByteCnt>>2; u32_i++)
 				    pu32_W[u32_i]=0x55AA55AA;
-				break;	
+				break;
 			case 6: // 0x5A5A
 			    #if 0
 				for(u32_i=0; u32_i<u32_BufByteCnt>>2; u32_i++)
 				    pu32_W[u32_i]=0x5A5A5A5A;
-				break;				
+				break;
 				#else
                 continue;
 				#endif
 			case 7: // 0x0000
 				for(u32_i=0; u32_i<u32_BufByteCnt>>2; u32_i++)
 				    pu32_W[u32_i]=0x00000000;
-				break;				
+				break;
 			case 8: // 0xFFFF
 				for(u32_i=0; u32_i<u32_BufByteCnt>>2; u32_i++)
 				    pu32_W[u32_i]=0xFFFFFFFF;
 				break;
-			
+
 		}
 
 		#if 0
@@ -105,30 +105,30 @@ U32 eMMCTest_BlkWRC_ProbeDDR(U32 u32_eMMC_Addr)
             break;
 	    }
 		#endif
-	
-      u32_err = eMMC_CMD25_MIU(u32_eMMC_Addr, gau8_WBuf_DDR, u32_BlkCnt);  
+
+      u32_err = eMMC_CMD25_MIU(u32_eMMC_Addr, gau8_WBuf_DDR, u32_BlkCnt);
 	    if(eMMC_ST_SUCCESS != u32_err)
 	        break;
-		
+
 	    u32_err = eMMC_CMD18_MIU(u32_eMMC_Addr, gau8_RBuf_DDR, u32_BlkCnt);
 	    if(eMMC_ST_SUCCESS != u32_err)
             break;
-						
+
 	    u32_err = eMMC_ComapreData(gau8_WBuf_DDR, gau8_RBuf_DDR, u32_BufByteCnt);
     	if(eMMC_ST_SUCCESS != u32_err)
 	    {
 		    eMMC_debug(0,1,"Err, compare fail.multi %Xh \n", u32_err);
             break;
-	    }	
+	    }
 	}
 
 	if(eMMC_ST_SUCCESS != u32_err)
 	{
 		//eMMC_FCIE_ErrHandler_ReInit();
-		eMMC_debug(0,0,"data pattern %u: %02X%02X%02X%02Xh \n\n", 
+		eMMC_debug(0,0,"data pattern %u: %02X%02X%02X%02Xh \n\n",
 		    u32_j, gau8_WBuf_DDR[3], gau8_WBuf_DDR[2], gau8_WBuf_DDR[1], gau8_WBuf_DDR[0]);
 	}
-	
+
 	return u32_err;
 }
 
@@ -259,7 +259,7 @@ U32 eMMC_hw_timer_delay(U32 u32us)
 	}
 	#else
     U32 u32_i = u32us;
-	
+
 	while(u32_i > 1000)
 	{
 		mdelay(1);
@@ -273,7 +273,7 @@ U32 eMMC_hw_timer_delay(U32 u32us)
 U32 eMMC_hw_timer_sleep(U32 u32ms)
 {
 	U32 u32_i = u32ms;
-	
+
 	while(u32_i > 1000)
 	{
 	    msleep(1000);
@@ -913,7 +913,7 @@ U32 eMMC_translate_DMA_address_Ex(U32 u32_DMAAddr, U32 u32_ByteCnt)
 	#else
     extern void ___dma_single_cpu_to_dev(const void *kaddr, size_t size, enum dma_data_direction dir);
 
-	Chip_Flush_Cache_Range_VA_PA(u32_DMAAddr,__pa(u32_DMAAddr), u32_ByteCnt);
+	Chip_Flush_Cache_Range(u32_DMAAddr, u32_ByteCnt);
 
 	if(virt_to_phys((void *)u32_DMAAddr) >= MSTAR_MIU1_BUS_BASE)
 		REG_FCIE_SETBIT(FCIE_MIU_DMA_26_16, BIT_MIU1_SELECT);
@@ -921,7 +921,7 @@ U32 eMMC_translate_DMA_address_Ex(U32 u32_DMAAddr, U32 u32_ByteCnt)
     	REG_FCIE_CLRBIT(FCIE_MIU_DMA_26_16, BIT_MIU1_SELECT);
 
 	return virt_to_phys((void *)u32_DMAAddr);
-	#endif	
+	#endif
 }
 
 void eMMC_Invalidate_data_cache_buffer(U32 u32_addr, S32 s32_size)
@@ -993,7 +993,7 @@ irqreturn_t eMMC_FCIE_IRQ(int irq, void *dummy)
 U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 {
 	U32 u32_i=0;
-	
+
 	#if eMMC_IRQ_DEBUG
 	U32 u32_isr_tmp[2];
 	unsigned long long u64_jiffies_tmp, u64_jiffies_now;
@@ -1014,19 +1014,19 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 		#if eMMC_IRQ_DEBUG
 		u32_isr_tmp[1] = fcie_int;
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n", 
-			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN), 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n",
+			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN),
 			u32_isr_tmp[0], u32_isr_tmp[1], fcie_int);
 
 		do_gettimeofday(&time_st);
 		u64_jiffies_now = jiffies_64;
 	    eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n", 
-		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp, 
+		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n",
+		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp,
 		    u32_MicroSec, usecs_to_jiffies(u32_MicroSec), HZ);
 		#else
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n", 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n",
 			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN));
 		#endif
 
@@ -1038,7 +1038,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 
             eMMC_hw_timer_delay(HW_TIMER_DELAY_1us);
         }
-		
+
 		if(u32_i == u32_MicroSec)
 		{
 			eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: events lose, WaitEvent: %Xh \n", u16_WaitEvent);
@@ -1069,7 +1069,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 		}
 	}
 
-	//----------------------------------------		
+	//----------------------------------------
 	fcie_int = 0;
 	return eMMC_ST_SUCCESS;
 }
@@ -1174,7 +1174,7 @@ void eMMC_LockFCIE(U8 *pu8_str)
 	}
 
 	eMMC_clock_setting(g_eMMCDrv.u16_ClkRegVal);
-	eMMC_pads_switch(g_eMMCDrv.u8_PadType); 
+	eMMC_pads_switch(g_eMMCDrv.u8_PadType);
 	#endif
 
     // Temp patch for someone driver overwrite the register
@@ -1182,7 +1182,7 @@ void eMMC_LockFCIE(U8 *pu8_str)
 	REG_FCIE_SETBIT(reg_chiptop_0x1F, BIT0);
 
 	REG_FCIE_SETBIT(FCIE_SD_MODE, BIT_SD_CLK_EN); // output clock
-	REG_FCIE_SETBIT(FCIE_REG16h, BIT_EMMC_ACTIVE);	
+	REG_FCIE_SETBIT(FCIE_REG16h, BIT_EMMC_ACTIVE);
 }
 
 void eMMC_UnlockFCIE(U8 *pu8_str)
@@ -1338,7 +1338,7 @@ U32 eMMC_hw_timer_delay(U32 u32us)
 	}
 	#else
     U32 u32_i = u32us;
-	
+
 	while(u32_i > 1000)
 	{
 		mdelay(1);
@@ -1353,7 +1353,7 @@ U32 eMMC_hw_timer_delay(U32 u32us)
 U32 eMMC_hw_timer_sleep(U32 u32ms)
 {
 	U32 u32_i = u32ms;
-	
+
 	while(u32_i > 1000)
 	{
 	    msleep(1000);
@@ -2002,7 +2002,7 @@ static void _hal_dcache_flush(void *base , u32 asize)
 U32 eMMC_translate_DMA_address_Ex(U32 u32_DMAAddr, U32 u32_ByteCnt)
 {
 	U32 dmaaddr;
-		
+
 	dma_dcache_flush_invalidate(u32_DMAAddr, u32_ByteCnt);
 	dmaaddr = (virt_to_phys((void *)u32_DMAAddr));
 
@@ -2090,7 +2090,7 @@ irqreturn_t eMMC_FCIE_IRQ(int irq, void *dummy)
 U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 {
 	U32 u32_i=0;
-	
+
     #if eMMC_IRQ_DEBUG
 	U32 u32_isr_tmp[2];
 	unsigned long long u64_jiffies_tmp, u64_jiffies_now;
@@ -2111,19 +2111,19 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 	    #if eMMC_IRQ_DEBUG
 		u32_isr_tmp[1] = fcie_int;
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n", 
-			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN), 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n",
+			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN),
 			u32_isr_tmp[0], u32_isr_tmp[1], fcie_int);
 
 		do_gettimeofday(&time_st);
 		u64_jiffies_now = jiffies_64;
 	    eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n", 
-		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp, 
+		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n",
+		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp,
 		    u32_MicroSec, usecs_to_jiffies(u32_MicroSec), HZ);
 	    #else
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n", 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n",
 			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN));
 	    #endif
 
@@ -2135,7 +2135,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 
             eMMC_hw_timer_delay(HW_TIMER_DELAY_1us);
         }
-		
+
 		if(u32_i == u32_MicroSec)
 		{
 			eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: events lose, WaitEvent: %Xh \n", u16_WaitEvent);
@@ -2166,7 +2166,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 		}
 	}
 
-	//----------------------------------------		
+	//----------------------------------------
 	fcie_int = 0;
 	return eMMC_ST_SUCCESS;
 
@@ -2272,11 +2272,11 @@ void eMMC_LockFCIE(U8 *pu8_str)
 	}
 
 	eMMC_clock_setting(g_eMMCDrv.u16_ClkRegVal);
-	eMMC_pads_switch(g_eMMCDrv.u8_PadType); 
+	eMMC_pads_switch(g_eMMCDrv.u8_PadType);
 	#endif
 
     REG_FCIE_SETBIT(FCIE_SD_MODE, BIT_SD_CLK_EN); // output clock
-	REG_FCIE_SETBIT(FCIE_REG16h, BIT_EMMC_ACTIVE);	
+	REG_FCIE_SETBIT(FCIE_REG16h, BIT_EMMC_ACTIVE);
 }
 
 
@@ -2426,7 +2426,7 @@ U32 eMMC_hw_timer_delay(U32 u32us)
 	}
 	#else
     U32 u32_i = u32us;
-	
+
 	while(u32_i > 1000)
 	{
 		mdelay(1);
@@ -2440,7 +2440,7 @@ U32 eMMC_hw_timer_delay(U32 u32us)
 U32 eMMC_hw_timer_sleep(U32 u32ms)
 {
 	U32 u32_i = u32ms;
-	
+
 	while(u32_i > 1000)
 	{
 	    msleep(1000);
@@ -3089,7 +3089,7 @@ static void _hal_dcache_flush(void *base , u32 asize)
 U32 eMMC_translate_DMA_address_Ex(U32 u32_DMAAddr, U32 u32_ByteCnt)
 {
 	U32 dmaaddr;
-		
+
 	dma_dcache_flush_invalidate(u32_DMAAddr, u32_ByteCnt);
 	dmaaddr = (virt_to_phys((void *)u32_DMAAddr));
 
@@ -3177,7 +3177,7 @@ irqreturn_t eMMC_FCIE_IRQ(int irq, void *dummy)
 U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 {
 	U32 u32_i=0;
-	
+
     #if eMMC_IRQ_DEBUG
 	U32 u32_isr_tmp[2];
 	unsigned long long u64_jiffies_tmp, u64_jiffies_now;
@@ -3198,19 +3198,19 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 	    #if eMMC_IRQ_DEBUG
 		u32_isr_tmp[1] = fcie_int;
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n", 
-			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN), 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n",
+			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN),
 			u32_isr_tmp[0], u32_isr_tmp[1], fcie_int);
 
 		do_gettimeofday(&time_st);
 		u64_jiffies_now = jiffies_64;
 	    eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n", 
-		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp, 
+		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n",
+		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp,
 		    u32_MicroSec, usecs_to_jiffies(u32_MicroSec), HZ);
 	    #else
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n", 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n",
 			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN));
 	    #endif
 
@@ -3222,7 +3222,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 
             eMMC_hw_timer_delay(HW_TIMER_DELAY_1us);
         }
-		
+
 		if(u32_i == u32_MicroSec)
 		{
 			eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: events lose, WaitEvent: %Xh \n", u16_WaitEvent);
@@ -3253,7 +3253,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 		}
 	}
 
-	//----------------------------------------		
+	//----------------------------------------
 	fcie_int = 0;
 	return eMMC_ST_SUCCESS;
 
@@ -3357,11 +3357,11 @@ void eMMC_LockFCIE(U8 *pu8_str)
 	}
 
 	eMMC_clock_setting(g_eMMCDrv.u16_ClkRegVal);
-	eMMC_pads_switch(g_eMMCDrv.u8_PadType); 
+	eMMC_pads_switch(g_eMMCDrv.u8_PadType);
 	#endif
 
     REG_FCIE_SETBIT(FCIE_SD_MODE, BIT_SD_CLK_EN); // output clock
-	REG_FCIE_SETBIT(FCIE_REG16h, BIT_EMMC_ACTIVE);	
+	REG_FCIE_SETBIT(FCIE_REG16h, BIT_EMMC_ACTIVE);
 }
 
 
@@ -3513,7 +3513,7 @@ U32 eMMC_hw_timer_delay(U32 u32us)
 	}
 	#else
     U32 u32_i = u32us;
-	
+
 	while(u32_i > 1000)
 	{
 		mdelay(1);
@@ -3527,7 +3527,7 @@ U32 eMMC_hw_timer_delay(U32 u32us)
 U32 eMMC_hw_timer_sleep(U32 u32ms)
 {
 	U32 u32_i = u32ms;
-	
+
 	while(u32_i > 1000)
 	{
 	    msleep(1000);
@@ -4176,7 +4176,7 @@ static void _hal_dcache_flush(void *base , u32 asize)
 U32 eMMC_translate_DMA_address_Ex(U32 u32_DMAAddr, U32 u32_ByteCnt)
 {
 	U32 dmaaddr;
-		
+
 	dma_dcache_flush_invalidate(u32_DMAAddr, u32_ByteCnt);
 	dmaaddr = (virt_to_phys((void *)u32_DMAAddr));
 
@@ -4264,7 +4264,7 @@ irqreturn_t eMMC_FCIE_IRQ(int irq, void *dummy)
 U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 {
 	U32 u32_i=0;
-	
+
     #if eMMC_IRQ_DEBUG
 	U32 u32_isr_tmp[2];
 	unsigned long long u64_jiffies_tmp, u64_jiffies_now;
@@ -4285,19 +4285,19 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 	    #if eMMC_IRQ_DEBUG
 		u32_isr_tmp[1] = fcie_int;
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n", 
-			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN), 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n",
+			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN),
 			u32_isr_tmp[0], u32_isr_tmp[1], fcie_int);
 
 		do_gettimeofday(&time_st);
 		u64_jiffies_now = jiffies_64;
 	    eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n", 
-		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp, 
+		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n",
+		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp,
 		    u32_MicroSec, usecs_to_jiffies(u32_MicroSec), HZ);
 	    #else
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n", 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n",
 			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN));
 	    #endif
 
@@ -4309,7 +4309,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 
             eMMC_hw_timer_delay(HW_TIMER_DELAY_1us);
         }
-		
+
 		if(u32_i == u32_MicroSec)
 		{
 			eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: events lose, WaitEvent: %Xh \n", u16_WaitEvent);
@@ -4340,7 +4340,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 		}
 	}
 
-	//----------------------------------------		
+	//----------------------------------------
 	fcie_int = 0;
 	return eMMC_ST_SUCCESS;
 
@@ -4445,11 +4445,11 @@ void eMMC_LockFCIE(U8 *pu8_str)
 	}
 
 	eMMC_clock_setting(g_eMMCDrv.u16_ClkRegVal);
-	eMMC_pads_switch(g_eMMCDrv.u8_PadType); 
+	eMMC_pads_switch(g_eMMCDrv.u8_PadType);
 	#endif
 
     REG_FCIE_SETBIT(FCIE_SD_MODE, BIT_SD_CLK_EN); // output clock
-	REG_FCIE_SETBIT(FCIE_REG16h, BIT_EMMC_ACTIVE);	
+	REG_FCIE_SETBIT(FCIE_REG16h, BIT_EMMC_ACTIVE);
 }
 
 void eMMC_UnlockFCIE(U8 *pu8_str)
@@ -4586,10 +4586,10 @@ eMMC_ALIGN0 U8 gau8_eMMC_SectorBuf[eMMC_SECTOR_BUF_16KB] eMMC_ALIGN1; // 512 byt
 eMMC_ALIGN0 U8 gau8_eMMC_PartInfoBuf[eMMC_SECTOR_512BYTE] eMMC_ALIGN1; // 512 bytes
 
 #include <linux/delay.h>
-U32 eMMC_hw_timer_delay(U32 u32usTick)  
+U32 eMMC_hw_timer_delay(U32 u32usTick)
 {
   #if 1	//xxx tomodify
-  udelay(u32usTick); 
+  udelay(u32usTick);
   #else
 	volatile U32 i = 0;
 
@@ -4611,7 +4611,7 @@ U32 eMMC_hw_timer_delay(U32 u32usTick)
 U32 eMMC_hw_timer_sleep(U32 u32ms)
 {
 	U32 u32_i = u32ms;
-	
+
 	while(u32_i > 1000)
 	{
 	    msleep(1000);
@@ -4691,12 +4691,12 @@ U32 eMMC_pads_switch(U32 u32_FCIE_IF_Type)
 		REG_FCIE_SETBIT(FCIE_BOOT_CONFIG, BIT3);
 		eMMC_hw_timer_delay(HW_TIMER_DELAY_10us);
 		REG_FCIE_CLRBIT(FCIE_BOOT_CONFIG, BIT3);
-	
+
 		gu8_NANDeMMC_need_preset_flag = 0;
 	}
-	
-	
-	
+
+
+
 //	REG_FCIE_CLRBIT(FCIE_BOOT_CONFIG,
 //			    BIT_MACRO_EN|BIT_SD_DDR_EN|BIT_SD_BYPASS_MODE_EN|BIT_SD_SDR_IN_BYPASS|BIT_SD_FROM_TMUX);
 
@@ -4710,10 +4710,10 @@ U32 eMMC_pads_switch(U32 u32_FCIE_IF_Type)
 			  REG_FCIE_SETBIT(RIU_BASE_CHIPTOP + (0x4 << 2), BIT1);
 				REG_FCIE_CLRBIT(REG_BPS_MODE, 0x3FF);
 			  REG_FCIE_CLRBIT(REG_ALL_PAD_IN, BIT0);
-  			REG_FCIE_SETBIT(REG_EMMC_MODE, BIT13);  
-  
+  			REG_FCIE_SETBIT(REG_EMMC_MODE, BIT13);
+
   			REG_FCIE_SETBIT(eMMC_REG_CLK_4X_DIV_EN, BIT0);
-			
+
 				// set chiptop
 				g_eMMCDrv.u8_PadType = FCIE_eMMC_DDR;
 				break;
@@ -4755,7 +4755,7 @@ U32 eMMC_pads_switch(U32 u32_FCIE_IF_Type)
 	return eMMC_ST_SUCCESS;
 }
 
- 
+
 U32 eMMC_clock_setting(U16 u16_ClkParam)
 {
 	eMMC_PlatformResetPre();
@@ -4791,15 +4791,15 @@ U32 eMMC_clock_setting(U16 u16_ClkParam)
 			eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: invalid clk: %Xh\n", u16_ClkParam);
 			return eMMC_ST_ERR_INVALID_PARAM;
 	}
-	
-	REG_FCIE_W(REG_CLK_EMMC, (u16_ClkParam));   
+
+	REG_FCIE_W(REG_CLK_EMMC, (u16_ClkParam));
 	g_eMMCDrv.u16_ClkRegVal = (U16)u16_ClkParam;
-	
+
   eMMC_PlatformResetPost();
 	return eMMC_ST_SUCCESS;
 }
 
-U32 eMMC_clock_gating(void) 
+U32 eMMC_clock_gating(void)
 {
 	eMMC_PlatformResetPre();
 	g_eMMCDrv.u32_ClkKHz = 0;
@@ -4810,22 +4810,22 @@ U32 eMMC_clock_gating(void)
 	return eMMC_ST_SUCCESS;
 }
 
-U16 gau16_FCIEClkSel[eMMC_FCIE_VALID_CLK_CNT]={   
+U16 gau16_FCIEClkSel[eMMC_FCIE_VALID_CLK_CNT]={
 
 	BIT_FCIE_CLK_192M, BIT_FCIE_CLK_172M,	/*BIT_FCIE_CLK_144M,*/ BIT_FCIE_CLK_123M, /*BIT_FCIE_CLK_108M,*/
-	BIT_FCIE_CLK_86M, /*BIT_FCIE_CLK_80M, BIT_FCIE_CLK_72M,*/	BIT_FCIE_CLK_62M, BIT_FCIE_CLK_54M, 
+	BIT_FCIE_CLK_86M, /*BIT_FCIE_CLK_80M, BIT_FCIE_CLK_72M,*/	BIT_FCIE_CLK_62M, BIT_FCIE_CLK_54M,
 	/*BIT_FCIE_CLK_48M, BIT_FCIE_CLK_43_2M,*/ BIT_FCIE_CLK_40M, /*BIT_FCIE_CLK_36M,*/	BIT_FCIE_CLK_32M,
 	BIT_FCIE_CLK_24M, BIT_FCIE_CLK_12M/*, BIT_FCIE_CLK_1200K, BIT_FCIE_CLK_300K*/
 };
 #define FCIE_SLOW_CLK_4X								BIT_FCIE_CLK_12M
 
 #if defined(IF_DETECT_eMMC_DDR_TIMING) && IF_DETECT_eMMC_DDR_TIMING
-static char *sgachar_string[]={"  2T", "1.5T", "2.5T","  1T"}; 
+static char *sgachar_string[]={"  2T", "1.5T", "2.5T","  1T"};
 
-static U32 eMMC_FCIE_DetectDDRTiming_Ex(U8 u8_DQS, U8 u8_DelaySel) 
+static U32 eMMC_FCIE_DetectDDRTiming_Ex(U8 u8_DQS, U8 u8_DelaySel)
 {
 	U32 u32_SectorAddr;
-	
+
 	//eMMC_printf("eMMC_FCIE_DetectDDRTiming_Ex\r\n");
 
 	u32_SectorAddr = eMMC_TEST_BLK_0;
@@ -4835,20 +4835,20 @@ static U32 eMMC_FCIE_DetectDDRTiming_Ex(U8 u8_DQS, U8 u8_DelaySel)
 	eMMC_debug(eMMC_DEBUG_LEVEL_HIGH,0,"\ndqs:%s[%Xh]  cell:%02Xh \n",
 		sgachar_string[u8_DQS], u8_DQS, u8_DelaySel);
 
-	eMMC_FCIE_SetDDRTimingReg(u8_DQS, u8_DelaySel); 
-    return eMMCTest_BlkWRC_ProbeDDR(u32_SectorAddr); 
+	eMMC_FCIE_SetDDRTimingReg(u8_DQS, u8_DelaySel);
+    return eMMCTest_BlkWRC_ProbeDDR(u32_SectorAddr);
 }
 
 #define FCIE_DELAY_CELL_ts         300 // 0.3ns
-static eMMC_FCIE_DDRT_WINDOW_t sg_DDRTWindow[2]; 
+static eMMC_FCIE_DDRT_WINDOW_t sg_DDRTWindow[2];
 
-U32 eMMC_FCIE_DetectDDRTiming(void)  
+U32 eMMC_FCIE_DetectDDRTiming(void)
 {
 	U8  u8_dqs, u8_delay_sel, u8_i;
 	U8  u8_dqs_prev=0xFF, u8_delay_sel_prev=0;
 	U8  au8_DQSRegVal[4]={3,1,0,2}; // 0T, 1.5T, 2T, 2.5T
 	U8  au8_DQS_10T[4]={0,15,20,25}; // 0T, 1.5T, 2T, 2.5T
-	
+
 	U8  u8_delay_Sel_max;
 	U32 u32_ts;
 	U32 u32_err;
@@ -4887,7 +4887,7 @@ U32 eMMC_FCIE_DetectDDRTiming(void)
 		else
 			u8_delay_Sel_max = (BIT_DQS_DELAY_CELL_MASK>>BIT_DQS_DELAY_CELL_SHIFT);
 
-		if(u8_delay_Sel_max > (BIT_DQS_DELAY_CELL_MASK>>BIT_DQS_DELAY_CELL_SHIFT))   
+		if(u8_delay_Sel_max > (BIT_DQS_DELAY_CELL_MASK>>BIT_DQS_DELAY_CELL_SHIFT))
 		{
 			//eMMC_debug(eMMC_DEBUG_LEVEL_HIGH,0,"max delay cell: %u\n", u8_delay_Sel_max);
 			//eMMC_debug(eMMC_DEBUG_LEVEL_HIGH,0,"invalid, not try\n\n");
@@ -4902,9 +4902,9 @@ U32 eMMC_FCIE_DetectDDRTiming(void)
 		sg_DDRTWindow[1].au8_DQSTryCellCnt[u8_dqs] = u8_delay_Sel_max;
 
 		//for(u8_delay_sel=0; u8_delay_sel<=(BIT_DQS_DELAY_CELL_MASK>>BIT_DQS_DELAY_CELL_SHIFT); u8_delay_sel++)
-		for(u8_delay_sel=0; u8_delay_sel<=u8_delay_Sel_max; u8_delay_sel++)   
+		for(u8_delay_sel=0; u8_delay_sel<=u8_delay_Sel_max; u8_delay_sel++)
 		{
-			u32_err = eMMC_FCIE_DetectDDRTiming_Ex(au8_DQSRegVal[u8_dqs], u8_delay_sel);    
+			u32_err = eMMC_FCIE_DetectDDRTiming_Ex(au8_DQSRegVal[u8_dqs], u8_delay_sel);
 			if(eMMC_ST_SUCCESS == u32_err)
 			{
 				eMMC_printf("DetectDDRTiming pass\r\n");
@@ -4998,7 +4998,7 @@ U32 eMMC_FCIE_BuildDDRTimingTable(void)
 	//iantest ttt
 	if(0 == (g_eMMCDrv.u32_DrvFlag & DRV_FLAG_DDR_MODE))
 	{
-		u32_err = eMMC_FCIE_EnableDDRMode_Ex();   
+		u32_err = eMMC_FCIE_EnableDDRMode_Ex();
 		if(eMMC_ST_SUCCESS != u32_err)
 		{
 		    //RETAILMSG(1, (TEXT("eMMC Error: set DDR IF fail: %Xh\r\n"),u32_err));
@@ -5006,11 +5006,11 @@ U32 eMMC_FCIE_BuildDDRTimingTable(void)
 		    return u32_err;
 		}
 	}
-	
+
 	eMMC_pads_switch(FCIE_eMMC_DDR);	//iantest ttt
    //iantest ttt
-   
-   
+
+
 	for(u8_ClkIdx=0; u8_ClkIdx<eMMC_FCIE_VALID_CLK_CNT; u8_ClkIdx++)
 	{
 
@@ -5020,7 +5020,7 @@ U32 eMMC_FCIE_BuildDDRTimingTable(void)
 
 		// ---------------------------
 		// search and set the Windows
-		u32_err = eMMC_FCIE_DetectDDRTiming();           
+		u32_err = eMMC_FCIE_DetectDDRTiming();
 
 		// ---------------------------
 		// set the Table
@@ -5142,10 +5142,10 @@ U32 eMMC_FCIE_BuildDDRTimingTable(void)
 
 	// ======================================================
 	// CAUTION: expect 48MHz can have valid DDRT parameter
-	
+
 	eMMC_printf("gau16_FCIEClkSel[0] : %X\r\n", gau16_FCIEClkSel[0]);
 	eMMC_printf("g_eMMCDrv.DDRTable.Set[eMMC_DDRT_SET_MAX].u16_Clk : %X\r\n", g_eMMCDrv.DDRTable.Set[eMMC_DDRT_SET_MAX].u16_Clk);
-	eMMC_printf("g_eMMCDrv.DDRTable.u8_SetCnt : %X\r\n", g_eMMCDrv.DDRTable.u8_SetCnt);   
+	eMMC_printf("g_eMMCDrv.DDRTable.u8_SetCnt : %X\r\n", g_eMMCDrv.DDRTable.u8_SetCnt);
 	if(g_eMMCDrv.DDRTable.Set[eMMC_DDRT_SET_MAX].u16_Clk == gau16_FCIEClkSel[0]
 		&& 0 != g_eMMCDrv.DDRTable.u8_SetCnt)
 		u32_ret = eMMC_ST_SUCCESS;
@@ -5207,21 +5207,19 @@ void eMMC_reset_WatchDog(void)
 U32 eMMC_translate_DMA_address_Ex(U32 u32_DMAAddr, U32 u32_ByteCnt, int mode)
 {
 #if 1
-		extern void Chip_Clean_Cache_Range_VA_PA(unsigned long u32VAddr,unsigned long u32PAddr,unsigned long u32Size);
-		extern void Chip_Flush_Cache_Range_VA_PA(unsigned long u32VAddr,unsigned long u32PAddr,unsigned long u32Size);
     //mode 0 for write, 1 for read
     if( mode == WRITE_TO_eMMC )	//Write
     {
         //Write (DRAM->NAND)-> flush
-        Chip_Clean_Cache_Range_VA_PA(u32_DMAAddr,__pa(u32_DMAAddr), u32_ByteCnt);
+        Chip_Clean_Cache_Range(u32_DMAAddr, u32_ByteCnt);
     }
     else //Read
     {
         //Read (NAND->DRAM) -> inv
-        Chip_Flush_Cache_Range_VA_PA(u32_DMAAddr,__pa(u32_DMAAddr), u32_ByteCnt);
+        Chip_Flush_Cache_Range(u32_DMAAddr, u32_ByteCnt);
     }
     /*
-	if(virt_to_phys((void *)u32_DMAAddr) >= MSTAR_MIU1_BUS_BASE) 
+	if(virt_to_phys((void *)u32_DMAAddr) >= MSTAR_MIU1_BUS_BASE)
 	{
     	REG_SET_BITS_UINT16( NC_MIU_DMA_SEL, BIT_MIU1_SELECT);
     }
@@ -5231,7 +5229,7 @@ U32 eMMC_translate_DMA_address_Ex(U32 u32_DMAAddr, U32 u32_ByteCnt, int mode)
 
 	return virt_to_phys((void *)u32_DMAAddr);
 #else
-	flush_cache(u32_DMAAddr, u32_ByteCnt); 
+	flush_cache(u32_DMAAddr, u32_ByteCnt);
 	return (u32_DMAAddr);
 #endif
 }
@@ -5302,7 +5300,7 @@ irqreturn_t eMMC_FCIE_IRQ(int irq, void *dummy)
 U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 {
 	U32 u32_i=0;
-	
+
 	#if eMMC_IRQ_DEBUG
 	U32 u32_isr_tmp[2];
 	unsigned long long u64_jiffies_tmp, u64_jiffies_now;
@@ -5323,19 +5321,19 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 		#if eMMC_IRQ_DEBUG
 		u32_isr_tmp[1] = fcie_int;
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n", 
-			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN), 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n",
+			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN),
 			u32_isr_tmp[0], u32_isr_tmp[1], fcie_int);
 
 		do_gettimeofday(&time_st);
 		u64_jiffies_now = jiffies_64;
 	    eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n", 
-		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp, 
+		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n",
+		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp,
 		    u32_MicroSec, usecs_to_jiffies(u32_MicroSec), HZ);
 		#else
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n", 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n",
 			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN));
 		#endif
 
@@ -5347,7 +5345,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 
             eMMC_hw_timer_delay(HW_TIMER_DELAY_1us);
         }
-		
+
 		if(u32_i == u32_MicroSec)
 		{
 			eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: events lose, WaitEvent: %Xh \n", u16_WaitEvent);
@@ -5378,7 +5376,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 		}
 	}
 
-	//----------------------------------------		
+	//----------------------------------------
 	fcie_int = 0;
 	return eMMC_ST_SUCCESS;
 }
@@ -5411,11 +5409,11 @@ void eMMC_LockFCIE(U8 *pu8_str)
 	}
 
 	eMMC_clock_setting(g_eMMCDrv.u16_ClkRegVal);
-	eMMC_pads_switch(g_eMMCDrv.u8_PadType); 
+	eMMC_pads_switch(g_eMMCDrv.u8_PadType);
 	#endif
 
 
-	REG_FCIE_SETBIT(FCIE_SD_MODE, BIT_SD_CLK_EN); // output clock	
+	REG_FCIE_SETBIT(FCIE_SD_MODE, BIT_SD_CLK_EN); // output clock
 }
 
 void eMMC_UnlockFCIE(U8 *pu8_str)
@@ -5423,7 +5421,7 @@ void eMMC_UnlockFCIE(U8 *pu8_str)
 	//eMMC_debug(0,1,"%s 1\n", pu8_str);
 	REG_FCIE_CLRBIT(FCIE_SD_MODE, BIT_SD_CLK_EN); // not output clock
 	mutex_unlock(&FCIE3_mutex);
-	
+
 	//eMMC_debug(0,1,"%s 2\n", pu8_str);
 }
 
@@ -5539,7 +5537,7 @@ eMMC_ALIGN0 U8 gau8_eMMC_SectorBuf[eMMC_SECTOR_BUF_16KB] eMMC_ALIGN1; // 512 byt
 eMMC_ALIGN0 U8 gau8_eMMC_PartInfoBuf[eMMC_SECTOR_512BYTE] eMMC_ALIGN1; // 512 bytes
 
 #include <linux/delay.h>
-U32 eMMC_hw_timer_delay(U32 u32usTick)  
+U32 eMMC_hw_timer_delay(U32 u32usTick)
 {
 	volatile U32 u32_i=u32usTick;
 
@@ -5549,14 +5547,14 @@ U32 eMMC_hw_timer_delay(U32 u32usTick)
 		u32_i-=1000;
     }
 
-    udelay(u32usTick); 
+    udelay(u32usTick);
     return u32usTick + 1;
 }
 
 U32 eMMC_hw_timer_sleep(U32 u32ms)
 {
 	U32 u32_i = u32ms;
-	
+
 	while(u32_i > 1000)
 	{
 	    msleep(1000);
@@ -5593,16 +5591,16 @@ void eMMC_DumpPadClk(void)
 	switch(g_eMMCDrv.u8_PadType)
 	{
     	case FCIE_eMMC_DDR:
-    		eMMC_debug(0,0,"DDR\n");  
+    		eMMC_debug(0,0,"DDR\n");
     		break;
     	case FCIE_eMMC_SDR:
-    		eMMC_debug(0,0,"SDR\n");  
+    		eMMC_debug(0,0,"SDR\n");
     		break;
     	case FCIE_eMMC_BYPASS:
-    		eMMC_debug(0,0,"BYPASS\n");  
+    		eMMC_debug(0,0,"BYPASS\n");
     		break;
     	default:
-    		eMMC_debug(0,0,"eMMC Err: Pad unknown\n");  
+    		eMMC_debug(0,0,"eMMC Err: Pad unknown\n");
     		eMMC_die("\n");
 	}
 	eMMC_debug(0, 1, "padtop_0x00 (0x%X):0x%X\n", REG_PADTOP_00, REG_FCIE_U16(REG_PADTOP_00));
@@ -5623,7 +5621,7 @@ U8 gu8_NANDeMMC_need_preset_flag = 1;
 
 U32 eMMC_pads_switch(U32 u32_FCIE_IF_Type)
 {
-	U16 u16_reg;	
+	U16 u16_reg;
 	switch(u32_FCIE_IF_Type)
 	{
 		case FCIE_eMMC_DDR:
@@ -5632,25 +5630,25 @@ U32 eMMC_pads_switch(U32 u32_FCIE_IF_Type)
   			u16_reg &= ~(BIT_MACRO_EN | BIT_SD_DDR_EN | BIT_SD_BYPASS_MODE_EN | BIT_SD_SDR_IN_BYPASS | BIT_SD_FROM_TMUX);
   			u16_reg |= (BIT_MACRO_EN | BIT_SD_DDR_EN);
   			REG_FCIE_W(FCIE_BOOT_CONFIG, u16_reg);
-  	
+
   			REG_FCIE_CLRBIT(FCIE_REG_2Dh, BIT14);
-  	
+
   			//CLRREG16(FCIE_BOOT_CONFIG, BIT3);	//to MIU
   			REG_FCIE_R(REG_PADTOP_00, u16_reg);
 			u16_reg |= BIT15;
 			u16_reg &= ~(BIT0 + BIT14);
 			REG_FCIE_W(REG_PADTOP_00, u16_reg);
-  
+
  			REG_FCIE_R(REG_PADTOP_01, u16_reg);
 			u16_reg &= ~(BIT3);
 			REG_FCIE_W(REG_PADTOP_01, u16_reg);
-  
+
   			REG_FCIE_R(REG_PADTOP_40, u16_reg);
 			u16_reg &= ~(BIT3 + BIT8 + BIT9);
 			REG_FCIE_W(REG_PADTOP_40, u16_reg);
 
   			REG_FCIE_SETBIT(REG_PADTOP_43, BIT3);
-	
+
 	 		REG_FCIE_SETBIT(REG_CLK_4X_DIV_EN, BIT0);
 			g_eMMCDrv.u8_PadType = FCIE_eMMC_DDR;
 			break;
@@ -5661,54 +5659,54 @@ U32 eMMC_pads_switch(U32 u32_FCIE_IF_Type)
   			u16_reg &= ~(BIT_MACRO_EN | BIT_SD_DDR_EN | BIT_SD_BYPASS_MODE_EN | BIT_SD_SDR_IN_BYPASS | BIT_SD_FROM_TMUX);
   			u16_reg |= (BIT_MACRO_EN);
 		  	REG_FCIE_W(FCIE_BOOT_CONFIG, u16_reg);
-  	
+
   			REG_FCIE_CLRBIT(FCIE_REG_2Dh, BIT14);
-  	
+
   			//CLRREG16(FCIE_BOOT_CONFIG, BIT3);	//to MIU
 		  	REG_FCIE_R(REG_PADTOP_00, u16_reg);
 			u16_reg |= BIT15;
 			u16_reg &= ~(BIT0 + BIT14);
 			REG_FCIE_W(REG_PADTOP_00, u16_reg);
-  
+
  			REG_FCIE_R(REG_PADTOP_01, u16_reg);
 			u16_reg &= ~(BIT3);
 			REG_FCIE_W(REG_PADTOP_01, u16_reg);
-  
+
   			REG_FCIE_R(REG_PADTOP_40, u16_reg);
 			u16_reg &= ~(BIT3 + BIT8 + BIT9);
 			REG_FCIE_W(REG_PADTOP_40, u16_reg);
-  
+
   			REG_FCIE_SETBIT(REG_PADTOP_43, BIT3);
 			g_eMMCDrv.u8_PadType = FCIE_eMMC_SDR;
 			break;
-			
-			
+
+
 		case FCIE_eMMC_BYPASS:
-			eMMC_debug(0,0,"eMMC_pads_switch FCIE_eMMC_BYPASS\r\n");	
+			eMMC_debug(0,0,"eMMC_pads_switch FCIE_eMMC_BYPASS\r\n");
   			REG_FCIE_R(FCIE_BOOT_CONFIG, u16_reg);
   			u16_reg &= ~(BIT_MACRO_EN | BIT_SD_DDR_EN | BIT_SD_BYPASS_MODE_EN | BIT_SD_SDR_IN_BYPASS | BIT_SD_FROM_TMUX);
   			u16_reg |= (BIT_MACRO_EN | BIT_SD_BYPASS_MODE_EN | BIT_SD_SDR_IN_BYPASS);
 		  	REG_FCIE_W(FCIE_BOOT_CONFIG, u16_reg);
-			
+
   			REG_FCIE_CLRBIT(FCIE_REG_2Dh, BIT14);
-  	
+
   			//CLRREG16(FCIE_BOOT_CONFIG, BIT3);	//to MIU
-			
+
   			REG_FCIE_R(REG_PADTOP_00, u16_reg);
   			u16_reg |= BIT15;
 			u16_reg &= ~(BIT0 + BIT14);
 			REG_FCIE_W(REG_PADTOP_00, u16_reg);
-  
+
  			REG_FCIE_R(REG_PADTOP_01, u16_reg);
 			u16_reg &= ~(BIT3);
 			REG_FCIE_W(REG_PADTOP_01, u16_reg);
-  
+
   			REG_FCIE_R(REG_PADTOP_40, u16_reg);
 			u16_reg |= (BIT3 + BIT8 + BIT9);
 			REG_FCIE_W(REG_PADTOP_40, u16_reg);
-  
+
   			REG_FCIE_SETBIT(REG_PADTOP_43, BIT3);
-  	
+
 			g_eMMCDrv.u8_PadType = FCIE_eMMC_BYPASS;
 			break;
 
@@ -5721,7 +5719,7 @@ U32 eMMC_pads_switch(U32 u32_FCIE_IF_Type)
 
 }
 
- 
+
 U32 eMMC_clock_setting(U16 u16_ClkParam)
 {
 	eMMC_PlatformResetPre();
@@ -5751,15 +5749,15 @@ U32 eMMC_clock_setting(U16 u16_ClkParam)
 
 	//printf("REG_CLK_EMMC : %X, %uKHZ\r\n", u16_ClkParam, g_eMMCDrv.u32_ClkKHz/4);
 
-	REG_FCIE_W(REG_CLK_EMMC, (u16_ClkParam));   
+	REG_FCIE_W(REG_CLK_EMMC, (u16_ClkParam));
 	g_eMMCDrv.u16_ClkRegVal = (U16)u16_ClkParam;
 
-	
+
   eMMC_PlatformResetPost();
 	return eMMC_ST_SUCCESS;
 }
 
-U32 eMMC_clock_gating(void) 
+U32 eMMC_clock_gating(void)
 {
 	eMMC_PlatformResetPre();
 	g_eMMCDrv.u32_ClkKHz = 0;
@@ -5769,19 +5767,19 @@ U32 eMMC_clock_gating(void)
 	return eMMC_ST_SUCCESS;
 }
 
-U16 gau16_FCIEClkSel[eMMC_FCIE_VALID_CLK_CNT]={   
+U16 gau16_FCIEClkSel[eMMC_FCIE_VALID_CLK_CNT]={
 	NFIE_REG_4XCLK_192M, NFIE_REG_4XCLK_160M, NFIE_REG_4XCLK_120M,
 	NFIE_REG_4XCLK_96M ,NFIE_REG_4XCLK_80M
 
 };
 
 #if defined(IF_DETECT_eMMC_DDR_TIMING) && IF_DETECT_eMMC_DDR_TIMING
-static char *sgachar_string[]={"  0T", "0.5T", "  1T", "1.5T", "  2T", "2.5T", "  3T", "3.5T"}; 
+static char *sgachar_string[]={"  0T", "0.5T", "  1T", "1.5T", "  2T", "2.5T", "  3T", "3.5T"};
 
-static U32 eMMC_FCIE_DetectDDRTiming_Ex(U8 u8_DQS, U8 u8_DelaySel) 
+static U32 eMMC_FCIE_DetectDDRTiming_Ex(U8 u8_DQS, U8 u8_DelaySel)
 {
 	U32 u32_SectorAddr;
-	
+
 	//eMMC_printf("eMMC_FCIE_DetectDDRTiming_Ex\r\n");
 
 	u32_SectorAddr = eMMC_TEST_BLK_0;
@@ -5791,20 +5789,20 @@ static U32 eMMC_FCIE_DetectDDRTiming_Ex(U8 u8_DQS, U8 u8_DelaySel)
 	eMMC_debug(eMMC_DEBUG_LEVEL_HIGH,0,"\ndqs:%s[%Xh]  cell:%02Xh \n",
 		sgachar_string[u8_DQS], u8_DQS, u8_DelaySel);
 
-	eMMC_FCIE_SetDDRTimingReg(u8_DQS, u8_DelaySel); 
-    return eMMCTest_BlkWRC_ProbeDDR(u32_SectorAddr); 
+	eMMC_FCIE_SetDDRTimingReg(u8_DQS, u8_DelaySel);
+    return eMMCTest_BlkWRC_ProbeDDR(u32_SectorAddr);
 }
 
 #define FCIE_DELAY_CELL_ts         300 // 0.3ns
-static eMMC_FCIE_DDRT_WINDOW_t sg_DDRTWindow[2]; 
+static eMMC_FCIE_DDRT_WINDOW_t sg_DDRTWindow[2];
 
-U32 eMMC_FCIE_DetectDDRTiming(void)  
+U32 eMMC_FCIE_DetectDDRTiming(void)
 {
 	U8  u8_dqs, u8_delay_sel, u8_i;
 	U8  u8_dqs_prev=0xFF, u8_delay_sel_prev=0;
 	U8  au8_DQSRegVal[8]={0,1,2,3,4,5,6,7}; // 0T, 0.5T, 1T, 1.5T, 2T, 2.5T, 3T, 3,5T
 	U8  au8_DQS_10T[8]={0,5,10,15,20,25,30,35}; // 0T, 0.5T, 1T, 1.5T, 2T, 2.5T, 3T, 3,5T
-	
+
 	U8  u8_delay_Sel_max;
 	U32 u32_ts;
 	U32 u32_err;
@@ -5843,7 +5841,7 @@ U32 eMMC_FCIE_DetectDDRTiming(void)
 		else
 			u8_delay_Sel_max = (BIT_DQS_DELAY_CELL_MASK>>BIT_DQS_DELAY_CELL_SHIFT);
 
-		if(u8_delay_Sel_max > (BIT_DQS_DELAY_CELL_MASK>>BIT_DQS_DELAY_CELL_SHIFT))   
+		if(u8_delay_Sel_max > (BIT_DQS_DELAY_CELL_MASK>>BIT_DQS_DELAY_CELL_SHIFT))
 		{
 			//eMMC_debug(eMMC_DEBUG_LEVEL_HIGH,0,"max delay cell: %u\n", u8_delay_Sel_max);
 			//eMMC_debug(eMMC_DEBUG_LEVEL_HIGH,0,"invalid, not try\n\n");
@@ -5858,9 +5856,9 @@ U32 eMMC_FCIE_DetectDDRTiming(void)
 		sg_DDRTWindow[1].au8_DQSTryCellCnt[u8_dqs] = u8_delay_Sel_max;
 
 		//for(u8_delay_sel=0; u8_delay_sel<=(BIT_DQS_DELAY_CELL_MASK>>BIT_DQS_DELAY_CELL_SHIFT); u8_delay_sel++)
-		for(u8_delay_sel=0; u8_delay_sel<=u8_delay_Sel_max; u8_delay_sel++)   
+		for(u8_delay_sel=0; u8_delay_sel<=u8_delay_Sel_max; u8_delay_sel++)
 		{
-			u32_err = eMMC_FCIE_DetectDDRTiming_Ex(au8_DQSRegVal[u8_dqs], u8_delay_sel);    
+			u32_err = eMMC_FCIE_DetectDDRTiming_Ex(au8_DQSRegVal[u8_dqs], u8_delay_sel);
 			if(eMMC_ST_SUCCESS == u32_err)
 			{
 				eMMC_printf("DetectDDRTiming pass\r\n");
@@ -5954,7 +5952,7 @@ U32 eMMC_FCIE_BuildDDRTimingTable(void)
 	//iantest ttt
 	if(0 == (g_eMMCDrv.u32_DrvFlag & DRV_FLAG_DDR_MODE))
 	{
-		u32_err = eMMC_FCIE_EnableDDRMode_Ex();   
+		u32_err = eMMC_FCIE_EnableDDRMode_Ex();
 		if(eMMC_ST_SUCCESS != u32_err)
 		{
 		    //RETAILMSG(1, (TEXT("eMMC Error: set DDR IF fail: %Xh\r\n"),u32_err));
@@ -5962,11 +5960,11 @@ U32 eMMC_FCIE_BuildDDRTimingTable(void)
 		    return u32_err;
 		}
 	}
-	
+
 	eMMC_pads_switch(FCIE_eMMC_DDR);	//iantest ttt
    //iantest ttt
-   
-   
+
+
 	for(u8_ClkIdx=0; u8_ClkIdx<eMMC_FCIE_VALID_CLK_CNT; u8_ClkIdx++)
 	{
 
@@ -5976,7 +5974,7 @@ U32 eMMC_FCIE_BuildDDRTimingTable(void)
 
 		// ---------------------------
 		// search and set the Windows
-		u32_err = eMMC_FCIE_DetectDDRTiming();           
+		u32_err = eMMC_FCIE_DetectDDRTiming();
 
 		// ---------------------------
 		// set the Table
@@ -6098,10 +6096,10 @@ U32 eMMC_FCIE_BuildDDRTimingTable(void)
 
 	// ======================================================
 	// CAUTION: expect 48MHz can have valid DDRT parameter
-	
+
 	eMMC_printf("gau16_FCIEClkSel[0] : %X\r\n", gau16_FCIEClkSel[0]);
 	eMMC_printf("g_eMMCDrv.DDRTable.Set[eMMC_DDRT_SET_MAX].u16_Clk : %X\r\n", g_eMMCDrv.DDRTable.Set[eMMC_DDRT_SET_MAX].u16_Clk);
-	eMMC_printf("g_eMMCDrv.DDRTable.u8_SetCnt : %X\r\n", g_eMMCDrv.DDRTable.u8_SetCnt);   
+	eMMC_printf("g_eMMCDrv.DDRTable.u8_SetCnt : %X\r\n", g_eMMCDrv.DDRTable.u8_SetCnt);
 	if(g_eMMCDrv.DDRTable.Set[eMMC_DDRT_SET_MAX].u16_Clk == gau16_FCIEClkSel[0]
 		&& 0 != g_eMMCDrv.DDRTable.u8_SetCnt)
 		u32_ret = eMMC_ST_SUCCESS;
@@ -6159,21 +6157,19 @@ void eMMC_reset_WatchDog(void)
 U32 eMMC_translate_DMA_address_Ex(U32 u32_DMAAddr, U32 u32_ByteCnt, int mode)
 {
 #if 1
-		extern void Chip_Clean_Cache_Range_VA_PA(unsigned long u32VAddr,unsigned long u32PAddr,unsigned long u32Size);
-		extern void Chip_Flush_Cache_Range_VA_PA(unsigned long u32VAddr,unsigned long u32PAddr,unsigned long u32Size);
     //mode 0 for write, 1 for read
     if( mode == WRITE_TO_eMMC )	//Write
     {
         //Write (DRAM->NAND)-> flush
-        Chip_Clean_Cache_Range_VA_PA(u32_DMAAddr,__pa(u32_DMAAddr), u32_ByteCnt);
+        Chip_Clean_Cache_Range(u32_DMAAddr, u32_ByteCnt);
     }
     else //Read
     {
         //Read (NAND->DRAM) -> inv
-        Chip_Flush_Cache_Range_VA_PA(u32_DMAAddr,__pa(u32_DMAAddr), u32_ByteCnt);
+        Chip_Flush_Cache_Range(u32_DMAAddr, u32_ByteCnt);
     }
     /*
-	if(virt_to_phys((void *)u32_DMAAddr) >= MSTAR_MIU1_BUS_BASE) 
+	if(virt_to_phys((void *)u32_DMAAddr) >= MSTAR_MIU1_BUS_BASE)
 	{
     	REG_SET_BITS_UINT16( NC_MIU_DMA_SEL, BIT_MIU1_SELECT);
     }
@@ -6183,7 +6179,7 @@ U32 eMMC_translate_DMA_address_Ex(U32 u32_DMAAddr, U32 u32_ByteCnt, int mode)
 
 	return virt_to_phys((void *)u32_DMAAddr);
 #else
-	flush_cache(u32_DMAAddr, u32_ByteCnt); 
+	flush_cache(u32_DMAAddr, u32_ByteCnt);
 	return (u32_DMAAddr);
 #endif
 }
@@ -6264,7 +6260,7 @@ irqreturn_t eMMC_FCIE_IRQ(int irq, void *dummy)
 U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 {
 	U32 u32_i=0;
-	
+
 	#if eMMC_IRQ_DEBUG
 	U32 u32_isr_tmp[2];
 	unsigned long long u64_jiffies_tmp, u64_jiffies_now;
@@ -6285,19 +6281,19 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 		#if eMMC_IRQ_DEBUG
 		u32_isr_tmp[1] = fcie_int;
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n", 
-			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN), 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh, ISR:%u->%u->%u \n",
+			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN),
 			u32_isr_tmp[0], u32_isr_tmp[1], fcie_int);
 
 		do_gettimeofday(&time_st);
 		u64_jiffies_now = jiffies_64;
 	    eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n", 
-		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp, 
+		    " PassTime: %lu s, %lu us, %llu jiffies.  WaitTime: %u us, %lu jiffies, HZ:%u.\n",
+		    time_st.tv_sec-sec_tmp, time_st.tv_usec-us_tmp, u64_jiffies_now-u64_jiffies_tmp,
 		    u32_MicroSec, usecs_to_jiffies(u32_MicroSec), HZ);
 		#else
         eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n", 
+			"eMMC Warn: int timeout, WaitEvt:%Xh, NowEvt:%Xh, IntEn:%Xh \n",
 			u16_WaitEvent, REG_FCIE(FCIE_MIE_EVENT), REG_FCIE(FCIE_MIE_INT_EN));
 		#endif
 
@@ -6309,7 +6305,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 
             eMMC_hw_timer_delay(HW_TIMER_DELAY_1us);
         }
-		
+
 		if(u32_i == u32_MicroSec)
 		{
 			eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,"eMMC Err: events lose, WaitEvent: %Xh \n", u16_WaitEvent);
@@ -6340,7 +6336,7 @@ U32 eMMC_WaitCompleteIntr(U32 u32_RegAddr, U16 u16_WaitEvent, U32 u32_MicroSec)
 		}
 	}
 
-	//----------------------------------------		
+	//----------------------------------------
 	fcie_int = 0;
 	return eMMC_ST_SUCCESS;
 }
@@ -6370,8 +6366,8 @@ void eMMC_LockFCIE(U8 *pu8_str)
 	}
 
 	eMMC_clock_setting(g_eMMCDrv.u16_ClkRegVal);
-	eMMC_pads_switch(g_eMMCDrv.u8_PadType); 
-	#endif	
+	eMMC_pads_switch(g_eMMCDrv.u8_PadType);
+	#endif
 	REG_FCIE_SETBIT(FCIE_SD_MODE, BIT_SD_CLK_EN); // output clock
 }
 

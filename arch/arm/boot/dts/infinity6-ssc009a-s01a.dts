@@ -15,6 +15,8 @@
 
 /dts-v1/;
 #include "infinity6.dtsi"
+#include <../../../../drivers/sstar/include/infinity6/padmux.h>
+#include <../../../../drivers/sstar/include/mdrv_puse.h>
 
 / {
     model = "INFINITY6 SSC009A-S01A QFN88";
@@ -79,6 +81,14 @@
             vid_width = <1>;
             vid_gpios = <PAD_SAR_GPIO3>;
             vid_voltages = <900 1000>;  //2b'00 2b'01
+        };
+        padmux {
+            compatible = "sstar-padmux";
+            schematic = 
+                <PAD_PM_LED0        PINMUX_FOR_PM_LED_MODE          MDRV_PUSE_EMAC0_LED      >,
+                <PAD_PM_LED1        PINMUX_FOR_PM_LED_MODE          MDRV_PUSE_EMAC0_LED      >;
+            // status = "ok"; // ok or disable
+            status = "disable";
         };
     };
 

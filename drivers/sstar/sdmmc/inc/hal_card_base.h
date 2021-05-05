@@ -146,34 +146,36 @@ typedef unsigned char      BOOL_T;
 #define SD_RED "\e[1;31m"
 #define SD_DEF "\e[0m"
 
-typedef enum
-{
-    EV_IP_FCIE1     = 0,
-    EV_IP_FCIE2     = 1,
-    EV_IP_FCIE3     = 2,
-
-} IPEmType;
 
 
 typedef enum
 {
-    EV_PORT_SD      = 0,
-    EV_PORT_SDIO1   = 1,
-    EV_PORT_SDIO2   = 2,
-    EV_PFCIE5_FCIE  = 3,   //Use Port Setting for FCIE5 Function Ctrl Setting
-    EV_PFCIE5_SDIO  = 4,   //Use Port Setting for FCIE5 Function Ctrl Setting
+    IP_ORDER_0      = 0,
+    IP_ORDER_1,
+    IP_ORDER_2,
 
-} PortEmType;
+} IpOrder;
 
 typedef enum
 {
-    EV_PAD1         = 0,
-    EV_PAD2         = 1,
-    EV_PAD3         = 2,
-    EV_PAD4         = 3,
-    EV_PAD5         = 4,
+    IP_TYPE_FCIE    = 0,
+    IP_TYPE_SDIO,
+    IP_TYPE_NONE,
 
-} PADEmType;
+} IpType;
+
+typedef enum
+{
+    PAD_ORDER_0     = 0,
+    PAD_ORDER_1,
+    PAD_ORDER_2,
+    PAD_ORDER_3,
+    PAD_ORDER_4,
+    PAD_ORDER_5,
+
+} PadOrder;
+
+
 
 
 typedef enum
@@ -229,48 +231,28 @@ typedef enum
 //###########################################################################################################
 #if (D_OS == D_OS__LINUX)
 //###########################################################################################################
-#define prtstring(s)    printk(s)
-#define prtUInt(v)      printk("%u", v)
-#define prtU8(v)        printk("0x%02X", v)
-#define prtU8Hex(v)     printk("0x%02X", v)
-#define prtU16Hex(v)    printk("0x%04X", v)
-#define prtU32Hex(v)    printk("0x%08X", v)
+#define sdmmc_print     printk
+
 //###########################################################################################################
 #elif (D_OS == D_OS__UBOOT)
 //###########################################################################################################
-#define prtstring(s)    printf(s)
-#define prtUInt(v)      printf("%u", v)
-#define prtU8(v)        printf("0x%02X", v)
-#define prtU8Hex(v)     printf("0x%02X", v)
-#define prtU16Hex(v)    printf("0x%04X", v)
-#define prtU32Hex(v)    printf("0x%08X", v)
+#define sdmmc_print     printf
+
 //###########################################################################################################
 #elif (D_OS == D_OS__NONE)
 //###########################################################################################################
-#define prtstring(s)    uart_write_string((unsigned char*)s)
-#define prtUInt(v)      uart_write_U32_hex(v)
-#define prtU8(v)        uart_write_U8_hex(v)
-#define prtU8Hex(v)     uart_write_U8_hex(v)
-#define prtU16Hex(v)    uart_write_U16_hex(v)
-#define prtU32Hex(v)    uart_write_U32_hex(v)
+#define sdmmc_print(s)  uart_write_string((unsigned char*)s)
+
 //###########################################################################################################
 #elif (D_OS == D_OS__YBOX)
 //###########################################################################################################
-#define prtstring(s)    printf(s)
-#define prtUInt(v)      printf("%u", v)
-#define prtU8(v)        printf("0x%02X", v)
-#define prtU8Hex(v)     printf("0x%02X", v)
-#define prtU16Hex(v)    printf("0x%04X", v)
-#define prtU32Hex(v)    printf("0x%08X", v)
+#define sdmmc_print(s)  printf
+
 //###########################################################################################################
 #else
 //###########################################################################################################
-#define prtstring(s)    printf(s)
-#define prtUInt(v)      printf("%u", v)
-#define prtU8(v)        printf("0x%02X", v)
-#define prtU8Hex(v)     printf("0x%02X", v)
-#define prtU16Hex(v)    printf("0x%04X", v)
-#define prtU32Hex(v)    printf("0x%08X", v)
+#define sdmmc_print(s)  printf
+
 //###########################################################################################################
 #endif
 //###########################################################################################################

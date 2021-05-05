@@ -134,6 +134,9 @@
 #define REG_MIU_PROTECT_PWR_IRQ_MASK_OFFSET (MIU_REG_BASE+0xD8UL)
 #define REG_MIU_PROTECT_PWR_IRQ_MASK_BIT    (BIT11)
 
+// PM Top Resiter
+#define REG_CHIP_INFORM_SHADOW     (PM_REG_BASE + 0xCEUL)
+
 // MMU Control Register
 #define REG_MMU_CTRL                (MIU_MMU_REG_BASE+0xA0UL)
 #define REG_MMU_RW_ENTRY            (MIU_MMU_REG_BASE+0xA2UL)
@@ -145,8 +148,10 @@
 #define REG_MMU_CLIENT_ID_6_7       (MIU_MMU_REG_BASE+0xAEUL)
 #define REG_MMU_CLIENT_ID_SEL       (MIU_MMU_REG_BASE+0xB0UL)
 #define REG_MMU_IRQ_CTRL            (MIU_MMU_REG_BASE+0xB2UL)
-#define REG_MMU_COLLISION_ENTRY     (MIU_MMU_REG_BASE+0xB2UL)
+#define REG_MMU_COLLISION_ENTRY     (MIU_MMU_REG_BASE+0xB4UL)
 #define REG_MMU_ACCESS              (MIU_MMU_REG_BASE+0xB6UL)
+// Chip2 new function Register
+#define REG_MMU_REPLACE_MSB       (MIU_MMU_REG_BASE+0xA8UL)
 
 // MMU Control
 #define REG_MMU_CTRL_ENABLE         (BIT0)
@@ -170,5 +175,8 @@
 #define REG_MMU_IRQ_WR_FLAG         (BIT8)
 #define REG_MMU_IRQ_INVALID_RW      (BIT9)
 #define REG_MMU_IRQ_INVALID_ID_MASK 15:10
+
+// Chip2 new function
+#define REG_MMU_REPLACE_MSB_MASK    4:0
 
 #endif // _REG_MIU_H_

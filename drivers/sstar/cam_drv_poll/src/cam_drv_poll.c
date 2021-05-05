@@ -15,6 +15,7 @@
 * GNU General Public License for more details.
 *
 */
+
 #include <cam_os_wrapper.h>
 #include <cam_drv_poll.h>
 

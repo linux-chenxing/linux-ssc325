@@ -383,6 +383,99 @@ extern hal_SERFLASH_t _hal_SERFLASH;
 extern MS_BOOL bDetect;
 extern MS_BOOL gQuadSupport;
 
+#ifdef CONFIG_CAM_CLK
+    #include "drv_camclk_Api.h"
+    void **pvSerflashclk = NULL;
+    u32 SerflashParentCnt = 1;
+
+
+u8 serflash_ClkDisable(void)
+{
+    u32 u32clknum = 0;
+
+    for(u32clknum = 0; u32clknum < SerflashParentCnt; u32clknum++)
+    {
+        if (pvSerflashclk[u32clknum])
+        {
+            CamClkSetOnOff(pvSerflashclk[u32clknum],0);
+        }
+    }
+    return 1;
+}
+u8 serflash_ClkEnable(void)
+{
+    u32 u32clknum = 0;
+
+    for(u32clknum = 0; u32clknum < SerflashParentCnt; u32clknum++)
+    {
+        if (pvSerflashclk[u32clknum])
+        {
+            CamClkSetOnOff(pvSerflashclk[u32clknum],1);
+        }
+    }
+
+    return 1;
+}
+u8 serflash_ClkRegister( struct device *dev)
+{
+    u32 u32clknum;
+    u32 SerFlashClk;
+    u8 str[16];
+
+    if(of_find_property(dev->of_node,"camclk",&SerflashParentCnt))
+    {
+        SerflashParentCnt /= sizeof(int);
+        //printk( "[%s] Number : %d\n", __func__, num_parents);
+        if(SerflashParentCnt < 0)
+        {
+            printk( "[%s] Fail to get parent count! Error Number : %d\n", __func__, SerflashParentCnt);
+            return 0;
+        }
+        pvSerflashclk = kzalloc((sizeof(void *) * SerflashParentCnt), GFP_KERNEL);
+        if(!pvSerflashclk){
+            return 0;
+        }
+        for(u32clknum = 0; u32clknum < SerflashParentCnt; u32clknum++)
+        {
+            SerFlashClk = 0;
+            of_property_read_u32_index(dev->of_node,"camclk", u32clknum,&(SerFlashClk));
+            if (!SerFlashClk)
+            {
+                printk( "[%s] Fail to get clk!\n", __func__);
+            }
+            else
+            {
+                CamOsSnprintf(str, 16, "serflash_%d ",u32clknum);
+                CamClkRegister(str,SerFlashClk,&(pvSerflashclk[u32clknum]));
+            }
+        }
+    }
+    else
+    {
+        printk( "[%s] W/O Camclk \n", __func__);
+    }
+    return 1;
+}
+u8 serflash_ClkUnregister(void)
+{
+
+    u32 u32clknum;
+
+    for(u32clknum=0;u32clknum<SerflashParentCnt;u32clknum++)
+    {
+        if(pvSerflashclk[u32clknum])
+        {
+            printk(KERN_DEBUG "[%s] %p\n", __func__,pvSerflashclk[u32clknum]);
+            CamClkUnregister(pvSerflashclk[u32clknum]);
+            pvSerflashclk[u32clknum] = NULL;
+        }
+    }
+    kfree(pvSerflashclk);
+
+    return 1;
+}
+#endif
+
 /*
  * board specific setup should have ensured the SPI clock used here
  * matches what the READ command supports, at least until this driver
@@ -391,14 +484,20 @@ extern MS_BOOL gQuadSupport;
 static int serflash_probe(struct platform_device *pdev)
 {
     struct serflash			*flash;
-    int num_parents, i;
+#ifndef CONFIG_CAM_CLK
+    int num_parents;
     struct clk **spi_clks;
+#endif
+    int i;
     MS_U32 u32Val;
     u32 u32Ret;
 
     if(Chip_Get_Storage_Type()!= MS_STORAGE_NOR)
         return 0;
-
+#ifdef CONFIG_CAM_CLK
+	serflash_ClkRegister(&pdev->dev);
+	serflash_ClkEnable();
+#else
     num_parents = of_clk_get_parent_count(pdev->dev.of_node);
     if(num_parents > 0)
     {
@@ -426,7 +525,7 @@ static int serflash_probe(struct platform_device *pdev)
         }
         kfree(spi_clks);
     }
-
+#endif
     if(!of_property_read_u32(pdev->dev.of_node, "quadread", (u32 *)&u32Val))
     {
         gQuadSupport = u32Val;
@@ -625,6 +724,10 @@ static int serflash_cleanup(struct platform_device *pdev)
     if (status == 0)
         kfree(flash);
 #endif
+#ifdef CONFIG_CAM_CLK
+	serflash_ClkDisable();
+	serflash_ClkUnregister();
+#else
 #if defined(CONFIG_OF)
     int num_parents, i;
     struct clk **spi_clks;
@@ -657,6 +760,7 @@ static int serflash_cleanup(struct platform_device *pdev)
         kfree(spi_clks);
     }
 #endif
+#endif
     return 0;
 }
 
@@ -670,6 +774,9 @@ static struct of_device_id flashisp_of_device_ids[] = {
 #ifdef CONFIG_PM
 static int serflash_suspend(struct platform_device *pdev, pm_message_t state)
 {
+#ifdef CONFIG_CAM_CLK
+	serflash_ClkDisable();
+#else
 #if defined(CONFIG_OF)
     int num_parents, i;
     struct clk **spi_clks;
@@ -703,11 +810,15 @@ static int serflash_suspend(struct platform_device *pdev, pm_message_t state)
         kfree(spi_clks);
     }
 #endif
+#endif
     return 0;
 }
 
 static int serflash_resume(struct platform_device *pdev)
 {
+#ifdef CONFIG_CAM_CLK
+	serflash_ClkEnable();
+#else
 #if defined(CONFIG_OF)
     int num_parents, i;
     struct clk **spi_clks;
@@ -741,11 +852,12 @@ static int serflash_resume(struct platform_device *pdev)
         kfree(spi_clks);
     }
 #endif
+#endif
     return 0;
 }
 #endif
 
-static struct platform_driver platram_driver = {
+static struct platform_driver ms_flash_driver = {
 	.probe		= serflash_probe,
 	.remove		= serflash_cleanup,
 #ifdef CONFIG_PM
@@ -762,7 +874,7 @@ static struct platform_driver platram_driver = {
 };
 
 
-module_platform_driver(platram_driver);
+module_platform_driver(ms_flash_driver);
 
 
 MODULE_LICENSE("GPL");

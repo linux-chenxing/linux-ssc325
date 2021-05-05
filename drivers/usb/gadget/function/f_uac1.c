@@ -157,7 +157,6 @@ static struct uac_input_terminal_descriptor io_in_it_desc = {
 	.bTerminalID		= IO_IN_IT_ID,
 	.wTerminalType		= cpu_to_le16(UAC_INPUT_TERMINAL_MICROPHONE),
 	.bAssocTerminal		= USB_IN_OT_ID,
-	.bNrChannels		= 1,
 	.wChannelConfig		= cpu_to_le16(0x3),
 };
 
@@ -274,7 +273,6 @@ static struct usb_endpoint_descriptor as_out_ep_desc  = {
 	.bEndpointAddress =	USB_DIR_OUT,
 	.bmAttributes =		USB_ENDPOINT_SYNC_ADAPTIVE
 				| USB_ENDPOINT_XFER_ISOC,
-	.wMaxPacketSize	=	cpu_to_le16(UAC1_OUT_EP_MAX_PACKET_SIZE),
 	.bInterval =		4,
 };
 
@@ -283,7 +281,7 @@ static struct uac_iso_endpoint_descriptor as_iso_out_desc = {
 	.bLength =		UAC_ISO_ENDPOINT_DESC_SIZE,
 	.bDescriptorType =	USB_DT_CS_ENDPOINT,
 	.bDescriptorSubtype =	UAC_EP_GENERAL,
-	.bmAttributes = 	1,
+	.bmAttributes =		1,
 	.bLockDelayUnits =	1,
 	.wLockDelay =		__constant_cpu_to_le16(1),
 };
@@ -306,7 +304,6 @@ static struct usb_endpoint_descriptor as_in_ep_desc  = {
 	.bEndpointAddress =	USB_DIR_IN,
 	.bmAttributes =		USB_ENDPOINT_SYNC_ASYNC
 				| USB_ENDPOINT_XFER_ISOC,
-	.wMaxPacketSize	=	cpu_to_le16(UAC1_IN_EP_MAX_PACKET_SIZE),
 	.bInterval =		4,
 };
 
@@ -322,13 +319,13 @@ static struct uac_iso_endpoint_descriptor as_iso_in_desc = {
 #endif
 static struct usb_interface_assoc_descriptor
 audio_iad_descriptor = {
-    .bLength           =    sizeof(audio_iad_descriptor),
-    .bDescriptorType   =    USB_DT_INTERFACE_ASSOCIATION,
-    .bFirstInterface   =    0, /* updated at bind */
-    .bInterfaceCount   =    3,
-    .bFunctionClass    =    USB_CLASS_AUDIO,
-    .bFunctionSubClass =    0,
-    .bFunctionProtocol =    UAC_VERSION_1,
+	.bLength		   =	sizeof(audio_iad_descriptor),
+	.bDescriptorType   =	USB_DT_INTERFACE_ASSOCIATION,
+	.bFirstInterface   =	0, /* updated at bind */
+	.bInterfaceCount   =	3,
+	.bFunctionClass    =	USB_CLASS_AUDIO,
+	.bFunctionSubClass =	0,
+	.bFunctionProtocol =	UAC_VERSION_1,
 };
 
 static struct usb_descriptor_header *f_audio_desc_0[] = {
@@ -492,7 +489,7 @@ struct f_audio {
 	struct list_head playback_play_queue;//store buf playback to audio
 	struct list_head capture_play_queue; //store buf capture from audio
 	struct list_head capture_req_free;//store req request, total in_req_count
-	u8     alt_intf[F_AUDIO_NUM_INTERFACES];
+	u8	   alt_intf[F_AUDIO_NUM_INTERFACES];
 
 	/* Control Set command */
 	struct list_head cs;
@@ -510,7 +507,7 @@ static inline struct f_uac1_opts *fi_to_opts(const struct usb_function_instance 
 	return container_of(fi,struct f_uac1_opts, func_inst);
 }
 
- inline struct f_audio *capture_work_to_audio(struct work_struct *w)
+static inline struct f_audio *capture_work_to_audio(struct work_struct *w)
 {
 	return container_of(w, struct f_audio,capture_work);
 }
@@ -525,12 +522,40 @@ static void f_audio_capture_work(struct work_struct *data)
 	struct f_audio_buf *capture_buf,*copy_buf = NULL;
 	struct f_uac1_opts *opts = fi_to_opts(audio->card.func.fi);
 	int audio_capture_buf_size = opts->audio_capture_buf_size;
-	unsigned long flags;
+	unsigned long flags, flags_req;
 	unsigned int copy_size, left_size, in_req_buf_size = opts->in_req_buf_size;
 	struct usb_ep *ep = audio->in_ep;
 	int res = 0, ret = 0;
 
 	pr_debug("%s Started\n", __func__);
+
+	/* disabe ep */
+	if (!audio->alt_intf[F_AUDIO_AS_IN_INTERFACE])
+	{
+		spin_lock_irqsave(&audio->capture_lock, flags);
+		while (!list_empty(&audio->capture_play_queue)) {
+			capture_buf = list_first_entry(
+				&audio->capture_play_queue,
+				struct f_audio_buf,list);
+			list_del(&capture_buf->list);
+			f_audio_buffer_free(capture_buf);
+		}
+		spin_unlock_irqrestore(&audio->capture_lock, flags);
+
+		spin_lock_irqsave(&audio->capture_req_lock, flags_req);
+		while (!list_empty(&audio->capture_req_free)) {
+			req = list_first_entry(&audio->capture_req_free, struct usb_request,list);
+			list_del(&req->list);
+			ret = usb_ep_queue(ep, req, GFP_ATOMIC);
+			if(ret < 0) {
+				spin_unlock_irqrestore(&audio->capture_req_lock, flags);
+				printk(KERN_INFO "Failed to queue request (%d).\n", ret);
+				return;
+			}
+		}
+		spin_unlock_irqrestore(&audio->capture_req_lock, flags);
+		return;
+	}
 
 	spin_lock_irqsave(&audio->capture_lock, flags);
 	if (!list_empty(&audio->capture_play_queue)) {
@@ -575,7 +600,6 @@ static void f_audio_capture_work(struct work_struct *data)
 		/* Get a capture buf */
 		spin_lock_irqsave(&audio->capture_lock, flags);
 		if (list_empty(&audio->capture_play_queue)) {
-			schedule_work(&audio->capture_work);
 			spin_unlock_irqrestore(&audio->capture_lock, flags);
 			goto requeue;
 		}
@@ -583,7 +607,6 @@ static void f_audio_capture_work(struct work_struct *data)
 		copy_buf = list_first_entry(&audio->capture_play_queue,
 		struct f_audio_buf, list);
 		if (copy_buf == NULL) {
-			schedule_work(&audio->capture_work);
 			spin_unlock_irqrestore(&audio->capture_lock, flags);
 			goto requeue;
 		}
@@ -602,15 +625,16 @@ static void f_audio_capture_work(struct work_struct *data)
 		ret = usb_ep_queue(ep, req, GFP_ATOMIC);
 		if(ret < 0) {
 			printk(KERN_INFO "Failed to queue request (%d).\n", ret);
-			usb_ep_set_halt(ep);
 			goto requeue;
 		}
 	}
 
+	return;
 requeue:
 	spin_lock_irqsave(&audio->capture_req_lock, flags);
 	list_add_tail(&req->list, &audio->capture_req_free);
 	spin_unlock_irqrestore(&audio->capture_req_lock, flags);
+	schedule_work(&audio->capture_work);
 }
 #endif
 
@@ -637,47 +661,20 @@ static void f_audio_playback_work(struct work_struct *data)
 static int f_audio_in_ep_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_audio *audio = req->context;
-	struct f_audio_buf *copy_buf = NULL;
-	struct f_uac1_opts *opts = fi_to_opts(audio->card.func.fi);
-	int audio_capture_buf_size = opts->audio_capture_buf_size;
 	unsigned long flags;
-	unsigned int copy_size, left_size, in_req_buf_size = opts->in_req_buf_size;
-	int err = 0;
 
-	spin_lock_irqsave(&audio->capture_lock, flags);
-	if (list_empty(&audio->capture_play_queue)) {
-		pr_debug("capture_play_queue is Empty\n");
+	if (audio->alt_intf[F_AUDIO_AS_IN_INTERFACE])
+	{
+		spin_lock_irqsave(&audio->capture_req_lock, flags);
+		list_add_tail(&req->list, &audio->capture_req_free);
+		spin_unlock_irqrestore(&audio->capture_req_lock, flags);
 		schedule_work(&audio->capture_work);
-		spin_unlock_irqrestore(&audio->capture_lock, flags);
-		goto requeue;
+	} else //cancel buf (SHUTDOWN)
+	{
+		kfree(req->buf);
+		usb_ep_free_request(ep, req);
 	}
-
-	copy_buf = list_first_entry(&audio->capture_play_queue,
-			struct f_audio_buf, list);
-
-	left_size = audio_capture_buf_size - copy_buf->actual;
-	copy_size = min(left_size, in_req_buf_size);
-	memcpy(req->buf, copy_buf->buf + copy_buf->actual, copy_size);
-	req->length = copy_size;
-	copy_buf->actual += copy_size;
-	if (audio_capture_buf_size <= copy_buf->actual) {
-		list_del(&copy_buf->list);
-		f_audio_buffer_free(copy_buf);
-		schedule_work(&audio->capture_work);
-	}
-	spin_unlock_irqrestore(&audio->capture_lock, flags);
-	err = usb_ep_queue(ep, req, GFP_ATOMIC);
-	if (err) {
-		pr_err("Failed to queue %s req: err - %d\n", ep->name, err);
-		goto requeue;
-	}
-
 	return 0;
-requeue:
-	spin_lock_irqsave(&audio->capture_req_lock, flags);
-	list_add_tail(&req->list, &audio->capture_req_free);
-	spin_unlock_irqrestore(&audio->capture_req_lock, flags);
-	return err;
 }
 static int f_audio_out_ep_complete(struct usb_ep *ep, struct usb_request *req)
 {
@@ -691,6 +688,13 @@ static int f_audio_out_ep_complete(struct usb_ep *ep, struct usb_request *req)
 	opts = container_of(audio->card.func.fi, struct f_uac1_opts,
 			func_inst);
 	audio_playback_buf_size = opts->audio_playback_buf_size;
+
+	if (!audio->alt_intf[F_AUDIO_AS_OUT_INTERFACE])//cancel buf (SHUTDOWN)
+	{
+		kfree(req->buf);
+		usb_ep_free_request(ep, req);
+		return 0;
+	}
 
 	if (!playback_copy_buf)
 		return -EINVAL;
@@ -738,6 +742,15 @@ static void f_audio_complete(struct usb_ep *ep, struct usb_request *req)
 			audio->set_con = NULL;
 		}
 		break;
+	case -ESHUTDOWN:
+		if (ep == out_ep)
+		{
+			f_audio_out_ep_complete(ep, req);
+		}
+		else if (ep == in_ep)
+		{
+			f_audio_in_ep_complete(ep, req);
+		}
 	default:
 		break;
 	}
@@ -950,14 +963,14 @@ static int f_audio_get_alt(struct usb_function *f, unsigned intf)
 
 #if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)
 	if ((ENABLE_MICROPHONE == opts->audio_play_mode) ||
-	    (ENABLE_MIC_AND_SPK == opts->audio_play_mode &&
-	     intf == ac_header_desc_2.baInterfaceNr[F_AUDIO_AS_IN_INTERFACE]))
+		(ENABLE_MIC_AND_SPK == opts->audio_play_mode &&
+		 intf == ac_header_desc_2.baInterfaceNr[F_AUDIO_AS_IN_INTERFACE]))
 	{
 		return audio->alt_intf[F_AUDIO_AS_IN_INTERFACE];
 	}
 	if ((ENABLE_SPEAKER == opts->audio_play_mode) ||
-	    (ENABLE_MIC_AND_SPK == opts->audio_play_mode &&
-	     intf == ac_header_desc_2.baInterfaceNr[F_AUDIO_AS_OUT_INTERFACE]))
+		(ENABLE_MIC_AND_SPK == opts->audio_play_mode &&
+		 intf == ac_header_desc_2.baInterfaceNr[F_AUDIO_AS_OUT_INTERFACE]))
 #endif
 	{
 		return audio->alt_intf[F_AUDIO_AS_OUT_INTERFACE];
@@ -997,6 +1010,9 @@ static int f_audio_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		   (ENABLE_MIC_AND_SPK == opts->audio_play_mode && intf == ac_header_desc_2.baInterfaceNr[F_AUDIO_AS_IN_INTERFACE]))
 	{
 		if (alt == 1) {
+			if (in_ep)
+				usb_ep_disable(in_ep);
+
 			err = config_ep_by_speed(cdev->gadget, f, in_ep);
 			if (err)
 				return err;
@@ -1022,23 +1038,11 @@ static int f_audio_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 				list_add_tail(&req->list, &audio->capture_req_free);
 				spin_unlock_irqrestore(&audio->capture_req_lock, flags);
 			}
-			schedule_work(&audio->capture_work);
-
 		} else {
-			struct f_audio_buf *capture_buf;
-			usb_ep_disable(in_ep);
-			spin_lock_irqsave(&audio->capture_lock, flags);
-			while (!list_empty(&audio->capture_play_queue)) {
-				capture_buf = list_first_entry(
-					&audio->capture_play_queue,
-					struct f_audio_buf,list);
-				list_del(&capture_buf->list);
-				f_audio_buffer_free(capture_buf);
-			}
-			INIT_LIST_HEAD(&audio->capture_req_free);
-			spin_unlock_irqrestore(&audio->capture_lock, flags);
+			;//cancal buf at ep complete and work task
 		}
 		audio->alt_intf[F_AUDIO_AS_IN_INTERFACE] = alt;
+		schedule_work(&audio->capture_work);
 	} else if ((ENABLE_SPEAKER == opts->audio_play_mode) ||
 		(ENABLE_MIC_AND_SPK == opts->audio_play_mode && intf == ac_header_desc_2.baInterfaceNr[F_AUDIO_AS_OUT_INTERFACE]))
 #endif
@@ -1078,18 +1082,18 @@ static int f_audio_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 				} else
 					err = -ENOMEM;
 			}
-
+			audio->alt_intf[F_AUDIO_AS_OUT_INTERFACE] = alt;
 		} else {
 			struct f_audio_buf *playback_copy_buf = audio->playback_copy_buf;
-			usb_ep_disable(out_ep);
 			if (playback_copy_buf) {
 				list_add_tail(&playback_copy_buf->list,
 						&audio->playback_play_queue);
 				schedule_work(&audio->playback_work);
 				audio->playback_copy_buf = NULL;
 			}
+			audio->alt_intf[F_AUDIO_AS_OUT_INTERFACE] = alt;
+			usb_ep_disable(out_ep);
 		}
-		audio->alt_intf[F_AUDIO_AS_OUT_INTERFACE] = alt;
 	}
 	return err;
 }
@@ -1232,6 +1236,7 @@ f_audio_bind(struct usb_configuration *c, struct usb_function *f)
 	  ENABLE_MIC_AND_SPK == audio_opts->audio_play_mode )
 #endif
 	{
+		as_out_ep_desc.wMaxPacketSize = audio_opts->out_req_buf_size;
 		ep = usb_ep_autoconfig(cdev->gadget, &as_out_ep_desc);
 		if (!ep)
 			goto fail;
@@ -1243,6 +1248,7 @@ f_audio_bind(struct usb_configuration *c, struct usb_function *f)
 	if(ENABLE_MICROPHONE == audio_opts->audio_play_mode ||
 	   ENABLE_MIC_AND_SPK == audio_opts->audio_play_mode )
 	{
+		as_in_ep_desc.wMaxPacketSize = audio_opts->in_req_buf_size;
 		ep = usb_ep_autoconfig(cdev->gadget, &as_in_ep_desc);
 		if (!ep)
 			goto fail;
@@ -1304,9 +1310,9 @@ static int control_selector_init(struct f_audio *audio)
 #if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)
 	INIT_LIST_HEAD(&capture_fu_controls.control);
 	list_add(&capture_mute_control.list,
-		     &capture_fu_controls.control);
+			 &capture_fu_controls.control);
 	list_add(&capture_volume_control.list,
-		     &capture_fu_controls.control);
+			 &capture_fu_controls.control);
 #endif
 	INIT_LIST_HEAD(&playback_fu_controls.control);
 	list_add(&playback_mute_control.list,
@@ -1330,7 +1336,7 @@ static int control_selector_init(struct f_audio *audio)
 static inline struct f_uac1_opts *to_f_uac1_opts(struct config_item *item)
 {
 	return container_of(to_config_group(item), struct f_uac1_opts,
-			    func_inst.group);
+				func_inst.group);
 }
 
 static void f_uac1_attr_release(struct config_item *item)
@@ -1485,17 +1491,7 @@ static struct usb_function_instance *f_audio_alloc_inst(void)
 	opts->func_inst.free_func_inst = f_audio_free_inst;
 
 	config_group_init_type_name(&opts->func_inst.group, "",
-				    &f_uac1_func_type);
-
-	opts->out_req_buf_size = UAC1_OUT_EP_MAX_PACKET_SIZE;
-	opts->out_req_count = UAC1_OUT_REQ_COUNT;
-	opts->audio_playback_buf_size = UAC1_AUDIO_PLAYBACK_BUF_SIZE;
-
-#if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)
-	opts->in_req_buf_size = UAC1_IN_EP_MAX_PACKET_SIZE;
-	opts->in_req_count = UAC1_IN_REQ_COUNT;
-	opts->audio_capture_buf_size = UAC1_AUDIO_CAPTURE_BUF_SIZE;
-#endif
+					&f_uac1_func_type);
 
 	opts->fn_play = FILE_PCM_PLAYBACK;
 #if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)

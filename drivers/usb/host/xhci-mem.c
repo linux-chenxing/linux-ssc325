@@ -38,7 +38,7 @@
 #endif
 
 #if (MP_USB_MSTAR==1) && (XHCI_FLUSHPIPE_PATCH)
-extern void Chip_Flush_Memory(void);
+extern void Chip_Flush_MIU_Pipe(void);
 #endif
 
 /*
@@ -2683,7 +2683,7 @@ int xhci_mem_init(struct xhci_hcd *xhci, gfp_t flags)
 	}
 
 #if (MP_USB_MSTAR==1) && (XHCI_FLUSHPIPE_PATCH)
-	Chip_Flush_Memory();
+	Chip_Flush_MIU_Pipe();
 #endif
 
 	/* set ERST count with the number of entries in the segment table */

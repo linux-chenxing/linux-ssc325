@@ -967,6 +967,7 @@ static int __init KernelTestInit(void)
 #endif
 #ifdef TEST_MEM_SIZE
     CamOsMemSize_e eMemSize;
+    CamOsDramInfo_t Info = {0};
 #endif
 
 #ifdef TEST_ATOMIC_OPERATION
@@ -1316,13 +1317,15 @@ static int __init KernelTestInit(void)
     CamOsPrintf("=================================\n");
     eMemSize = CamOsPhysMemSize();
     CamOsPrintf("System has %dMB physical memory\n", 1<<(uint32_t)eMemSize);
+    CamOsDramInfo(&Info);
+    CamOsPrintf("DRAM Info:  Size %d    Type %d    Bus %d\n", Info.nBytes, Info.nType, Info.nBusWidth);
 #endif
 
 #ifdef TEST_CHIP_ID
     CamOsPrintf("=================================\n");
     CamOsPrintf("Test chip ID\n");
     CamOsPrintf("=================================\n");
-    CamOsPrintf("Chip ID: 0x%X\n", CamOsChipId());
+    CamOsPrintf("Chip ID: 0x%X    Revision: 0x%X\n", CamOsChipId(), CamOsChipRevision());
 #endif
 
 #ifdef TEST_ATOMIC_OPERATION

@@ -134,11 +134,10 @@ static int mstar_get_revision(void)
     return (tmp+1);
 }
 
-
 static void mstar_chip_flush_miu_pipe(void)
 {
-    unsigned long   dwLockFlag = 0;
-    unsigned short dwReadData = 0;
+    volatile unsigned long dwLockFlag = 0;
+    volatile unsigned short dwReadData = 0;
 
     spin_lock_irqsave(&mstar_l2prefetch_lock, dwLockFlag);
     //toggle the flush miu pipe fire bit
@@ -154,6 +153,12 @@ static void mstar_chip_flush_miu_pipe(void)
 
     spin_unlock_irqrestore(&mstar_l2prefetch_lock, dwLockFlag);
 
+}
+
+static void mstar_chip_flush_STB_and_miu_pipe(void)
+{
+    dsb();
+    mstar_chip_flush_miu_pipe();
 }
 
 static u64 mstar_phys_to_MIU(u64 x)
@@ -363,7 +368,8 @@ static void __init mstar_init_early(void)
     //enable axi exclusive access
     *(volatile unsigned short *)(0xFD204414) = 0x10;
 
-    chip->chip_flush_miu_pipe=mstar_chip_flush_miu_pipe;
+    chip->chip_flush_miu_pipe=mstar_chip_flush_STB_and_miu_pipe;//dsb
+    chip->chip_flush_miu_pipe_nodsb=mstar_chip_flush_miu_pipe;//nodsbchip->phys_to_miu=mstar_phys_to_MIU;
     chip->phys_to_miu=mstar_phys_to_MIU;
     chip->miu_to_phys=mstar_MIU_to_phys;
     chip->chip_get_device_id=mstar_get_device_id;

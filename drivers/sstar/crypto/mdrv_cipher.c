@@ -105,8 +105,8 @@ static int cipher_aes_crypto(MDRV_AES_HANDLE *handle, AES_DIR dir)
     op.len = handle->len;
     op.dir = (dir == E_AES_DIR_DECRYPT) ? AES_DIR_DECRYPT : AES_DIR_ENCRYPT;
     op.iv = handle->iv;
-    memcpy(op.key, handle->key, AES_KEYSIZE_128);
-    op.keylen = AES_KEYSIZE_128;
+    memcpy(op.key, handle->key, handle->keylen);
+    op.keylen = handle->keylen;
     switch(handle->mode) {
     case E_AES_ALGO_ECB:
         op.mode = AES_MODE_ECB;

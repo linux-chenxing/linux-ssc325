@@ -15,6 +15,7 @@
 * GNU General Public License for more details.
 *
 */
+
 #include <cam_os_wrapper.h>
 #include <cam_drv_poll.h>
 #include <mdrv_pollsample_io.h>
@@ -183,12 +184,12 @@ unsigned int pollsamp_poll(struct file *filp, poll_table *tpoll)
     if((eventBits & EVENT_TIMER1) != 0)
     {
         CamOsPrintf("pollsamp_poll: got event bits=0x%x\n", eventBits);
-        mask |= CAM_DEV_POLLIN;
+        mask |= POLLIN;
     }
     if((eventBits & EVENT_TIMER2) != 0)
     {
         CamOsPrintf("pollsamp_poll: got event bits=0x%x\n", eventBits);
-        mask |= CAM_DEV_POLLPRI;
+        mask |= POLLPRI;
     }
 #else
     if (dpd)

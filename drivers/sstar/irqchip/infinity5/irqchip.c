@@ -39,6 +39,7 @@
 #include <linux/of_irq.h>
 #include <linux/interrupt.h>
 
+#define CONFIG_PATCH_STATUS_FAILS 1
 
 /*         _ _ _ _ _ _ _ _ _ _                  */
 /*        |                   |                 */
@@ -90,7 +91,7 @@ static void ms_pm_irq_eoi(struct irq_data *d)
         pr_err("[%s] Unknown hwirq %lu\n", __func__, d->hwirq);
         return;
 	}
-	
+
 
 }
 
@@ -217,7 +218,21 @@ EXPORT_SYMBOL(ms_pm_intc_irqchip);
 
 static void ms_main_irq_ack(struct irq_data *d)
 {
-    if(d && d->chip && d->parent_data)
+    s16 ms_fiq;
+
+    ms_fiq = d->hwirq - GIC_SPI_ARM_INTERNAL_NR - GIC_SPI_MS_IRQ_NR;
+
+    if( ms_fiq >= 0 && ms_fiq < GIC_SPI_MS_FIQ_NR )
+    {
+        SETREG16( (BASE_REG_INTRCTL_PA + REG_ID_4C + (ms_fiq/16)*4 ) , (1 << (ms_fiq%16)) );
+    }
+    else if( ms_fiq >= GIC_SPI_MS_FIQ_NR )
+    {
+        pr_err("[%s] Unknown hwirq %lu, ms_fiq %d\n", __func__, d->hwirq, ms_fiq);
+        return;
+    }
+
+    if(d && d->chip && d->parent_data && d->parent_data->chip->irq_ack)
     {
         irq_chip_ack_parent(d);
     }
@@ -300,7 +315,7 @@ static int  ms_main_irq_set_type(struct irq_data *data, unsigned int flow_type)
 
     if( (flow_type&IRQ_TYPE_EDGE_BOTH)==IRQ_TYPE_EDGE_BOTH)
     {
-        pr_err("could not support IRQ_TYPE_EDGE_BOTH mode 0x%x\n",flow_type);
+        pr_err("Not support IRQ_TYPE_EDGE_BOTH mode 0x%x\n",flow_type);
         return 0;
     }
 
@@ -354,7 +369,7 @@ static void ms_handle_cascade_pm_irq(struct irq_desc *desc)
 
     if(!domain)
     {
-        printk("[%s] error %d \n", __FUNCTION__, __LINE__);
+        printk("[%s] err %d \n", __FUNCTION__, __LINE__);
         return ;
     }
 
@@ -368,23 +383,46 @@ static void ms_handle_cascade_pm_irq(struct irq_desc *desc)
             break;
         }
     }
+#ifdef CONFIG_PATCH_STATUS_FAILS
+    if(0xFFFFFFFF==cascade_irq)
+    {
+        for(i=0;i<32;i++)
+        {
+            final_status =INREG16(BASE_REG_PMGPIO_PA+i*4);
+            if(final_status&(BIT8|BIT9))
+            {
+                cascade_irq = i + 2;
+                break;
+            }
+        }
+    }
+#endif
     spin_unlock(&ss_irq_controller_lock);
 
     if(0xFFFFFFFF==cascade_irq)
     {
+#ifdef CONFIG_PATCH_STATUS_FAILS
+        for(i=0;i<32;i++)
+        {
+            // clear all pm-gpio status
+            SETREG16(BASE_REG_PMGPIO_PA+i*4, BIT6);
+        }
+#endif
         pr_err("[%s] error %d final_status:%d 0x%04X virq:%d\n", __FUNCTION__, __LINE__, cascade_irq, final_status, virq);
-        return ;
+        goto exit;
     }
 
     virq = irq_find_mapping(domain, cascade_irq);
     if(!virq)
     {
-        printk("[%s] error %d \n", __FUNCTION__, __LINE__);
-        return ;
+        printk("[%s] err %d \n", __FUNCTION__, __LINE__);
+        goto exit;
     }
     pr_debug("%s %d final_status:%d 0x%04X virq:%d\n", __FUNCTION__, __LINE__, cascade_irq, final_status, virq);
     chained_irq_enter(chip, desc);
     generic_handle_irq(virq);
+
+exit:
     chained_irq_exit(chip, desc);
 }
 
@@ -544,7 +582,7 @@ static int __init ms_init_main_intc(struct device_node *np, struct device_node *
 
     if (!interrupt_parent)
     {
-        pr_err("%s: %s no parent, return\n", __func__, np->name);
+        pr_err("%s: %s no parent\n", __func__, np->name);
         return -ENODEV;
     }
 
@@ -553,7 +591,7 @@ static int __init ms_init_main_intc(struct device_node *np, struct device_node *
     parent_domain = irq_find_host(interrupt_parent);
     if (!parent_domain)
     {
-        pr_err("%s: %s unable to obtain intc parent domain, return\n", __func__, np->name);
+        pr_err("%s: %s unable to obtain parent domain\n", __func__, np->name);
         return -ENXIO;
     }
 
@@ -571,7 +609,7 @@ static int __init ms_init_main_intc(struct device_node *np, struct device_node *
 
     if (!domain)
     {
-        pr_err("%s: %s failed to allocated domain\n", __func__, np->name);
+        pr_err("%s: %s allocat domain fail\n", __func__, np->name);
         return -ENOMEM;
     }
 
@@ -586,7 +624,7 @@ static int __init ms_init_pm_intc(struct device_node *np, struct device_node *in
     int irq=0;
     if (!interrupt_parent)
     {
-        pr_err("%s: %s no parent, return\n", __func__, np->name);
+        pr_err("%s: %s no parent\n", __func__, np->name);
         return -ENODEV;
     }
 
@@ -595,7 +633,7 @@ static int __init ms_init_pm_intc(struct device_node *np, struct device_node *in
     parent_domain = irq_find_host(interrupt_parent);
     if (!parent_domain)
     {
-        pr_err("%s: %s unable to obtain intc parent domain, return\n", __func__, np->name);
+        pr_err("%s: %s unable to obtain parent domain\n", __func__, np->name);
         return -ENXIO;
     }
 
@@ -605,14 +643,14 @@ static int __init ms_init_pm_intc(struct device_node *np, struct device_node *in
 
     if (!ms_pm_irq_domain)
     {
-        pr_err("%s: %s failed to allocated domain\n", __func__, np->name);
+        pr_err("%s: %s allocat domain fail\n", __func__, np->name);
         return -ENOMEM;
     }
 
     irq = irq_of_parse_and_map(np, 0);
     if (!irq)
     {
-        pr_err("Get irq number error from DTS\n");
+        pr_err("Get irq err from DTS\n");
         return -EPROBE_DEFER;
     }
 

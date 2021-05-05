@@ -17,7 +17,7 @@
 */
 #include <asm/types.h>
 #include "mdrv_types.h"
-
+#include <linux/gpio.h>
 //-------------------------------------------------------------------------------------------------
 //  Driver Capability
 //-------------------------------------------------------------------------------------------------
@@ -60,9 +60,16 @@ typedef struct GPIO_Reg GPIO_Reg_t;
 
 #define GPIO_IOC_MAXNR               9
 
+//for rename use
 //-------------------------------------------------------------------------------------------------
 //  Function and Variable
 //-------------------------------------------------------------------------------------------------
+void camdriver_gpio_set(struct gpio_chip *chip, unsigned offset, int value);
+int camdriver_gpio_get(struct gpio_chip *chip, unsigned offset);
+int camdriver_gpio_direction_input(struct gpio_chip *chip, unsigned offset);
+int camdriver_gpio_request(struct gpio_chip *chip, unsigned offset);
+int camdriver_gpio_direction_output(struct gpio_chip *chip, unsigned offset,
+                    int value);
+int camdriver_gpio_to_irq(struct gpio_chip *chip, unsigned offset);
 
 void __mod_gpio_init(void);
-

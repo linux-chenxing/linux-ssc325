@@ -35,6 +35,12 @@ typedef enum
     E_AES_ALGO_CTR,
 } MDRV_AES_ALGO_MODE;
 
+typedef enum
+{
+    E_AES_KEY_SRC_INT_UNI = 1,
+    E_AES_KEY_SRC_INT_CONST,
+} MDRV_AES_KEY_SOURCE;
+
 // AES handle
 typedef struct
 {

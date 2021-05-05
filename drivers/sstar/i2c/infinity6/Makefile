@@ -1,1 +1,3 @@
-../infinity2m/Makefile
+# general options
+EXTRA_CFLAGS      +=  -Idrivers/sstar/include
+EXTRA_CFLAGS      +=  -Idrivers/sstar/i2c

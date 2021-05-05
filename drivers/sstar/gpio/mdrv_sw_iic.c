@@ -468,8 +468,8 @@ S32 MDrv_SW_IIC_Write(U8 u8ChIIC, U8 u8SlaveID, U8 u8AddrCnt, U8* pu8Addr, U32 u
         if (MDrv_SW_IIC_AccessStart(u8ChIIC, u8SlaveID, SWIIC_WRITE) == FALSE)
         {
             s32RetCountIIC = -2;
-            swi2cDbg(":write slave address failed,err=%d\r\n",s32RetCountIIC);
-            //OALMSG(1, (L":write slave address failed,err=%d\r\n",s32RetCountIIC));
+            swi2cDbg(":W slave addr fail(%d)\r\n",s32RetCountIIC);
+            //OALMSG(1, (L":W slave addr fail(%d)\r\n",s32RetCountIIC));
 
             goto SW_IIC_Write_End;
         }
@@ -480,7 +480,7 @@ S32 MDrv_SW_IIC_Write(U8 u8ChIIC, U8 u8SlaveID, U8 u8AddrCnt, U8* pu8Addr, U32 u
               if ( MDrv_SW_IIC_SendByte(u8ChIIC, *pu8Addr, 0) == FALSE )
               {
                 s32RetCountIIC = -3;
-                swi2cDbg(":write register address failed,err=%d\r\n",s32RetCountIIC);
+                swi2cDbg(":W reg addr fail(%d)\r\n",s32RetCountIIC);
                 goto SW_IIC_Write_End;
               }
               pu8Addr++;
@@ -491,7 +491,7 @@ S32 MDrv_SW_IIC_Write(U8 u8ChIIC, U8 u8SlaveID, U8 u8AddrCnt, U8* pu8Addr, U32 u
             if ( MDrv_SW_IIC_SendByte(u8ChIIC, *pu8Buf, 0) == FALSE )
             {
                 s32RetCountIIC = -4;
-                swi2cDbg(":write data failed,err=%d\r\n",s32RetCountIIC);
+                swi2cDbg(":W data fail(%d)\r\n",s32RetCountIIC);
                 goto SW_IIC_Write_End;
             }
             pu8Buf++; // next byte pointer
@@ -544,8 +544,8 @@ S32 MDrv_SW_IIC_Read(U8 u8ChIIC, U8 u8SlaveID, U8 u8AddrCnt, U8* pu8Addr, U32 u3
             if (MDrv_SW_IIC_AccessStart(u8ChIIC, u8SlaveID, SWIIC_WRITE) == FALSE)
             {
                 s32RetCountIIC = -2;
-                swi2cDbg(":write slave address failed,err=%d\r\n",s32RetCountIIC);
-                //printk(KERN_INFO "%s:write slave address failed,err=%d\n",__FUNCTION__,s32RetCountIIC);
+                swi2cDbg(":W slave addr fail(%d)\r\n",s32RetCountIIC);
+                //printk(KERN_INFO "%s:W slave addr fail(%d)\n",__FUNCTION__,s32RetCountIIC);
                 goto SW_IIC_Read_End;
             }
 
@@ -556,8 +556,8 @@ S32 MDrv_SW_IIC_Read(U8 u8ChIIC, U8 u8SlaveID, U8 u8AddrCnt, U8* pu8Addr, U32 u3
                 if (MDrv_SW_IIC_SendByte(u8ChIIC, *pu8Addr, 0) == FALSE)
                 {
                     s32RetCountIIC = -3;
-                    swi2cDbg(":write register address failed,err=%d\r\n",s32RetCountIIC);
-                    //printk(KERN_INFO "%s:write register address failed,err=%d\n",__FUNCTION__,s32RetCountIIC);
+                    swi2cDbg(":W reg addr fail(%d)\r\n",s32RetCountIIC);
+                    //printk(KERN_INFO "%s:W reg addr fail(%d)\n",__FUNCTION__,s32RetCountIIC);
                     goto SW_IIC_Read_End;
                 }
                 pu8Addr++;
@@ -567,8 +567,8 @@ S32 MDrv_SW_IIC_Read(U8 u8ChIIC, U8 u8SlaveID, U8 u8AddrCnt, U8* pu8Addr, U32 u3
         if (MDrv_SW_IIC_AccessStart(u8ChIIC, u8SlaveID, SWIIC_READ) == FALSE)
         {
             s32RetCountIIC = -4;
-            swi2cDbg(":write slave address failed,err=%d\r\n",s32RetCountIIC);
-            //printk(KERN_INFO "%s:write slave address failed,err=%d\n",__FUNCTION__,s32RetCountIIC);
+            swi2cDbg(":W slave addr fail(%d)\r\n",s32RetCountIIC);
+            //printk(KERN_INFO "%s:W slave addr fail(%d)\n",__FUNCTION__,s32RetCountIIC);
             goto SW_IIC_Read_End;
         }
 
@@ -646,11 +646,11 @@ U16 MDrv_SW_IIC_ConfigBus(I2C_BusCfg_t* pBusCfg)
     U8 u8ChIIC;
 
 
-    swi2cDbg("[%s] Channel index = %d \r\n",__FUNCTION__,pBusCfg->u8ChIdx);
-    swi2cDbg("[%s] Channel PadSCL = %d \r\n",__FUNCTION__,pBusCfg->u8PadSCL);
-    swi2cDbg("[%s] Channel PadSDA = %d \r\n",__FUNCTION__,pBusCfg->u8PadSDA);
-    swi2cDbg("[%s] Channel SpeedKHz = %d \r\n",__FUNCTION__,pBusCfg->u16SpeedKHz);
-    swi2cDbg("[%s] Channel Enable = %d \r\n",__FUNCTION__,pBusCfg->u8Enable);
+    swi2cDbg("[%s] Ch index = %d \r\n",__FUNCTION__,pBusCfg->u8ChIdx);
+    swi2cDbg("[%s] Ch PadSCL = %d \r\n",__FUNCTION__,pBusCfg->u8PadSCL);
+    swi2cDbg("[%s] Ch PadSDA = %d \r\n",__FUNCTION__,pBusCfg->u8PadSDA);
+    swi2cDbg("[%s] Ch SpeedKHz = %d \r\n",__FUNCTION__,pBusCfg->u16SpeedKHz);
+    swi2cDbg("[%s] Ch Enable = %d \r\n",__FUNCTION__,pBusCfg->u8Enable);
     u8ChIIC = pBusCfg->u8ChIdx;
     g_I2CBusCfg[u8ChIIC].u8ChIdx = pBusCfg->u8ChIdx;
     g_I2CBusCfg[u8ChIIC].u8PadSCL = pBusCfg->u8PadSCL;

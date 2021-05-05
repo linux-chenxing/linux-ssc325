@@ -216,6 +216,9 @@ config USB_F_PRINTER
 config USB_F_TCM
 	tristate
 
+config USB_F_DFU
+	tristate
+
 # this first set of drivers all depend on bulk-capable hardware.
 
 config USB_CONFIGFS

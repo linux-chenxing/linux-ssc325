@@ -18,6 +18,7 @@
 #include "mdrv_ive.h"
 #include "drv_ive.h"
 #include "hal_ive.h"
+#include "ms_platform.h"
 
 #include <linux/of.h>
 #include <linux/of_irq.h>
@@ -191,12 +192,19 @@ static IVE_IOC_ERROR drv_ive_check_config(ive_ioc_config *config)
  * Return:
  *   None
  */
+
 static void ive_drv_sync_image(ive_drv_handle *handle, ive_ioc_image *image, enum dma_data_direction direct)
 {
 #ifdef USE_MIU_DIRECT
     IVE_MSG(IVE_MSG_DBG, "sync buffer %p, but nothing to do for MIU buffer\n", image->address[0]);
 #else
     int i, size, byte_per_pixel;
+	void (*func_ptr)(unsigned long, unsigned long);
+
+	if (direct == DMA_TO_DEVICE)
+		func_ptr = Chip_Flush_Cache_Range;
+	else if (direct == DMA_FROM_DEVICE)
+		func_ptr = Chip_Inv_Cache_Range;
 
     switch (image->format)
     {
@@ -226,22 +234,20 @@ static void ive_drv_sync_image(ive_drv_handle *handle, ive_ioc_image *image, enu
             break;
 
         case IVE_IOC_IMAGE_FORMAT_B8C3_PLAN:
-            size = image->stride[0] * image->height * sizeof(u8);
-            dma_sync_single_for_device(NULL, (dma_addr_t)image->address[0], size, direct);
-            dma_sync_single_for_device(NULL, (dma_addr_t)image->address[1], size, direct);
-            dma_sync_single_for_device(NULL, (dma_addr_t)image->address[2], size, direct);
-            return;
+			byte_per_pixel = sizeof(u8);
+			IVE_MSG(IVE_MSG_DBG, "case %d: byte_per_pixel = %d (%d)", image->format, byte_per_pixel, sizeof(u64) );
+			break;
 
         case IVE_IOC_IMAGE_FORMAT_420SP:
-            size = image->stride[0] * image->height * sizeof(u8);
-            dma_sync_single_for_device(NULL, (dma_addr_t)image->address[0], size, direct);
-            dma_sync_single_for_device(NULL, (dma_addr_t)image->address[1], size/2, direct);
+			size = image->stride[0] * image->height * sizeof(u8);
+			func_ptr((unsigned long)phys_to_virt((dma_addr_t)image->address[0]), size);
+			func_ptr((unsigned long)phys_to_virt((dma_addr_t)image->address[1]), size/2);
             return;
 
         case IVE_IOC_IMAGE_FORMAT_422SP:
             size = image->stride[0] * image->height * sizeof(u8);
-            dma_sync_single_for_device(NULL, (dma_addr_t)image->address[0], size, direct);
-            dma_sync_single_for_device(NULL, (dma_addr_t)image->address[1], size, direct);
+			func_ptr((unsigned long)phys_to_virt((dma_addr_t)image->address[0]), size);
+			func_ptr((unsigned long)phys_to_virt((dma_addr_t)image->address[1]), size);
             return;
 
         default:
@@ -254,7 +260,7 @@ static void ive_drv_sync_image(ive_drv_handle *handle, ive_ioc_image *image, enu
         if (image->address[i] != NULL)
         {
             size = image->stride[i] * image->height * byte_per_pixel;
-            dma_sync_single_for_device(NULL, (dma_addr_t)image->address[i], size, direct);
+			func_ptr((unsigned long)phys_to_virt((dma_addr_t)image->address[i]), size);
             IVE_MSG(IVE_MSG_DBG, "sync buffer %p, format %x, size %d * %d * %d = %d\n", image->address[i], image->format, image->stride[i], image->height, byte_per_pixel, size);
         }
     }
@@ -274,12 +280,34 @@ static void ive_drv_sync_image(ive_drv_handle *handle, ive_ioc_image *image, enu
  */
 static void ive_drv_set_images(ive_drv_handle *handle, ive_ioc_config *config)
 {
+	ive_ioc_image output_bak;
+
     ive_hal_set_images(&handle->hal_handle, &config->input, &config->output);
 
     switch (config->op_type)
     {
         case IVE_IOC_OP_TYPE_NCC:
             ive_drv_sync_image(handle, &config->input,  DMA_TO_DEVICE);
+            break;
+
+        case IVE_IOC_OP_TYPE_MAG_AND_ANG:
+            ive_drv_sync_image(handle, &config->input,  DMA_TO_DEVICE);
+			if (config->coeff_mag_and_ang.mode == IVE_IOC_MODE_MAG_AND_ANG_BOTH)
+			{// Due to IVE_IOC_MODE_MAG_AND_ANG_BOTH has one U16 image and one U8 image,
+			 // if call ive_drv_sync_image only once, it will treat both images as U16
+			 // and do cache invalidate, therefore add this workaround.
+				memcpy(&output_bak, &config->output, sizeof(ive_ioc_image));
+				config->output.address[1] = NULL;
+				ive_drv_sync_image(handle, &config->output, DMA_FROM_DEVICE);
+				config->output.format = IVE_IOC_IMAGE_FORMAT_B8C1;
+				config->output.address[0] = NULL;
+				config->output.address[1] = output_bak.address[1];
+				ive_drv_sync_image(handle, &config->output, DMA_FROM_DEVICE);
+				memcpy(&config->output, &output_bak, sizeof(ive_ioc_image));
+			} else
+			{
+				ive_drv_sync_image(handle, &config->output, DMA_FROM_DEVICE);
+			}
             break;
 
         default:
@@ -472,6 +500,14 @@ static void ive_drv_start(ive_drv_handle *handle, ive_ioc_config *config)
             ive_hal_set_coeff_adp_thresh(&handle->hal_handle, &config->coeff_adp_thresh);
             break;
 
+        case IVE_IOC_OP_TYPE_MATRIX_TRANSFORM:
+            ive_hal_set_coeff_matrix_transform(&handle->hal_handle, &config->coeff_matrix_transform);
+            break;
+
+        case IVE_IOC_OP_TYPE_IMAGE_DOT:
+            ive_hal_set_coeff_image_dot(&handle->hal_handle, &config->coeff_image_dot);
+            break;
+
         default:
             break;
     }
@@ -527,7 +563,7 @@ IVE_IOC_ERROR ive_drv_process(ive_drv_handle *handle, ive_file_data *file_data)
     file_data->state = IVE_FILE_STATE_PROCESSING;
     handle->dev_state = IVE_DRV_STATE_PROCESSING;
 
-    IVE_MSG(IVE_MSG_DBG, "process: %p\n", file_data->ioc_config.input.address[0]);
+    IVE_MSG(IVE_MSG_DBG, "process: %p ; %p ; %p\n", file_data->ioc_config.input.address[0], file_data->ioc_config.input.address[1], file_data->ioc_config.input.address[2]);
 
     ive_drv_start(handle, &file_data->ioc_config);
 
@@ -559,7 +595,7 @@ ive_file_data* ive_drv_post_process(ive_drv_handle *handle)
         IVE_MSG(IVE_MSG_DBG, "no more request in queue\n");
         handle->dev_state = IVE_DRV_STATE_READY;
     } else {
-        IVE_MSG(IVE_MSG_DBG, "process: 0x%p, 0x%p, 0x%p\n", next_file_data->ioc_config.input.address[0], next_file_data->ioc_config.input.address[1], next_file_data->ioc_config.output.address[0]);
+        IVE_MSG(IVE_MSG_DBG, "process: 0x%p, 0x%p, 0x%p\n", next_file_data->ioc_config.input.address[0], next_file_data->ioc_config.input.address[1], next_file_data->ioc_config.output.address[2]);
         next_file_data->state = IVE_FILE_STATE_PROCESSING;
         ive_drv_start(handle, &next_file_data->ioc_config);
     }

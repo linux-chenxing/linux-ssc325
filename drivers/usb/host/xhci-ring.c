@@ -76,8 +76,7 @@
 #endif
 
 #if (MP_USB_MSTAR==1) && (XHCI_FLUSHPIPE_PATCH)
-extern void Chip_Flush_Memory(void);
-extern void Chip_Read_Memory(void);
+extern void Chip_Flush_MIU_Pipe(void);
 #endif
 #if defined(CONFIG_SUSPEND) && defined(CONFIG_MP_USB_STR_PATCH)
 extern bool is_suspending(void);
@@ -264,7 +263,7 @@ static inline int room_on_ring(struct xhci_hcd *xhci, struct xhci_ring *ring,
 void xhci_ring_cmd_db(struct xhci_hcd *xhci)
 {
 #if (MP_USB_MSTAR==1) && (XHCI_FLUSHPIPE_PATCH)
-	Chip_Flush_Memory();
+	Chip_Flush_MIU_Pipe();
 #endif
 
 	if (!(xhci->cmd_ring_state & CMD_RING_STATE_RUNNING))
@@ -427,7 +426,7 @@ static void ring_doorbell_for_active_rings(struct xhci_hcd *xhci,
 	struct xhci_virt_ep *ep;
 
 #if (MP_USB_MSTAR==1) && (XHCI_FLUSHPIPE_PATCH)
-	Chip_Flush_Memory();
+	Chip_Flush_MIU_Pipe();
 #endif
 
 	ep = &xhci->devs[slot_id]->eps[ep_index];
@@ -2810,7 +2809,7 @@ irqreturn_t xhci_irq(struct usb_hcd *hcd)
 	spin_lock(&xhci->lock);
 
 #if (MP_USB_MSTAR==1) && (XHCI_FLUSHPIPE_PATCH)
-	Chip_Read_Memory(); //Flush Read buffer when H/W finished
+	Chip_Flush_MIU_Pipe(); //Flush Read buffer when H/W finished
 #endif
 	/* Check if the xHC generated the interrupt, or the irq is shared */
 	status = readl(&xhci->op_regs->status);
@@ -3146,7 +3145,7 @@ static void giveback_first_trb(struct xhci_hcd *xhci, int slot_id,
 
 #if (MP_USB_MSTAR==1) && (XHCI_FLUSHPIPE_PATCH)
 	wmb();
-	Chip_Flush_Memory();
+	Chip_Flush_MIU_Pipe();
 #endif
 
 	xhci_ring_ep_doorbell(xhci, slot_id, ep_index, stream_id);

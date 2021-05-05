@@ -362,6 +362,37 @@ void __init infinity2m_smp_init_cpus(void)
 	}
 }
 
+#ifdef CONFIG_LH_RTOS
+#define GICD_IGROUPR        0x080
+
+#define GICC_CTLR           0x00
+#define GICC_PMR            0x04
+#define GICC_BPR            0x08
+
+#define GICD_BASE           0x16001000
+#define GICC_BASE           0x16002000
+
+#define GICD_WRITEL(a,v)    (*(volatile unsigned int *)(u32)(GICD_BASE + a) = (v))
+#define GICC_WRITEL(a,v)    (*(volatile unsigned int *)(u32)(GICC_BASE + a) = (v))
+
+void infinity2m_secondary_gic(void)
+{
+	/* Diable GICC */
+    GICC_WRITEL(GICC_CTLR,0x00000000);
+
+    /* set interrupt priority mask level = 15, if the interrupt priority is larger than this value, it will be sent to CPU*/
+    GICC_WRITEL(GICC_PMR , 0xf0);
+
+    /* enable group priority */
+    GICC_WRITEL(GICC_BPR , 3);
+
+    /* LH: Set all interrupts are Grp 1 for IRQ */
+    GICD_WRITEL(GICD_IGROUPR , ~0x0);
+
+    /* LH: run in Secure Mode to Enable Grp1, Ackctl and FIQEn */
+    GICC_WRITEL(GICC_CTLR,0x000001EA); //non-shared
+}
+#endif
 
 struct smp_operations __initdata infinity2m_smp_ops  = {
 	.smp_init_cpus		= infinity2m_smp_init_cpus,

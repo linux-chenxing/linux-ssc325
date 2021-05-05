@@ -36,192 +36,7 @@
 //***********************************************************************************************************
 #include "hal_card_platform_config.h"
 
-//------------------------------------------------------------------------------------------------
-#if defined(CONFIG_MSTAR_SDMMC_CARDNUMS)
-    #define V_SDMMC_SLOTNUMS       CONFIG_MSTAR_SDMMC_SLOTNUMS
-#elif defined(CONFIG_MS_SDMMC_CARDNUMS)
-    #define V_SDMMC_SLOTNUMS       CONFIG_MS_SDMMC_SLOTNUMS
-#else
-    #define V_SDMMC_SLOTNUMS       1
-#endif
 
-//------------------------------------------------------------------------------------------------
-#if defined(CONFIG_MSTAR_SDMMC1_IP)
-    #define V_SLOT0_IP       CONFIG_MSTAR_SDMMC1_IP
-#elif defined(CONFIG_MS_SDMMC1_IP)
-    #define V_SLOT0_IP       CONFIG_MS_SDMMC1_IP
-#else
-    #define V_SLOT0_IP       0
-#endif
-#if defined(CONFIG_MSTAR_SDMMC2_IP)
-    #define V_SLOT1_IP       CONFIG_MSTAR_SDMMC2_IP
-#elif defined(CONFIG_MS_SDMMC2_IP)
-    #define V_SLOT1_IP       CONFIG_MS_SDMMC2_IP
-#else
-    #define V_SLOT1_IP       1
-#endif
-#if defined(CONFIG_MSTAR_SDMMC3_IP)
-    #define V_SLOT2_IP       CONFIG_MSTAR_SDMMC3_IP
-#elif defined(CONFIG_MS_SDMMC3_IP)
-    #define V_SLOT2_IP       CONFIG_MS_SDMMC3_IP
-#else
-    #define V_SLOT2_IP       2
-#endif
-
-//------------------------------------------------------------------------------------------------
-#if defined(CONFIG_MSTAR_SDMMC1_PAD)
-    #define V_SLOT0_PAD      CONFIG_MSTAR_SDMMC1_PAD
-#elif defined(CONFIG_MS_SDMMC1_PAD)
-    #define V_SLOT0_PAD       CONFIG_MS_SDMMC1_PAD
-#else
-    #define V_SLOT0_PAD       0
-#endif
-#if defined(CONFIG_MSTAR_SDMMC2_PAD)
-    #define V_SLOT1_PAD       CONFIG_MSTAR_SDMMC2_PAD
-#elif defined(CONFIG_MS_SDMMC2_IP)
-    #define V_SLOT1_PAD       CONFIG_MS_SDMMC2_PAD
-#else
-    #define V_SLOT1_PAD       1
-#endif
-#if defined(CONFIG_MSTAR_SDMMC3_PAD)
-    #define V_SLOT2_PAD       CONFIG_MSTAR_SDMMC3_PAD
-#elif defined(CONFIG_MS_SDMMC3_PAD)
-    #define V_SLOT2_PAD       CONFIG_MS_SDMMC3_PAD
-#else
-    #define V_SLOT2_PAD       2
-#endif
-
-//------------------------------------------------------------------------------------------------
-#if defined(CONFIG_MSTAR_SDMMC_REVCDZ) || defined(CONFIG_MS_SDMMC_REVCDZ)
-    #define EN_SDMMC_CDZREV        (TRUE)
-#else
-    #define EN_SDMMC_CDZREV        (FALSE)
-#endif
-//------------------------------------------------------------------------------------------------
-#if defined(CONFIG_MSTAR_SDMMC_TCARD) || defined(CONFIG_MS_SDMMC_TCARD)
-    #define EN_SDMMC_TCARD         (TRUE)
-#else
-    #define EN_SDMMC_TCARD         (TRUE)
-#endif
-
-#if defined(CONFIG_MSTAR_SDMMC_REVWP) || defined(CONFIG_MS_SDMMC_REVWP)
-    #define EN_SDMMC_WPREV         (TRUE)
-#else
-    #define EN_SDMMC_WPREV         (FALSE)
-#endif
-//------------------------------------------------------------------------------------------------
-#if defined(CONFIG_MSTAR_SDMMC1_MAXCLK)
-    #define V_SDMMC1_MAX_CLK       CONFIG_MSTAR_SDMMC1_MAXCLK
-#elif defined(CONFIG_MS_SDMMC1_MAXCLK)
-    #define V_SDMMC1_MAX_CLK       CONFIG_MS_SDMMC1_MAXCLK
-#else
-    #define V_SDMMC1_MAX_CLK       400000
-#endif
-
-#if defined(CONFIG_MSTAR_SDMMC1_MAXDLVL)
-    #define V_SDMMC1_MAX_DLVL      CONFIG_MSTAR_SDMMC1_MAXDLVL
-#elif defined(CONFIG_MS_SDMMC1_MAXDLVL)
-    #define V_SDMMC1_MAX_DLVL      CONFIG_MS_SDMMC1_MAXDLVL
-#else
-    #define V_SDMMC1_MAX_DLVL      0
-#endif
-
-#if defined(CONFIG_MSTAR_SDMMC1_PASSLVL)
-    #define V_SDMMC1_PASS_LVL      CONFIG_MSTAR_SDMMC1_PASSLVL
-#elif defined(CONFIG_MS_SDMMC1_PASSLVL)
-    #define V_SDMMC1_PASS_LVL      CONFIG_MS_SDMMC1_PASSLVL
-#else
-    #define V_SDMMC1_PASS_LVL      0
-#endif
-
-
-#if defined(CONFIG_MSTAR_SDMMC1_INTCDZ) || defined(CONFIG_MS_SDMMC1_INTCDZ)
-    #define EN_SDMMC1_INTCDZ       (TRUE)
-#else
-    #define EN_SDMMC1_INTCDZ       (FALSE)
-#endif
-
-#if defined(CONFIG_MSTAR_SDMMC1_FAKECDZ) || defined(CONFIG_MS_SDMMC1_FAKECDZ)
-    #define EN_SDMMC1_FAKECDZ      (TRUE)
-#else
-    #define EN_SDMMC1_FAKECDZ      (FALSE)
-#endif
-//------------------------------------------------------------------------------------------------
-#if defined(CONFIG_MSTAR_SDMMC2_MAXCLK)
-    #define V_SDMMC2_MAX_CLK       CONFIG_MSTAR_SDMMC2_MAXCLK
-#elif defined(CONFIG_MS_SDMMC2_MAXCLK)
-    #define V_SDMMC2_MAX_CLK       CONFIG_MS_SDMMC2_MAXCLK
-#else
-    #define V_SDMMC2_MAX_CLK       400000
-#endif
-
-#if defined(CONFIG_MSTAR_SDMMC2_MAXDLVL)
-    #define V_SDMMC2_MAX_DLVL      CONFIG_MSTAR_SDMMC2_MAXDLVL
-#elif defined(CONFIG_MS_SDMMC2_MAXDLVL)
-    #define V_SDMMC2_MAX_DLVL      CONFIG_MS_SDMMC2_MAXDLVL
-#else
-    #define V_SDMMC2_MAX_DLVL      0
-#endif
-
-#if defined(CONFIG_MSTAR_SDMMC2_PASSLVL)
-    #define V_SDMMC2_PASS_LVL      CONFIG_MSTAR_SDMMC2_PASSLVL
-#elif defined(CONFIG_MS_SDMMC2_PASSLVL)
-    #define V_SDMMC2_PASS_LVL      CONFIG_MS_SDMMC2_PASSLVL
-#else
-    #define V_SDMMC2_PASS_LVL      0
-#endif
-
-
-
-#if defined(CONFIG_MSTAR_SDMMC2_INTCDZ) || defined(CONFIG_MS_SDMMC2_INTCDZ)
-    #define EN_SDMMC2_INTCDZ       (TRUE)
-#else
-    #define EN_SDMMC2_INTCDZ       (FALSE)
-#endif
-
-#if defined(CONFIG_MSTAR_SDMMC2_FAKECDZ) || defined(CONFIG_MS_SDMMC2_FAKECDZ)
-    #define EN_SDMMC2_FAKECDZ      (TRUE)
-#else
-    #define EN_SDMMC2_FAKECDZ      (FALSE)
-#endif
-//------------------------------------------------------------------------------------------------
-#if defined(CONFIG_MSTAR_SDMMC3_MAXCLK)
-    #define V_SDMMC3_MAX_CLK       CONFIG_MSTAR_SDMMC3_MAXCLK
-#elif defined(CONFIG_MS_SDMMC3_MAXCLK)
-    #define V_SDMMC3_MAX_CLK       CONFIG_MS_SDMMC3_MAXCLK
-#else
-    #define V_SDMMC3_MAX_CLK       400000
-#endif
-
-#if defined(CONFIG_MSTAR_SDMMC3_MAXDLVL)
-    #define V_SDMMC3_MAX_DLVL      CONFIG_MSTAR_SDMMC3_MAXDLVL
-#elif defined(CONFIG_MS_SDMMC3_MAXDLVL)
-    #define V_SDMMC3_MAX_DLVL      CONFIG_MS_SDMMC3_MAXDLVL
-#else
-    #define V_SDMMC3_MAX_DLVL      0
-#endif
-
-#if defined(CONFIG_MSTAR_SDMMC3_PASSLVL)
-    #define V_SDMMC3_PASS_LVL      CONFIG_MSTAR_SDMMC3_PASSLVL
-#elif defined(CONFIG_MS_SDMMC3_PASSLVL)
-    #define V_SDMMC3_PASS_LVL      CONFIG_MS_SDMMC3_PASSLVL
-#else
-    #define V_SDMMC3_PASS_LVL      0
-#endif
-
-
-
-#if defined(CONFIG_MSTAR_SDMMC3_INTCDZ) || defined(CONFIG_MS_SDMMC3_INTCDZ)
-    #define EN_SDMMC3_INTCDZ       (TRUE)
-#else
-    #define EN_SDMMC3_INTCDZ       (FALSE)
-#endif
-
-#if defined(CONFIG_MSTAR_SDMMC3_FAKECDZ) || defined(CONFIG_MS_SDMMC3_FAKECDZ)
-    #define EN_SDMMC3_FAKECDZ      (TRUE)
-#else
-    #define EN_SDMMC3_FAKECDZ      (FALSE)
-#endif
 
 //***********************************************************************************************************
 //***********************************************************************************************************
@@ -237,9 +52,8 @@ typedef enum
 {
     EV_MUTEX1  = 0,
     EV_MUTEX2  = 1,
-    EV_MUTEXS  = 2,
-    EV_MUTEX3  = 3,
-    EV_NOMUTEX = 4,
+    EV_MUTEX3  = 2,
+    EV_NOMUTEX = 3,
 
 } MutexEmType;
 
@@ -256,7 +70,6 @@ struct ms_sdmmc_slot
     unsigned int    slotNo;         //Slot No.
     unsigned int    mieIRQNo;       //MIE IRQ No.
     unsigned int    cdzIRQNo;       //CDZ IRQ No.
-    unsigned int    cdzGPIONo;      //CDZ GPIO No.
     unsigned int    pwrGPIONo;      //PWR GPIO No.
     unsigned int    pmrsaveClk;     //Power Saving Clock
 
@@ -271,7 +84,6 @@ struct ms_sdmmc_slot
     unsigned char   currBusMode;    //Current Bus Mode
     unsigned short  currVdd;        //Current Vdd
     unsigned char   currDDR;        //Current DDR
-    unsigned char   currDownLevel;  //Current Down Level
     unsigned char   currTimeoutCnt; //Current Timeout Count
 
     int read_only;                  //WP

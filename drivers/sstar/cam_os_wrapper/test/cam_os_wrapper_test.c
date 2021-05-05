@@ -537,7 +537,7 @@ static void _TestCamOsDmem(void)
     CamOsPrintf("    read uncached  ptr=0x%08x, value = 0x%08x\n", (u32)pVirtPtr, *(u32 *)pVirtPtr);
 
     CamOsPrintf("    flush cached   ptr=0x%08x\n", (u32)pPhysAddr);
-    CamOsDirectMemFlush(pVirtPtr);
+    CamOsMemFlush(pVirtPtr, 1025);
     CamOsPrintf("    read cached    ptr=0x%08x, value = 0x%08x\n", (u32)pPhysAddr, *(u32 *)pPhysAddr);
     CamOsPrintf("    read uncached  ptr=0x%08x, value = 0x%08x\n", (u32)pVirtPtr, *(u32 *)pVirtPtr);
 
@@ -557,7 +557,7 @@ static void _TestCamOsDmem(void)
     CamOsPrintf("[CAM_OS_WRAPPER_TEST:%d] _TestCamOsDmem: write uncached ptr=0x%x, value = 0x%x\n", __LINE__, (u32)pVirtPtr, 0x87654321);
     *(u32 *)pVirtPtr = 0x87654321;
 
-    CamOsDirectMemFlush(pVirtPtr);
+    CamOsMemFlush(pVirtPtr, 1025);
     CamOsPrintf("[CAM_OS_WRAPPER_TEST:%d] _TestCamOsDmem: read uncached ptr=0x%x, value = 0x%x\n", __LINE__, (u32)pVirtPtr, *(u32 *)pVirtPtr);
 
     CamOsDirectMemRelease((u8 *)pVirtPtr, 1025);
@@ -1090,7 +1090,7 @@ static void _TestCamOsSystemTime(void)
     {
         CamOsGetTimeOfDay(&tTs);
         nRawTime = (time_t)tTs.nSec;
-        tTm = localtime (&nRawTime);     
+        tTm = localtime (&nRawTime);
         CamOsPrintf("RawSecond: %d  ->  %d/%02d/%02d [%d]  %02d:%02d:%02d\n",
                     tTs.nSec,
                     tTm->tm_year+1900,
@@ -1117,7 +1117,10 @@ static void _TestCamOsPhysMemSize(void)
 
 static void _TestCamOsChipId(void)
 {
-    CamOsPrintf("Chip ID: 0x%X\n", CamOsChipId());
+    CamOsDramInfo_t Info = {0};
+    CamOsDramInfo(&Info);
+    CamOsPrintf("DRAM Info:  Size %d    Type %d    Bus %d\n", Info.nBytes, Info.nType, Info.nBusWidth);
+    CamOsPrintf("Chip ID: 0x%X    Revision: 0x%X\n", CamOsChipId(), CamOsChipRevision());
 }
 
 static s32 _CamOsTcondTestEntry0(void *pUserData)

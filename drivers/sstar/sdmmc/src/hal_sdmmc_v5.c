@@ -62,7 +62,7 @@
 // Reg Static Init Setting
 //-----------------------------------------------------------------------------------------------------------
 #define V_MIE_PATH_INIT     0
-#define V_MMA_PRI_INIT      (R_MIU_R_PRIORITY|R_MIU_W_PRIORITY)
+#define V_MMA_PRI_INIT      (R_MIU_R_PRIORITY|R_MIU_W_PRIORITY|R_MIU_BUS_BURST8)
 #define V_MIE_INT_EN_INIT   (R_DATA_END_IEN|R_CMD_END_IEN|R_SDIO_INT_IEN|R_BUSY_END_IEN)
 #define V_RSP_SIZE_INIT     0
 #define V_CMD_SIZE_INIT     (5<<8)
@@ -97,6 +97,7 @@
 #define A_SD_CIFD_W_POS(IP)             GET_CARD_REG_ADDR(A_SD_CIFD_POS(IP), 0x20)
 
 #define A_MIE_EVENT_REG(IP)             GET_CARD_REG_ADDR(A_SD_REG_POS(IP), 0x00)
+#define A_MIE_INT_ENABLE_REG(IP)        GET_CARD_REG_ADDR(A_SD_REG_POS(IP), 0x01)
 #define A_MMA_PRI_REG_REG(IP)           GET_CARD_REG_ADDR(A_SD_REG_POS(IP), 0x02)
 #define A_DMA_ADDR_15_0_REG(IP)         GET_CARD_REG_ADDR(A_SD_REG_POS(IP), 0x03)
 #define A_DMA_ADDR_31_16_REG(IP)        GET_CARD_REG_ADDR(A_SD_REG_POS(IP), 0x04)
@@ -134,6 +135,8 @@
 #define A_CIFD_W_OFFSET(IP, OFFSET)     GET_CARD_REG_ADDR(A_SD_CIFD_W_POS(IP), OFFSET)
 
 
+extern volatile U16_T MIEEvent;         //for debug
+extern volatile U16_T Trig_MIE_INTR;    //for debug
 // Reg Dynamic Variable
 //-----------------------------------------------------------------------------------------------------------
 static RspStruct gst_RspStruct[3];
@@ -147,11 +150,12 @@ static volatile U16_T   gu16_DDR_MODE_REG_ForR2N[3] = {0};
 
 static volatile BOOL_T  gb_SDIODevice[3] = {0};
 static volatile U16_T   gu16_SDIO_MODE_IntMode[3] = {0};
-static volatile U16_T   gu16_SDIO_IntEn_RunOnce[3]  = {0};
 
 
 static volatile U8_T*   gpu8Buf[3];
 
+
+static volatile IpType geIpTypeIp[3] = {IP_0_TYPE, IP_1_TYPE, IP_2_TYPE};
 
 // Trace Funcion
 //-----------------------------------------------------------------------------------------------------------
@@ -164,17 +168,20 @@ static volatile U8_T*   gpu8Buf[3];
 
 // Register Opertation Define ==> For FCIE5 Special FCIE/SDIO Function Ctrl Setting
 //-----------------------------------------------------------------------------------------------------------
-static U16_T _REG_GetMIEFunCtlSetting(IPEmType eIP)
+static U16_T _REG_GetMIEFunCtlSetting(IpOrder eIP)
 {
-    PortEmType ePort = GET_CARD_PORT(eIP);
+    if (geIpTypeIp[eIP] == IP_TYPE_FCIE)
+    {
+        return R_SD_EN; // FCIE don't have SDIO function.
+    }
 
-    return (ePort==EV_PFCIE5_FCIE ? R_SD_EN : R_SDIO_MODE);
+    return R_SDIO_MODE;
 }
 
 
 // Register Operation Define ==> For Clean Reg and Special Case
 //-----------------------------------------------------------------------------------------------------------
-static RetEmType _REG_ClearSDSTS(IPEmType eIP, U8_T u8Retry)
+static RetEmType _REG_ClearSDSTS(IpOrder eIP, U8_T u8Retry)
 {
     do
     {
@@ -196,7 +203,7 @@ static RetEmType _REG_ClearSDSTS(IPEmType eIP, U8_T u8Retry)
 
 // Register Operation Define ==> For Clear MIE Event
 //-----------------------------------------------------------------------------------------------------------
-static RetEmType _REG_ClearMIEEvent(IPEmType eIP, U8_T u8Retry)
+static RetEmType _REG_ClearMIEEvent(IpOrder eIP, U8_T u8Retry)
 {
     /****** Clean global MIEEvent for Interrupt ******/
 #if(EN_BIND_CARD_INT)
@@ -224,12 +231,12 @@ static RetEmType _REG_ClearMIEEvent(IPEmType eIP, U8_T u8Retry)
 
 // Register Operation Define ==> For Wait DAT0 High
 //-----------------------------------------------------------------------------------------------------------
-static RetEmType _REG_WaitDat0HI(IPEmType eIP, U32_T u32WaitMs)
+static RetEmType _REG_WaitDat0HI(IpOrder eIP, U32_T u32WaitMs)
 {
     U32_T u32DiffTime = 0;
 
 #if(EN_BIND_CARD_INT)
-	if ( Hal_CARD_INT_MIEIntRunning(eIP, EV_INT_SD) )	// Interrupt Mode
+	if (Hal_CARD_INT_MIEIntRunning(eIP))	// Interrupt Mode
 	{
         CARD_REG_SETBIT(A_SD_CTL_REG(eIP), R_BUSY_DET_ON );
 
@@ -244,38 +251,37 @@ static RetEmType _REG_WaitDat0HI(IPEmType eIP, U32_T u32WaitMs)
     {
         do
         {
+            if ( gb_StopWProc[eIP] )
+                return EV_FAIL;
 
-                if ( gb_StopWProc[eIP] )
-                    return EV_FAIL;
+            if ( M_REG_GETDAT0(eIP) )
+                return EV_OK;
 
-                if ( M_REG_GETDAT0(eIP) )
-                    return EV_OK;
-
-                Hal_Timer_uDelay(1);
-                u32DiffTime++;
+            Hal_Timer_uDelay(1);
+            u32DiffTime++;
         }while( u32DiffTime <= (u32WaitMs*1000) );
-
     }
     return EV_FAIL;
-
 }
 
 
 // Register Operation Define ==> For Wait MIE Event or CIFD Event
 //-----------------------------------------------------------------------------------------------------------
-static RetEmType _REG_WaitEvent(IPEmType eIP, IPEventEmType eEvent, U16_T u16ReqEvent, U32_T u32WaitMs)
+static RetEmType _REG_WaitEvent(IpOrder eIP, IPEventEmType eEvent, U16_T u16ReqEvent, U32_T u32WaitMs)
 {
     U32_T u32DiffTime = 0;
 
 #if(EN_BIND_CARD_INT)
-    if ( Hal_CARD_INT_MIEIntRunning(eIP, EV_INT_SD) )	// Interrupt Mode
+    if (Hal_CARD_INT_MIEIntRunning(eIP))	// Interrupt Mode
     {
         if(eEvent == EV_MIE)
         {
-            if ( !Hal_CARD_INT_WaitMIEEvent(eIP, u16ReqEvent, u32WaitMs) )
+            if ( !Hal_CARD_INT_WaitMIEEvent(eIP, u16ReqEvent, u32WaitMs) ) {
                 return EV_FAIL;
-            else
+            }
+            else {
                 return EV_OK;
+            }
         }
 
     }
@@ -284,9 +290,9 @@ static RetEmType _REG_WaitEvent(IPEmType eIP, IPEventEmType eEvent, U16_T u16Req
     {
         do
         {
-            if ( gb_StopWProc[eIP] )
+            if ( gb_StopWProc[eIP] ) {
                 return EV_FAIL;
-
+            }
             if(eEvent == EV_MIE)
             {
                 if ( (CARD_REG(A_MIE_EVENT_REG(eIP))&u16ReqEvent) == u16ReqEvent )
@@ -315,7 +321,7 @@ static RetEmType _REG_WaitEvent(IPEmType eIP, IPEventEmType eEvent, U16_T u16Req
 
 // Register Operation Define ==> For Software Reset
 //-----------------------------------------------------------------------------------------------------------
-static void _REG_ResetIP(IPEmType eIP)
+static void _REG_ResetIP(IpOrder eIP)
 {
     U32_T u32DiffTime = 0;
 
@@ -332,7 +338,7 @@ static void _REG_ResetIP(IPEmType eIP)
     }while ( u32DiffTime <= (1000*WT_RESET) );
 
     if ( u32DiffTime > (1000*WT_RESET) )
-        prtstring("[HSD] IP Reset Switch Low Fail !!\r\n");
+        sdmmc_print("[HSD] IP Reset Switch Low Fail !\r\n");
 
 
     u32DiffTime = 0;
@@ -348,10 +354,7 @@ static void _REG_ResetIP(IPEmType eIP)
     }while ( u32DiffTime <= (1000* WT_RESET) );
 
     if ( u32DiffTime > (1000*WT_RESET) )
-        prtstring("[HSD] IP Reset Switch High Fail !!\r\n");
-
-
-
+        sdmmc_print("[HSD] IP Reset Switch High Fail !\r\n");
 }
 
 
@@ -369,7 +372,7 @@ static U8_T _BUF_GetByteFromRegAddr(volatile void *pBuf, U16_T u16Pos)
 
 // IP Buffer Operation => CIFD FIFO Buffer Operation Define
 //-----------------------------------------------------------------------------------------------------------
-void _BUF_CIFD_DATA_IO(IPEmType eIP, CmdEmType eCmdType, volatile U16_T *pu16Buf, U8_T u8WordCnt)
+void _BUF_CIFD_DATA_IO(IpOrder eIP, CmdEmType eCmdType, volatile U16_T *pu16Buf, U8_T u8WordCnt)
 {
     U8_T u8Pos = 0;
 
@@ -386,7 +389,7 @@ void _BUF_CIFD_DATA_IO(IPEmType eIP, CmdEmType eCmdType, volatile U16_T *pu16Buf
 
 // IP Buffer Operation => CIFD FIFO Buffer Operation for waiting FCIE5 special Event
 //-----------------------------------------------------------------------------------------------------------
-static RetEmType _BUF_CIFD_WaitEvent(IPEmType eIP,  CmdEmType eCmdType, volatile U8_T *pu8R2NBuf)
+static RetEmType _BUF_CIFD_WaitEvent(IpOrder eIP,  CmdEmType eCmdType, volatile U8_T *pu8R2NBuf)
 {
     U8_T u8RegionNo = 0, u8RegionMax = 0, u8RemainByte = 0;
     U32_T u32_TranLen  =  CARD_REG(A_DMA_LEN_15_0_REG(eIP)) + ( CARD_REG(A_DMA_LEN_31_16_REG(eIP)) << 16 );
@@ -435,119 +438,75 @@ static RetEmType _BUF_CIFD_WaitEvent(IPEmType eIP,  CmdEmType eCmdType, volatile
 
 // SDMMC Internel Logic Function
 //-----------------------------------------------------------------------------------------------------------
-static void _SDMMC_REG_Dump(IPEmType eIP)
+static void _SDMMC_REG_Dump(IpOrder eIP)
 {
 
 #if (EN_DUMPREG)
 
     U8_T u8Pos, u8DGMode;
-    prtstring("\n----------------------------------------------------\r\n");
-    prtU32Hex(((U32_T)A_SD_REG_POS(eIP) & 0x00FFFF00) >> 9);
-    prtstring("  CMD_");
-    prtUInt(gst_RspStruct[eIP].u8Cmd);
-    prtstring(" (Arg: ");
-    prtU32Hex(gst_RspStruct[eIP].u32Arg);
-    prtstring(") [Line: ");
-    prtUInt(gst_RspStruct[eIP].u32ErrLine);
-    prtstring("]\r\n");
-    prtstring("----------------------------------------------------\r\n");
+    sdmmc_print("\n------\r\n");
+    sdmmc_print("0x%08X", ((U32_T)A_SD_REG_POS(eIP) & 0x00FFFF00) >> 9);
+    sdmmc_print("CMD_%u", gst_RspStruct[eIP].u8Cmd);
+    sdmmc_print("(Arg: 0x%08X)", gst_RspStruct[eIP].u32Arg);
+    sdmmc_print("[Line: %u]\r\n", gst_RspStruct[eIP].u32ErrLine);
+    sdmmc_print("\n------\r\n");
 
     for(u8Pos = 0; u8Pos < gst_RspStruct[eIP].u8RspSize; u8Pos++)
     {
         if( (u8Pos == 0) || (u8Pos == 8) )
-            prtstring("[");
+            sdmmc_print("[");
 
-        prtU8Hex(_BUF_GetByteFromRegAddr((volatile void *)A_SD_CFIFO_POS(eIP), u8Pos));
-        prtstring(",");
+        sdmmc_print("0x%02X,", _BUF_GetByteFromRegAddr((volatile void *)A_SD_CFIFO_POS(eIP), u8Pos));
 
         if( (u8Pos == 7) || (u8Pos == (gst_RspStruct[eIP].u8RspSize-1)) )
-            prtstring("]\n");
+            sdmmc_print("]\n");
     }
 
-    prtstring("---------------DumpReg------------------------------\r\n");
-    prtstring("[0x07][MIE_FUNC_CTL_REG]=    ");
-    prtU16Hex(CARD_REG(A_MIE_FUNC_CTL_REG(eIP)));
-    prtstring("\r\n");
+    sdmmc_print("---DumpReg---\r\n");
 
-    prtstring("[0x0B][SD_MODE_REG]=         ");
-    prtU16Hex(CARD_REG(A_SD_MODE_REG(eIP)));
-    prtstring("\r\n");
-
-    prtstring("[0x0C][SD_CTL_REG]=          ");
-    prtU16Hex(CARD_REG(A_SD_CTL_REG(eIP)));
-    prtstring("\r\n");
-
-    prtstring("[0x0F][DDR_MOD_REG]=         ");
-    prtU16Hex(CARD_REG(A_DDR_MOD_REG(eIP)));
-    prtstring("\r\n");
-
-    prtstring("[0x0D][SD_STS_REG]=          ");
-    prtU16Hex(CARD_REG(A_SD_STS_REG(eIP)));
-    prtstring("\r\n");
+    sdmmc_print("[0x07][MIE_FUNC_CTL_REG]=  0x%04X\r\n", CARD_REG(A_MIE_FUNC_CTL_REG(eIP)));
+    sdmmc_print("[0x0B][SD_MODE_REG]=       0x%04X\r\n", CARD_REG(A_SD_MODE_REG(eIP)));
+    sdmmc_print("[0x0C][SD_CTL_REG]=        0x%04X\r\n", CARD_REG(A_SD_CTL_REG(eIP)));
+    sdmmc_print("[0x0F][DDR_MOD_REG]=       0x%04X\r\n", CARD_REG(A_DDR_MOD_REG(eIP)));
+    sdmmc_print("[0x0D][SD_STS_REG]=        0x%04X\r\n", CARD_REG(A_SD_STS_REG(eIP)));
 
 #if(EN_BIND_CARD_INT)
-    if ( Hal_CARD_INT_MIEIntRunning(eIP, EV_INT_SD) )   // Interrupt Mode
+    if (Hal_CARD_INT_MIEIntRunning(eIP))   // Interrupt Mode
     {
-        prtstring("[gu16_MIEEvent_ForInt]=      ");
-        prtU16Hex(Hal_CARD_INT_GetMIEEvent(eIP));
-        prtstring("\r\n");
+        sdmmc_print("[gu16_MIEEvent_ForInt]= 0x%04X\r\n", Hal_CARD_INT_GetMIEEvent(eIP));
     }
 #endif
 
-    prtstring("[0x00][MIE_EVENT_REG]=       ");
-    prtU16Hex(CARD_REG(A_MIE_EVENT_REG(eIP)));
-    prtstring("\r\n");
-
-    prtstring("[0x03][MMA_ADDR_15_0_REG]=   ");
-    prtU16Hex(CARD_REG(A_DMA_ADDR_15_0_REG(eIP)));
-    prtstring("\r\n");
-
-    prtstring("[0x04][MMA_ADDR_31_16_REG]=  ");
-    prtU16Hex(CARD_REG(A_DMA_ADDR_31_16_REG(eIP)));
-    prtstring("\r\n");
-
-    prtstring("[0x05][MMA_LEN_15_0_REG]=    ");
-    prtU16Hex(CARD_REG(A_DMA_LEN_15_0_REG(eIP)));
-    prtstring("\r\n");
-
-    prtstring("[0x06][MMA_LEN_31_16_REG]=   ");
-    prtU16Hex(CARD_REG(A_DMA_LEN_31_16_REG(eIP)));
-    prtstring("\r\n");
-
-    prtstring("[0x08][JOB_BLK_CNT]=         ");
-    prtU16Hex(CARD_REG(A_JOB_BLK_CNT_REG(eIP)));
-    prtstring("\r\n");
-
-    prtstring("[0x09][BLK_SIZE]=            ");
-    prtU16Hex(CARD_REG(A_BLK_SIZE_REG(eIP)));
-    prtstring("\r\n");
-
+    sdmmc_print("[0x00][MIE_EVENT_REG]=       0x%04X\r\n", CARD_REG(A_MIE_EVENT_REG(eIP)));
+    sdmmc_print("[0x03][MMA_ADDR_15_0_REG]=   0x%04X\r\n", CARD_REG(A_DMA_ADDR_15_0_REG(eIP)));
+    sdmmc_print("[0x04][MMA_ADDR_31_16_REG]=  0x%04X\r\n", CARD_REG(A_DMA_ADDR_31_16_REG(eIP)));
+    sdmmc_print("[0x05][MMA_LEN_15_0_REG]=    0x%04X\r\n", CARD_REG(A_DMA_LEN_15_0_REG(eIP)));
+    sdmmc_print("[0x06][MMA_LEN_31_16_REG]=   0x%04X\r\n", CARD_REG(A_DMA_LEN_31_16_REG(eIP)));
+    sdmmc_print("[0x08][JOB_BLK_CNT]=         0x%04X\r\n", CARD_REG(A_JOB_BLK_CNT_REG(eIP)));
+    sdmmc_print("[0x09][BLK_SIZE]=            0x%04X\r\n", CARD_REG(A_BLK_SIZE_REG(eIP)));
 
     CARD_REG_CLRBIT(A_DBG_BUS1_REG(eIP), R_DEBUG_MOD0 | R_DEBUG_MOD1 | R_DEBUG_MOD2 | R_DEBUG_MOD3 );
     CARD_REG_SETBIT(A_DBG_BUS1_REG(eIP), R_DEBUG_MOD0 | R_DEBUG_MOD2); //Mode 5
 
-    prtstring("[0x38][DEBUG_BUS0]=          ");
+    sdmmc_print("[0x38][DEBUG_BUS0]= ");
     for(u8DGMode = 1; u8DGMode <=4; u8DGMode++)
     {
         CARD_REG_CLRBIT(A_TEST_MODE_REG(eIP), R_SD_DEBUG_MOD0 | R_SD_DEBUG_MOD1 | R_SD_DEBUG_MOD2);
         CARD_REG_SETBIT(A_TEST_MODE_REG(eIP), (u8DGMode<<1));
-        prtU16Hex(CARD_REG(A_DBG_BUS0_REG(eIP)));
-        prtstring(", ");
+        sdmmc_print("0x%04X, ", CARD_REG(A_DBG_BUS0_REG(eIP)));
     }
-    prtstring("\r\n");
-    prtstring("[0x39][DEBUG_BUS1]=          ");
+    sdmmc_print("\r\n");
+    sdmmc_print("[0x39][DEBUG_BUS1]= ");
 
     for(u8DGMode = 1; u8DGMode <=4; u8DGMode++)
     {
         CARD_REG_CLRBIT(A_TEST_MODE_REG(eIP), R_SD_DEBUG_MOD0 | R_SD_DEBUG_MOD1 | R_SD_DEBUG_MOD2);
         CARD_REG_SETBIT(A_TEST_MODE_REG(eIP), (u8DGMode<<1));
-        prtU16Hex(CARD_REG(A_DBG_BUS1_REG(eIP)));
-        prtstring(", ");
-
+        sdmmc_print("0x%04X, ", CARD_REG(A_DBG_BUS1_REG(eIP)));
     }
 
-    prtstring("\r\n");
-    prtstring("----------------------------------------------------\r\n");
+    sdmmc_print("\r\n");
+    sdmmc_print("------\r\n");
 
 #endif  //End #if(EN_DUMPREG)
 
@@ -555,7 +514,7 @@ static void _SDMMC_REG_Dump(IPEmType eIP)
 }
 
 
-static RspErrEmType _SDMMC_EndProcess(IPEmType eIP, CmdEmType eCmdType, RspErrEmType eRspErr, BOOL_T bCloseClk, int Line)
+static RspErrEmType _SDMMC_EndProcess(IpOrder eIP, CmdEmType eCmdType, RspErrEmType eRspErr, BOOL_T bCloseClk, int Line)
 {
     U16_T u16RspErr = (U16_T)eRspErr;
     U16_T u16IPErr = EV_STS_RIU_ERR | EV_STS_MIE_TOUT | EV_STS_DAT0_BUSY;
@@ -602,7 +561,7 @@ static RspErrEmType _SDMMC_EndProcess(IPEmType eIP, CmdEmType eCmdType, RspErrEm
 * @param eIP : FCIE1/FCIE2/...
 * @param eBusWidth : 1BIT/4BITs/8BITs
 ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_SetDataWidth(IPEmType eIP, SDMMCBusWidthEmType eBusWidth)
+void Hal_SDMMC_SetDataWidth(IpOrder eIP, SDMMCBusWidthEmType eBusWidth)
 {
     gu16_SD_MODE_DatLine[eIP] = (U16_T)eBusWidth;
 }
@@ -617,7 +576,7 @@ void Hal_SDMMC_SetDataWidth(IPEmType eIP, SDMMCBusWidthEmType eBusWidth)
 * @param eIP : FCIE1/FCIE2/...
 * @param eBusTiming : LOW/DEF/HS/SDR12/DDR...
 ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_SetBusTiming(IPEmType eIP, BusTimingEmType eBusTiming)
+void Hal_SDMMC_SetBusTiming(IpOrder eIP, BusTimingEmType eBusTiming)
 {
     switch ( eBusTiming )
     {
@@ -676,7 +635,7 @@ void Hal_SDMMC_SetBusTiming(IPEmType eIP, BusTimingEmType eBusTiming)
 * @param eIP : FCIE1/FCIE2/...
 * @param u32RealClk : Real Clock
 ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_SetNrcDelay(IPEmType eIP, U32_T u32RealClk)
+void Hal_SDMMC_SetNrcDelay(IpOrder eIP, U32_T u32RealClk)
 {
 
     if( u32RealClk >= 8000000 )         //>=8MHz
@@ -709,7 +668,7 @@ void Hal_SDMMC_SetNrcDelay(IPEmType eIP, U32_T u32RealClk)
 * @param u8Cmd : SD Command
 * @param u32Arg : SD Argument
 ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_SetCmdToken(IPEmType eIP, U8_T u8Cmd, U32_T u32Arg)
+void Hal_SDMMC_SetCmdToken(IpOrder eIP, U8_T u8Cmd, U32_T u32Arg)
 {
     gst_RspStruct[eIP].u8Cmd        = u8Cmd;
     gst_RspStruct[eIP].u32Arg       = u32Arg;
@@ -718,12 +677,14 @@ void Hal_SDMMC_SetCmdToken(IPEmType eIP, U8_T u8Cmd, U32_T u32Arg)
     CARD_REG(A_CFIFO_OFFSET(eIP, 1)) = (((U8_T)(u32Arg>>8))<<8) | ((U8_T)(u32Arg>>16));
     CARD_REG(A_CFIFO_OFFSET(eIP, 2)) = (U8_T)u32Arg;
 
-    TR_H_SDMMC(prtstring("[S_")); TR_H_SDMMC(prtUInt(eIP));
-    TR_H_SDMMC(prtstring("] CMD_")); TR_H_SDMMC(prtUInt(u8Cmd));
+    TR_H_SDMMC(sdmmc_print("[S_"));
+    TR_H_SDMMC(sdmmc_print("%u", eIP));
+    TR_H_SDMMC(sdmmc_print("] CMD_"));
+    TR_H_SDMMC(sdmmc_print("%u", u8Cmd));
 
-    TR_H_SDMMC(prtstring(" ("));
-    TR_H_SDMMC(prtU32Hex(u32Arg));
-    TR_H_SDMMC(prtstring(")"));
+    TR_H_SDMMC(sdmmc_print(" ("));
+    TR_H_SDMMC(sdmmc_print("0x%08X", u32Arg));
+    TR_H_SDMMC(sdmmc_print(")"));
 
 
 }
@@ -739,28 +700,28 @@ void Hal_SDMMC_SetCmdToken(IPEmType eIP, U8_T u8Cmd, U32_T u32Arg)
 *
 * @return RspStruct*  : Response Struct
 ----------------------------------------------------------------------------------------------------------*/
-RspStruct* Hal_SDMMC_GetRspToken(IPEmType eIP)
+RspStruct* Hal_SDMMC_GetRspToken(IpOrder eIP)
 {
     U8_T u8Pos;
 
-    TR_H_SDMMC(prtstring(" =>RSP: ("));
-    TR_H_SDMMC(prtU16Hex((U16_T)gst_RspStruct[eIP].eErrCode));
-    TR_H_SDMMC(prtstring(")\r\n"));
+    TR_H_SDMMC(sdmmc_print(" =>RSP: ("));
+    TR_H_SDMMC(sdmmc_print("0x%04X", (U16_T)gst_RspStruct[eIP].eErrCode));
+    TR_H_SDMMC(sdmmc_print(")\r\n"));
 
     for(u8Pos=0; u8Pos<0x10; u8Pos++ )
         gst_RspStruct[eIP].u8ArrRspToken[u8Pos] = 0;
 
-    TR_H_SDMMC(prtstring("["));
+    TR_H_SDMMC(sdmmc_print("["));
 
     for(u8Pos=0; u8Pos< gst_RspStruct[eIP].u8RspSize; u8Pos++)
     {
         gst_RspStruct[eIP].u8ArrRspToken[u8Pos] = _BUF_GetByteFromRegAddr((volatile void *)A_SD_CFIFO_POS(eIP), u8Pos);
-        TR_H_SDMMC(prtU8Hex(gst_RspStruct[eIP].u8ArrRspToken[u8Pos]));
-        TR_H_SDMMC(prtstring(", "));
+        TR_H_SDMMC(sdmmc_print("0x%02X", gst_RspStruct[eIP].u8ArrRspToken[u8Pos]));
+        TR_H_SDMMC(sdmmc_print(", "));
 
     }
 
-    TR_H_SDMMC(prtstring("]\r\n\r\n"));
+    TR_H_SDMMC(sdmmc_print("]\r\n\r\n"));
 
     return &gst_RspStruct[eIP];
 
@@ -780,7 +741,7 @@ RspStruct* Hal_SDMMC_GetRspToken(IPEmType eIP)
 * @param u32BufAddr : Memory Address or DMA Table Address (32bits)
 * @param pu8Buf : If run CIFD, it neet the buf pointer to do io between CIFD and Buf
 ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_TransCmdSetting(IPEmType eIP, TransEmType eTransType, U16_T u16BlkCnt, U16_T u16BlkSize, volatile U32_T u32BufAddr, volatile U8_T *pu8Buf)
+void Hal_SDMMC_TransCmdSetting(IpOrder eIP, TransEmType eTransType, U16_T u16BlkCnt, U16_T u16BlkSize, volatile U32_T u32BufAddr, volatile U8_T *pu8Buf)
 {
     U32_T u32_TranLen = u16BlkCnt * u16BlkSize;
 
@@ -815,9 +776,7 @@ void Hal_SDMMC_TransCmdSetting(IPEmType eIP, TransEmType eTransType, U16_T u16Bl
 //dump current key registers status and disable UART for debugging.
 void halt(int eIP)
 {
-    void Hal_CARD_DumpPadMux(PADEmType ePAD);
     _SDMMC_REG_Dump(eIP);
-    Hal_CARD_DumpPadMux(EV_PAD2);
     msleep(1000);
     *((U16_T*)0xFD001C24) &= ~BIT11_T;
     while(1);
@@ -840,13 +799,18 @@ void halt(int eIP)
 *
 * @return RspErrEmType  : Response Error Code
 ----------------------------------------------------------------------------------------------------------*/
-RspErrEmType Hal_SDMMC_SendCmdAndWaitProcess(IPEmType eIP, TransEmType eTransType, CmdEmType eCmdType, SDMMCRspEmType eRspType, BOOL_T bCloseClk)
+RspErrEmType Hal_SDMMC_SendCmdAndWaitProcess(IpOrder eIP, TransEmType eTransType, CmdEmType eCmdType, SDMMCRspEmType eRspType, BOOL_T bCloseClk)
 {
     U32_T u32WaitMS = WT_EVENT_RSP;
     U16_T u16WaitMIEEvent = R_CMD_END;
     CARD_REG(A_CMD_RSP_SIZE_REG(eIP)) = V_CMD_SIZE_INIT | ((U8_T)eRspType);
     CARD_REG(A_MIE_FUNC_CTL_REG(eIP)) = V_MIE_PATH_INIT | _REG_GetMIEFunCtlSetting(eIP);
-    CARD_REG(A_SD_MODE_REG(eIP)) = V_SD_MODE_INIT | (eTransType>>8) | gu16_SD_MODE_DatLine[eIP] | ((U8_T)(eTransType & R_DMA_RD_CLK_STOP));
+    if (eTransType == EV_ADMA) {
+        CARD_REG(A_SD_MODE_REG(eIP)) = V_SD_MODE_INIT | (eTransType>>8) | gu16_SD_MODE_DatLine[eIP] | ((U8_T)(eTransType & R_DMA_RD_CLK_STOP)); // R_STOP_BLK);
+    }
+    else {
+        CARD_REG(A_SD_MODE_REG(eIP)) = V_SD_MODE_INIT | (eTransType>>8) | gu16_SD_MODE_DatLine[eIP];
+    }
     CARD_REG(A_SD_CTL_REG(eIP))  = V_SD_CTL_INIT | (eRspType>>12) | (eCmdType>>4) | ((U8_T)(eTransType & R_ADMA_EN) | BIT09_T | R_CMD_EN);
     CARD_REG(A_SDIO_MODE_REG(eIP)) = V_SDIO_MODE_INIT | gu16_SDIO_MODE_IntMode[eIP];
 
@@ -862,7 +826,7 @@ RspErrEmType Hal_SDMMC_SendCmdAndWaitProcess(IPEmType eIP, TransEmType eTransTyp
         return _SDMMC_EndProcess(eIP, eCmdType, EV_STS_RIU_ERR, bCloseClk, __LINE__);;
 
 #if(EN_BIND_CARD_INT)
-    Hal_CARD_INT_SetMIEIntEn(eIP, EV_INT_SD, V_MIE_INT_EN_INIT);//consider do this only once
+    Hal_CARD_INT_SetMIEIntEn(eIP, V_MIE_INT_EN_INIT);//consider do this only once
 #endif
 
 #if EN_HALT
@@ -878,7 +842,7 @@ RspErrEmType Hal_SDMMC_SendCmdAndWaitProcess(IPEmType eIP, TransEmType eTransTyp
         if (eTransType!=EV_CIF)
         {
             u16WaitMIEEvent |= R_DATA_END;
-            u32WaitMS |= WT_EVENT_READ;
+            u32WaitMS += WT_EVENT_READ;
         }
         CARD_REG_SETBIT(A_SD_CTL_REG(eIP), R_DTRX_EN );
         CARD_REG_SETBIT(A_SD_CTL_REG(eIP), (R_DTRX_EN | R_JOB_START) );
@@ -888,8 +852,23 @@ RspErrEmType Hal_SDMMC_SendCmdAndWaitProcess(IPEmType eIP, TransEmType eTransTyp
         CARD_REG_SETBIT(A_SD_CTL_REG(eIP), (R_JOB_START) );
     }
 
-    if(_REG_WaitEvent(eIP, EV_MIE, u16WaitMIEEvent, u32WaitMS))
+    if(_REG_WaitEvent(eIP, EV_MIE, u16WaitMIEEvent, u32WaitMS)) {
+        printk("[sdmmc]---%s--%d-EventNum = %d---MIEEvent = %d--Trig_MIE_INTR = %d--MIE_EVENT[00] = 0x%4x- MIE_INT_EN[01] = 0x%4x---SD_STS[0D] = 0x%4x--\r\n", __FUNCTION__, __LINE__, u16WaitMIEEvent, MIEEvent, Trig_MIE_INTR, \
+            CARD_REG(GET_CARD_REG_ADDR(A_SD_REG_POS(eIP), 0x00)), CARD_REG(GET_CARD_REG_ADDR(A_SD_REG_POS(eIP), 0x01)), CARD_REG(A_SD_STS_REG(eIP)));
         return _SDMMC_EndProcess(eIP, eCmdType, EV_STS_MIE_TOUT, bCloseClk, __LINE__);
+    }
+
+    if (u16WaitMIEEvent == (R_DATA_END | R_CMD_END))
+    {
+        Trig_MIE_INTR = 3;
+    }
+    else
+    {
+        if (eCmdType == EV_CMDWRITE)
+            Trig_MIE_INTR = 6;
+        else
+            Trig_MIE_INTR = 2;
+    }
 
     //====== Special Case for R2N CIFD Read Transfer ======
     if( (eCmdType==EV_CMDREAD) && (eTransType==EV_CIF) )
@@ -925,8 +904,13 @@ RspErrEmType Hal_SDMMC_SendCmdAndWaitProcess(IPEmType eIP, TransEmType eTransTyp
             return _SDMMC_EndProcess(eIP, eCmdType, EV_STS_MIE_TOUT, bCloseClk, __LINE__);
 
         if(_REG_WaitEvent(eIP, EV_MIE, R_DATA_END, WT_EVENT_WRITE))
+        {
+            printk("[sdmmc]---%s--%d--MIEEvent = %d--Trig_MIE_INTR = %d--MIE_EVENT[00] = 0x%4x- MIE_INT_EN[01] = 0x%4x---SD_STS[0D] = 0x%4x--\r\n", __FUNCTION__, __LINE__, MIEEvent, Trig_MIE_INTR, \
+                CARD_REG(GET_CARD_REG_ADDR(A_SD_REG_POS(eIP), 0x00)), CARD_REG(GET_CARD_REG_ADDR(A_SD_REG_POS(eIP), 0x01)), CARD_REG(A_SD_STS_REG(eIP)));
             return _SDMMC_EndProcess(eIP, eCmdType, EV_STS_MIE_TOUT, bCloseClk, __LINE__);
+        }
 
+    Trig_MIE_INTR = 5;
     }
 
     return _SDMMC_EndProcess(eIP, eCmdType, (RspErrEmType)M_REG_STSERR(eIP), bCloseClk, __LINE__);
@@ -945,7 +929,7 @@ RspErrEmType Hal_SDMMC_SendCmdAndWaitProcess(IPEmType eIP, TransEmType eTransTyp
 *
 * @return RspErrEmType  : Response Error Code
 ----------------------------------------------------------------------------------------------------------*/
-RspErrEmType Hal_SDMMC_RunBrokenDmaAndWaitProcess(IPEmType eIP, CmdEmType eCmdType)
+RspErrEmType Hal_SDMMC_RunBrokenDmaAndWaitProcess(IpOrder eIP, CmdEmType eCmdType)
 {
     U32_T u32WaitMS = 0;
 
@@ -997,19 +981,19 @@ void Hal_SDMMC_ADMASetting(volatile void *pDMATable, U8_T u8Item, U32_T u32SubLe
     pst_AdmaDescStruct->u32_MiuSel = u8MIUSel;
     pst_AdmaDescStruct->u32_End    = bEnd;
 
-    /*prtstring("\r\n");
-    prtstring("gpst_AdmaDescStruct Pos=(");
-    prtU32Hex((U32_T)pst_AdmaDescStruct);
-    prtstring(")\r\n");
+    /*sdmmc_print("\r\n");
+    sdmmc_print("gpst_AdmaDescStruct Pos=(");
+    sdmmc_print("0x%08X", (U32_T)pst_AdmaDescStruct);
+    sdmmc_print(")\r\n");
 
     for(u16Pos=0; u16Pos<192 ; u16Pos++)
     {
         if( (u16Pos%12)==0)
-           (prtstring("\r\n"));
+           (sdmmc_print("\r\n"));
 
-        (prtstring("["));
-        (prtU8Hex( *(pu8Buf+u16Pos)));
-        (prtstring("]"));
+        (sdmmc_print("["));
+        (sdmmc_print("0x%02X",  *(pu8Buf+u16Pos)));
+        (sdmmc_print("]"));
 
     }*/
 
@@ -1031,7 +1015,7 @@ void Hal_SDMMC_ADMASetting(volatile void *pDMATable, U8_T u8Item, U32_T u32SubLe
  * @param bEnable : Enable (TRUE) or Disable (FALSE)
  * @param u16DelayMs : Delay ms to Specail Purpose
  ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_ClkCtrl(IPEmType eIP, BOOL_T bEnable, U16_T u16DelayMs)
+void Hal_SDMMC_ClkCtrl(IpOrder eIP, BOOL_T bEnable, U16_T u16DelayMs)
 {
     CARD_REG(A_MIE_FUNC_CTL_REG(eIP)) = V_MIE_PATH_INIT | _REG_GetMIEFunCtlSetting(eIP);
 
@@ -1053,7 +1037,7 @@ void Hal_SDMMC_ClkCtrl(IPEmType eIP, BOOL_T bEnable, U16_T u16DelayMs)
 *
 * @param eIP : FCIE1/FCIE2/...
 ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_Reset(IPEmType eIP)
+void Hal_SDMMC_Reset(IpOrder eIP)
 {
     _REG_ResetIP(eIP);
 }
@@ -1068,7 +1052,7 @@ void Hal_SDMMC_Reset(IPEmType eIP)
  * @param eIP : FCIE1/FCIE2/...
  * @param bEnable : Enable (TRUE) or Disable (FALSE)
  ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_StopProcessCtrl(IPEmType eIP, BOOL_T bEnable)
+void Hal_SDMMC_StopProcessCtrl(IpOrder eIP, BOOL_T bEnable)
 {
     gb_StopWProc[eIP] = bEnable;
 
@@ -1092,7 +1076,7 @@ void Hal_SDMMC_StopProcessCtrl(IPEmType eIP, BOOL_T bEnable)
 *
 * @return BOOL_T  :  (TRUE: Other driver usnig)
 ----------------------------------------------------------------------------------------------------------*/
-BOOL_T Hal_SDMMC_OtherPreUse(IPEmType eIP)
+BOOL_T Hal_SDMMC_OtherPreUse(IpOrder eIP)
 {
 
     if ( CARD_REG(A_MIE_FUNC_CTL_REG(eIP)) & R_EMMC_EN )
@@ -1161,24 +1145,19 @@ void Hal_SDMMC_DumpMemTool(U8_T u8ListNum, volatile U8_T *pu8Buf)
     U16_T u16Pos=0;
     U8_T u8ListPos;
     U32_T u32BufAddr = (U32_T)pu8Buf;
-    prtstring("\r\n $[Prt MEM_DATA: ");
-    prtU32Hex(u32BufAddr);
-    prtstring(" ]\r\n");
+    sdmmc_print("\r\n $[Prt MEM_DATA: 0x%08X ]\r\n", u32BufAddr);
 
     for(u8ListPos=0 ; u8ListPos <u8ListNum; u8ListPos++ )
     {
         u16Pos= u8ListPos*16;
         for(; u16Pos< (u8ListPos+1)*16; u16Pos++)
         {
-            prtstring("[");
-            prtU8Hex(pu8Buf[u16Pos]);
-            prtstring("]");
+            sdmmc_print("[0x%02X]", pu8Buf[u16Pos]);
         }
-        prtstring("\r\n");
+        sdmmc_print("\r\n");
     }
 
-    prtstring("\r\n\r\n");
-
+    sdmmc_print("\r\n");
 }
 
 
@@ -1192,7 +1171,7 @@ void Hal_SDMMC_DumpMemTool(U8_T u8ListNum, volatile U8_T *pu8Buf)
 *
 * @return U8_T  : Return DAT Bus Level (4Bits)
 ----------------------------------------------------------------------------------------------------------*/
-U8_T Hal_SDMMC_GetDATBusLevel(IPEmType eIP)
+U8_T Hal_SDMMC_GetDATBusLevel(IpOrder eIP)
 {
     U16_T u16Temp = 0;
 
@@ -1213,7 +1192,7 @@ U8_T Hal_SDMMC_GetDATBusLevel(IPEmType eIP)
 *
 * @return U16_T  : Return MIE Event
 ----------------------------------------------------------------------------------------------------------*/
-U16_T Hal_SDMMC_GetMIEEvent(IPEmType eIP)
+U16_T Hal_SDMMC_GetMIEEvent(IpOrder eIP)
 {
     return CARD_REG(A_MIE_EVENT_REG(eIP));
 }
@@ -1232,7 +1211,7 @@ U16_T Hal_SDMMC_GetMIEEvent(IPEmType eIP)
  * @param eIP : FCIE1/FCIE2/...
  * @param bEnable : Enable (TRUE) or Disable (FALSE)
  ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_SDIODeviceCtrl(IPEmType eIP, BOOL_T bEnable)
+void Hal_SDMMC_SDIODeviceCtrl(IpOrder eIP, BOOL_T bEnable)
 {
     if(bEnable)
         gb_SDIODevice[eIP] = TRUE;
@@ -1251,33 +1230,19 @@ void Hal_SDMMC_SDIODeviceCtrl(IPEmType eIP, BOOL_T bEnable)
  * @param eIP : FCIE1/FCIE2/...
  * @param bEnable : Enable (TRUE) or Disable (FALSE)
  ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_SDIOIntDetCtrl(IPEmType eIP, BOOL_T bEnable)
+void Hal_SDMMC_SDIOIntDetCtrl(IpOrder eIP, BOOL_T bEnable)
 {
-    if(gb_SDIODevice[eIP])
+    if (gb_SDIODevice[eIP])
     {
         if(bEnable)
         {
-            if(!gu16_SDIO_IntEn_RunOnce[eIP])
-            {
-                gu16_SDIO_IntEn_RunOnce[eIP] = TRUE;  //If we confirm this device is SDIO, we enable the int_en once
-
-                #if(EN_BIND_CARD_INT)
-                Hal_CARD_INT_SetMIEIntEn_ForSDIO(eIP, EV_INT_SD, bEnable);
-                #endif // End of EN_BIND_CARD_INT
-
-            }
-
             CARD_REG_SETBIT(A_SDIO_DET_ON(eIP), R_SDIO_DET_ON);
         }
         else
         {
-            //Auto Clear at FCIE5 ?
             CARD_REG_CLRBIT(A_SDIO_DET_ON(eIP), R_SDIO_DET_ON);
         }
-
-
     }
-
 }
 
 
@@ -1293,7 +1258,7 @@ void Hal_SDMMC_SDIOIntDetCtrl(IPEmType eIP, BOOL_T bEnable)
  * @param eCmdType : CMDRSP/READ/WRITE
  * @param u16BlkCnt : Block Cnt
  ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_SetSDIOIntBeginSetting(IPEmType eIP, U8_T u8Cmd, U32_T u32Arg, CmdEmType eCmdType, U16_T u16BlkCnt)
+void Hal_SDMMC_SetSDIOIntBeginSetting(IpOrder eIP, U8_T u8Cmd, U32_T u32Arg, CmdEmType eCmdType, U16_T u16BlkCnt)
 {
     BOOL_T bSDIOAbortMode = (u8Cmd == 52) && ( (u32Arg & 0x83FFFE00) == 0x80000C00);
 
@@ -1327,7 +1292,7 @@ void Hal_SDMMC_SetSDIOIntBeginSetting(IPEmType eIP, U8_T u8Cmd, U32_T u32Arg, Cm
  * @param eRspErr :
  * @param u16BlkCnt :
  ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_SetSDIOIntEndSetting(IPEmType eIP, RspErrEmType eRspErr, U16_T u16BlkCnt)
+void Hal_SDMMC_SetSDIOIntEndSetting(IpOrder eIP, RspErrEmType eRspErr, U16_T u16BlkCnt)
 {
     U16_T u16RspErr = (U16_T)eRspErr;
 
@@ -1359,11 +1324,8 @@ void Hal_SDMMC_SetSDIOIntEndSetting(IPEmType eIP, RspErrEmType eRspErr, U16_T u1
  * @param eIP : FCIE1/FCIE2/...
  * @param bEnable : Enable (TRUE) or Disable (FALSE)
  ----------------------------------------------------------------------------------------------------------*/
-void Hal_SDMMC_MIEIntCtrl(IPEmType eIP, BOOL_T bEnable)
+void Hal_SDMMC_MIEIntCtrl(IpOrder eIP, BOOL_T bEnable)
 {
-    Hal_CARD_INT_MIEIntCtrl(eIP, EV_INT_SD, bEnable);
+    Hal_CARD_INT_MIEIntCtrl(eIP, bEnable);
 }
-
-
-
 #endif  // End of EN_BIND_CARD_INT

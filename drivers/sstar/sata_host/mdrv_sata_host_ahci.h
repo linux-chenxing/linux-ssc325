@@ -20,7 +20,7 @@
 #define _MDRV_SATA_HOST_AHCI_H_
 
 struct sstar_platform_data {
-    int (*init)(struct device *dev, void __iomem *addr);
+    int (*init)(struct device *dev, void __iomem *addr , int id);
     void (*exit)(struct device *dev);
     int (*suspend)(struct device *dev);
     int (*resume)(struct device *dev);

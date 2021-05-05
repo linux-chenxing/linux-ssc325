@@ -47,7 +47,7 @@
 #include "sys_rtk_hp.h"
 #include "hal_drv_util.h"
 #include "sys_time.h"
-#include "sys_arm_arch_timer.h"
+#include "sys_arch_timer.h"
 #include "drv_bus_axi.h"
 #include "drv_int_ctrl_pub_api.h"
 #include "cam_os_wrapper.h"
@@ -79,7 +79,7 @@ typedef struct
 typedef struct
 {
     u32 nInited;
-    void *pTsem;
+    Ms_DynSemaphor_t Tsem;
 } CamOsTsemRtk_t, *pCamOsTsemRtk;
 
 typedef struct
@@ -87,13 +87,13 @@ typedef struct
     u32 nInited;
     u32 nReadCount;
     Ms_Mutex_t tRMutex;
-    void *pWTsem;
+    Ms_DynSemaphor_t WTsem;
 } CamOsRwsemRtk_t, *pCamOsRwsemRtk;
 
 typedef struct
 {
     u32 nInited;
-    void *pTsem;
+    Ms_DynSemaphor_t Tsem;
 } CamOsTcondRtk_t, *pCamOsTcondRtk;
 
 typedef struct
@@ -114,19 +114,27 @@ typedef struct
     u32 nObjSize;
 } CamOsMemCacheRtk_t, *pCamOsMemCacheRtk;
 
+typedef struct
+{
+    void **ppEntryPtr;
+    unsigned long *pBitmap;
+    unsigned long entry_num;
+} CamOsInformalIdr_t, *pCamOsInformalIdr;
+
 static Ms_Mutex_t _gtSelfInitLock = {0};
 static Ms_Mutex_t _gtMemLock = {0};
 
 static u32 _gTimeOfDayOffsetSec = 0;
 static u32 _gTimeOfDayOffsetNanoSec = 0;
 
-_Static_assert(sizeof(CamOsMutex_t) >= sizeof(Ms_Flag_t) + 4, "CamOsMutex_t size define not enough!");
+_Static_assert(sizeof(CamOsMutex_t) >= sizeof(CamOsMutexRtk_t), "CamOsMutex_t size define not enough!");
 _Static_assert(sizeof(CamOsTsem_t) >= sizeof(CamOsTsemRtk_t), "CamOsTsem_t size define not enough!");
 _Static_assert(sizeof(CamOsRwsem_t) >= sizeof(CamOsRwsemRtk_t), "CamOsRwsem_t size define not enough!");
 _Static_assert(sizeof(CamOsTcond_t) >= sizeof(CamOsTcondRtk_t), "CamOsTcond_t size define not enough!");
 _Static_assert(sizeof(CamOsSpinlock_t) >= sizeof(CamOsSpinlockRtk_t), "CamOsSpinlock_t size define not enough!");
 _Static_assert(sizeof(CamOsTimer_t) >= sizeof(CamOsTimerRtk_t), "CamOsTimer_t size define not enough!");
 _Static_assert(sizeof(CamOsMemCache_t) >= sizeof(CamOsMemCacheRtk_t), "CamOsMemCache_t size define not enough!");
+_Static_assert(sizeof(CamOsIdr_t) >= sizeof(CamOsInformalIdr_t), "CamOsIdr_t size define not enough!");
 
 CAM_OS_DECLARE_BITMAP(aThreadStopBitmap, RTK_MAX_TASKS);
 static u8 nThreadStopBitmapInited=0;
@@ -156,7 +164,7 @@ static u8 nThreadStopBitmapInited=0;
 #include <sys/prctl.h>
 #include <sys/resource.h>
 #include <stdarg.h>
-#include "time.h"
+#include <time.h>
 #include "cam_os_wrapper.h"
 #include "cam_os_util.h"
 #include "cam_os_util_list.h"
@@ -213,21 +221,22 @@ typedef struct
 
 typedef struct
 {
-    u32 nIdrSize;
-    void *pEntryPtr;
-} CamOsIdrLU_t, *pCamOsIdrLU;
+    void **ppEntryPtr;
+    unsigned long *pBitmap;
+    unsigned long entry_num;
+} CamOsInformalIdr_t, *pCamOsInformalIdr;
 
 static pthread_mutex_t _gtSelfInitLock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t _gtMemLock = PTHREAD_MUTEX_INITIALIZER;
 
-_Static_assert(sizeof(CamOsMutex_t) >= sizeof(pthread_mutex_t) + 4, "CamOsMutex_t size define not enough! %d");
+_Static_assert(sizeof(CamOsMutex_t) >= sizeof(CamOsMutexLU_t), "CamOsMutex_t size define not enough!");
 _Static_assert(sizeof(CamOsTsem_t) >= sizeof(CamOsTsemLU_t), "CamOsTsem_t size define not enough!");
 _Static_assert(sizeof(CamOsRwsem_t) >= sizeof(CamOsRwsemLU_t), "CamOsRwsem_t size define not enough!");
 _Static_assert(sizeof(CamOsTcond_t) >= sizeof(CamOsTcondLU_t), "CamOsTcond_t size define not enough!");
 _Static_assert(sizeof(CamOsSpinlock_t) >= sizeof(CamOsSpinlockLU_t), "CamOsSpinlock_t size define not enough!");
-_Static_assert(sizeof(CamOsTimer_t) >= sizeof(CamOsTimerLU_t), "CamOsTimer_t size define not enough!");
 _Static_assert(sizeof(CamOsTimespec_t) == sizeof(struct timespec), "CamOsTimespec_t size define error!");
-_Static_assert(sizeof(CamOsIdr_t) >= sizeof(CamOsIdrLU_t), "CamOsIdr_t size define not enough!");
+_Static_assert(sizeof(CamOsTimer_t) >= sizeof(CamOsTimerLU_t), "CamOsTimer_t size define not enough!");
+_Static_assert(sizeof(CamOsIdr_t) >= sizeof(CamOsInformalIdr_t), "CamOsIdr_t size define not enough!");
 
 #elif defined(CAM_OS_LINUX_KERNEL)
 #include <linux/sched.h>
@@ -253,6 +262,7 @@ _Static_assert(sizeof(CamOsIdr_t) >= sizeof(CamOsIdrLU_t), "CamOsIdr_t size defi
 #include <asm/page.h>
 #include <ms_msys.h>
 #include <ms_platform.h>
+#include "mdrv_miu.h"
 #include "cam_os_wrapper.h"
 #include "cam_os_util.h"
 #include "cam_os_util_list.h"
@@ -330,7 +340,7 @@ extern int msys_find_dmem_by_phys(unsigned long long phys, MSYS_DMEM_INFO* pdmem
 static DEFINE_MUTEX(_gtSelfInitLock);
 static DEFINE_MUTEX(_gtMemLock);
 
-_Static_assert(sizeof(CamOsMutex_t) >= sizeof(struct mutex) + 4, "CamOsMutex_t size define not enough! %d");
+_Static_assert(sizeof(CamOsMutex_t) >= sizeof(CamOsMutexLK_t), "CamOsMutex_t size define not enough!");
 _Static_assert(sizeof(CamOsTsem_t) >= sizeof(CamOsTsemLK_t), "CamOsTsem_t size define not enough!");
 _Static_assert(sizeof(CamOsRwsem_t) >= sizeof(CamOsRwsemLK_t), "CamOsRwsem_t size define not enough!");
 _Static_assert(sizeof(CamOsTcond_t) >= sizeof(CamOsTcondLK_t), "CamOsTcond_t size define not enough!");
@@ -343,10 +353,9 @@ _Static_assert(sizeof(CamOsIdr_t) >= sizeof(CamOsIdrLK_t), "CamOsIdr_t size defi
 
 #endif
 
-// common macro define
-#define RIU_BASE_ADDR           0x1F000000
-#define RIU_MEM_SIZE_OFFSET     0x2025A4
-#define RIU_CHIP_ID_OFFSET      0x003C00
+#define TO_STR_NATIVE(e) #e
+#define MACRO_TO_STRING(e) TO_STR_NATIVE(e)
+char cam_os_wrapper_version_string[] = MACRO_TO_STRING(SIGMASTAR_MODULE_VERSION) " wrapper." CAM_OS_WRAPPER_VERSION;
 
 #define ASSIGN_POINTER_VALUE(a, b) if((a))*(a)=(b)
 
@@ -364,7 +373,8 @@ _Static_assert(sizeof(CamOsIdr_t) >= sizeof(CamOsIdrLK_t), "CamOsIdr_t size defi
 typedef struct MemoryList_t
 {
     struct CamOsListHead_t tList;
-    void *pPtr;
+    void *pPhysPtr;
+    void *pVirtPtr;
     void *pMemifoPtr;
     char *szName;
     u32  nSize;
@@ -737,7 +747,9 @@ void CamOsMsSleep(u32 nMsec)
 #ifdef CAM_OS_RTK
     MsSleep(RTK_MS_TO_TICK(nMsec));
 #elif defined(CAM_OS_LINUX_USER)
-    usleep((useconds_t)nMsec * 1000);
+#define DIV_ROUND_UP(n, d) (((n) + (d) - 1) / (d))
+#define MS_SLEEP_ACCURACY       10
+    usleep((useconds_t)DIV_ROUND_UP(nMsec, MS_SLEEP_ACCURACY)*MS_SLEEP_ACCURACY*1000);
 #elif defined(CAM_OS_LINUX_KERNEL)
     msleep(nMsec);
 #endif
@@ -750,16 +762,16 @@ void CamOsUsSleep(u32 nUsec)
 #elif defined(CAM_OS_LINUX_USER)
     usleep((useconds_t)nUsec);
 #elif defined(CAM_OS_LINUX_KERNEL)
-    usleep_range(nUsec, nUsec + (nUsec>>4));
+    usleep_range(nUsec, nUsec + 10);
 #endif
 }
 
 void CamOsMsDelay(u32 nMsec)
 {
 #ifdef CAM_OS_RTK
-    u64 nTicks = arch_counter_get_cntpct();
+    u64 nTicks = sys_arch_timer_get_counter();
 
-    while (((arch_counter_get_cntpct() - nTicks) / 6000) < nMsec) {}
+    while (((sys_arch_timer_get_counter() - nTicks) / (sys_arch_timer_get_cntfrq() / 1000)) < nMsec) {}
 #elif defined(CAM_OS_LINUX_USER)
     CamOsTimespec_t tTvStart = {0}, tTvEnd = {0};
     CamOsGetMonotonicTime(&tTvStart);
@@ -776,9 +788,9 @@ void CamOsMsDelay(u32 nMsec)
 void CamOsUsDelay(u32 nUsec)
 {
 #ifdef CAM_OS_RTK
-    u64 nTicks = arch_counter_get_cntpct();
+    u64 nTicks = sys_arch_timer_get_counter();
 
-    while (((arch_counter_get_cntpct() - nTicks) / 6) < nUsec) {}
+    while (((sys_arch_timer_get_counter() - nTicks) / (sys_arch_timer_get_cntfrq() / 1000000)) < nUsec) {}
 #elif defined(CAM_OS_LINUX_USER)
     CamOsTimespec_t tTvStart = {0}, tTvEnd = {0};
     CamOsGetMonotonicTime(&tTvStart);
@@ -882,9 +894,9 @@ void CamOsSetTimeOfDay(const CamOsTimespec_t *ptRes)
 void CamOsGetMonotonicTime(CamOsTimespec_t *ptRes)
 {
 #ifdef CAM_OS_RTK
-    u64 nTicks = arch_counter_get_cntpct();
-    ptRes->nSec = nTicks / 6000000;
-    ptRes->nNanoSec = (u32)((nTicks % 6000000) * 1000 / 6);
+    u64 nTicks = sys_arch_timer_get_counter();
+    ptRes->nSec = nTicks / sys_arch_timer_get_cntfrq();
+    ptRes->nNanoSec = (u32)((nTicks % sys_arch_timer_get_cntfrq()) * 1000000000 / sys_arch_timer_get_cntfrq());
 #elif defined(CAM_OS_LINUX_USER)
     clock_gettime(CLOCK_MONOTONIC, (struct timespec *)ptRes);
 #elif defined(CAM_OS_LINUX_KERNEL)
@@ -1173,6 +1185,7 @@ CamOsRet_e CamOsThreadCreate(CamOsThread *ptThread,
     *ptThread = (CamOsThread *)tpThreadHandle;
 #endif
 
+    // coverity[leaked_storage]
     return eRet;
 }
 
@@ -1779,11 +1792,6 @@ CamOsRet_e CamOsMutexTryLock(CamOsMutex_t *ptMutex)
         {
             eRet = CAM_OS_RESOURCE_BUSY;
         }
-        else
-        {
-            CAM_OS_WARN("lock fail");
-            eRet = CAM_OS_FAIL;
-        }
     }
     else
     {
@@ -1908,7 +1916,7 @@ CamOsRet_e CamOsTsemInit(CamOsTsem_t *ptTsem, u32 nVal)
         {
             MsMutexLock(&_gtSelfInitLock);
 
-            if(CUS_OS_OK != MsCreateDynSemExtend(&ptHandle->pTsem, CAM_OS_MAX_INT - 1, nVal))
+            if(CUS_OS_OK != MsCreateDynSemExtend(&ptHandle->Tsem, CAM_OS_MAX_INT - 1, nVal))
             {
                 CAM_OS_WARN("init fail");
                 eRet = CAM_OS_FAIL;
@@ -1939,6 +1947,7 @@ CamOsRet_e CamOsTsemInit(CamOsTsem_t *ptTsem, u32 nVal)
             if(0 != sem_init(&ptHandle->tSem, 1, nVal))
             {
                 CAM_OS_WARN("init fail");
+                CamOsPrintf("err: %d\n", errno);
                 eRet = CAM_OS_FAIL;
             }
             else
@@ -1997,7 +2006,7 @@ CamOsRet_e CamOsTsemDeinit(CamOsTsem_t *ptTsem)
         }
         else
         {
-            MsDestroyDynSem(ptHandle->pTsem);
+            MsDestroyDynSem(&ptHandle->Tsem);
             ptHandle->nInited = 0;
         }
     }
@@ -2055,7 +2064,7 @@ void CamOsTsemUp(CamOsTsem_t *ptTsem)
         if(ptHandle->nInited != INIT_MAGIC_NUM)
             CAM_OS_WARN("not inited");
         else
-            MsProduceDynSem(ptHandle->pTsem);
+            MsProduceDynSem(&ptHandle->Tsem);
     }
 #elif defined(CAM_OS_LINUX_USER)
     CamOsTsemLU_t *ptHandle = (CamOsTsemLU_t *)ptTsem;
@@ -2087,7 +2096,7 @@ void CamOsTsemDown(CamOsTsem_t *ptTsem)
         if(ptHandle->nInited != INIT_MAGIC_NUM)
             CAM_OS_WARN("not inited");
         else
-            MsConsumeDynSem(ptHandle->pTsem);
+            MsConsumeDynSem(&ptHandle->Tsem);
     }
 #elif defined(CAM_OS_LINUX_USER)
     CamOsTsemLU_t *ptHandle = (CamOsTsemLU_t *)ptTsem;
@@ -2123,7 +2132,7 @@ CamOsRet_e CamOsTsemDownInterruptible(CamOsTsem_t *ptTsem)
             eRet = CAM_OS_FAIL;
         }
         else
-            MsConsumeDynSem(ptHandle->pTsem);
+            MsConsumeDynSem(&ptHandle->Tsem);
     }
     else
     {
@@ -2182,7 +2191,7 @@ CamOsRet_e CamOsTsemTimedDown(CamOsTsem_t *ptTsem, u32 nMsec)
             CAM_OS_WARN("not inited");
             eRet = CAM_OS_FAIL;
         }
-        else if(CUS_OS_NO_MESSAGE == MsConsumeDynSemDelay(ptHandle->pTsem, RTK_MS_TO_TICK(nMsec)))
+        else if(CUS_OS_NO_MESSAGE == MsConsumeDynSemDelay(&ptHandle->Tsem, RTK_MS_TO_TICK(nMsec)))
             eRet = CAM_OS_TIMEOUT;
     }
     else
@@ -2257,14 +2266,9 @@ CamOsRet_e CamOsTsemTryDown(CamOsTsem_t *ptTsem)
             CAM_OS_WARN("not inited");
             eRet = CAM_OS_FAIL;
         }
-        else if(CUS_OS_UNIT_NOAVAIL == MsPollDynSem(ptHandle->pTsem))
+        else if(CUS_OS_UNIT_NOAVAIL == MsPollDynSem(&ptHandle->Tsem))
         {
             eRet = CAM_OS_RESOURCE_BUSY;
-        }
-        else
-        {
-            CAM_OS_WARN("down fail");
-            eRet = CAM_OS_FAIL;
         }
     }
     else
@@ -2331,7 +2335,7 @@ CamOsRet_e CamOsRwsemInit(CamOsRwsem_t *ptRwsem)
         if(ptHandle->nInited != INIT_MAGIC_NUM)
         {
             if(CUS_OS_OK != MsInitMutex(&ptHandle->tRMutex) ||
-               CUS_OS_OK != MsCreateDynSem(&ptHandle->pWTsem, 1))
+               CUS_OS_OK != MsCreateDynSem(&ptHandle->WTsem, 1))
             {
                 CAM_OS_WARN("init fail");
                 eRet = CAM_OS_FAIL;
@@ -2421,7 +2425,7 @@ CamOsRet_e CamOsRwsemDeinit(CamOsRwsem_t *ptRwsem)
         }
         else
         {
-            MsDestroyDynSem(ptHandle->pWTsem);
+            MsDestroyDynSem(&ptHandle->WTsem);
             ptHandle->nInited = 0;
         }
     }
@@ -2483,7 +2487,7 @@ void CamOsRwsemUpRead(CamOsRwsem_t *ptRwsem)
             MsMutexLock(&ptHandle->tRMutex);
             ptHandle->nReadCount--;
             if(ptHandle->nReadCount == 0)
-                MsProduceDynSem(ptHandle->pWTsem);
+                MsProduceDynSem(&ptHandle->WTsem);
             MsMutexUnlock(&ptHandle->tRMutex);
         }
     }
@@ -2517,7 +2521,7 @@ void CamOsRwsemUpWrite(CamOsRwsem_t *ptRwsem)
         if(ptHandle->nInited != INIT_MAGIC_NUM)
             CAM_OS_WARN("not inited");
         else
-            MsProduceDynSem(ptHandle->pWTsem);
+            MsProduceDynSem(&ptHandle->WTsem);
     }
 #elif defined(CAM_OS_LINUX_USER)
     CamOsRwsemLU_t *ptHandle = (CamOsRwsemLU_t *)ptRwsem;
@@ -2553,7 +2557,7 @@ void CamOsRwsemDownRead(CamOsRwsem_t *ptRwsem)
             MsMutexLock(&ptHandle->tRMutex);
             ptHandle->nReadCount++;
             if(ptHandle->nReadCount == 1)
-                MsConsumeDynSem(ptHandle->pWTsem);
+                MsConsumeDynSem(&ptHandle->WTsem);
             MsMutexUnlock(&ptHandle->tRMutex);
         }
     }
@@ -2587,7 +2591,7 @@ void CamOsRwsemDownWrite(CamOsRwsem_t *ptRwsem)
         if(ptHandle->nInited != INIT_MAGIC_NUM)
             CAM_OS_WARN("not inited");
         else
-            MsConsumeDynSem(ptHandle->pWTsem);
+            MsConsumeDynSem(&ptHandle->WTsem);
     }
 #elif defined(CAM_OS_LINUX_USER)
     CamOsRwsemLU_t *ptHandle = (CamOsRwsemLU_t *)ptRwsem;
@@ -2626,7 +2630,7 @@ CamOsRet_e CamOsRwsemTryDownRead(CamOsRwsem_t *ptRwsem)
             ptHandle->nReadCount++;
             if(ptHandle->nReadCount == 1)
             {
-                if(CUS_OS_UNIT_NOAVAIL == MsPollDynSem(ptHandle->pWTsem))
+                if(CUS_OS_UNIT_NOAVAIL == MsPollDynSem(&ptHandle->WTsem))
                 {
                     eRet = CAM_OS_RESOURCE_BUSY;
                     ptHandle->nReadCount--;
@@ -2693,7 +2697,7 @@ CamOsRet_e CamOsRwsemTryDownWrite(CamOsRwsem_t *ptRwsem)
     {
         if(ptHandle->nInited != INIT_MAGIC_NUM)
             CAM_OS_WARN("not inited");
-        else if(CUS_OS_UNIT_NOAVAIL == MsPollDynSem(ptHandle->pWTsem))
+        else if(CUS_OS_UNIT_NOAVAIL == MsPollDynSem(&ptHandle->WTsem))
         {
             eRet = CAM_OS_RESOURCE_BUSY;
         }
@@ -2757,7 +2761,7 @@ CamOsRet_e CamOsTcondInit(CamOsTcond_t *ptTcond)
         {
             MsMutexLock(&_gtSelfInitLock);
 
-            if(CUS_OS_OK != MsCreateDynSem(&ptHandle->pTsem, 0))
+            if(CUS_OS_OK != MsCreateDynSem(&ptHandle->Tsem, 0))
             {
                 CAM_OS_WARN("create fail");
                 eRet = CAM_OS_FAIL;
@@ -2859,7 +2863,7 @@ CamOsRet_e CamOsTcondDeinit(CamOsTcond_t *ptTcond)
         }
         else
         {
-            MsDestroyDynSem(ptHandle->pTsem);
+            MsDestroyDynSem(&ptHandle->Tsem);
             ptHandle->nInited = 0;
         }
     }
@@ -2916,7 +2920,7 @@ void CamOsTcondSignal(CamOsTcond_t *ptTcond)
         if(ptHandle->nInited != INIT_MAGIC_NUM)
             CAM_OS_WARN("not inited");
         else
-            MsProduceSafeDynSem(ptHandle->pTsem, 0);
+            MsProduceSafeDynSem(&ptHandle->Tsem, 0);
     }
 #elif defined(CAM_OS_LINUX_USER)
     CamOsTcondLU_t *ptHandle = (CamOsTcondLU_t *)ptTcond;
@@ -2952,7 +2956,7 @@ void CamOsTcondSignalAll(CamOsTcond_t *ptTcond)
         if(ptHandle->nInited != INIT_MAGIC_NUM)
             CAM_OS_WARN("not inited");
         else
-            MsProduceSafeDynSem(ptHandle->pTsem, 1);
+            MsProduceSafeDynSem(&ptHandle->Tsem, 1);
     }
 #elif defined(CAM_OS_LINUX_USER)
     CamOsTcondLU_t *ptHandle = (CamOsTcondLU_t *)ptTcond;
@@ -2990,7 +2994,7 @@ void CamOsTcondWait(CamOsTcond_t *ptTcond)
         if(ptHandle->nInited != INIT_MAGIC_NUM)
             CAM_OS_WARN("not inited");
         else
-            MsConsumeAllDynSem(ptHandle->pTsem);
+            MsConsumeAllDynSem(&ptHandle->Tsem);
     }
 #elif defined(CAM_OS_LINUX_USER)
     CamOsTcondLU_t *ptHandle = (CamOsTcondLU_t *)ptTcond;
@@ -3033,7 +3037,7 @@ CamOsRet_e CamOsTcondTimedWait(CamOsTcond_t *ptTcond, u32 nMsec)
             CAM_OS_WARN("not inited");
             eRet = CAM_OS_FAIL;
         }
-        else if(CUS_OS_NO_MESSAGE == MsConsumeAllDynSemDelay(ptHandle->pTsem, RTK_MS_TO_TICK(nMsec)))
+        else if(CUS_OS_NO_MESSAGE == MsConsumeAllDynSemDelay(&ptHandle->Tsem, RTK_MS_TO_TICK(nMsec)))
             eRet = CAM_OS_TIMEOUT;
     }
     else
@@ -3195,7 +3199,7 @@ CamOsRet_e CamOsTcondWaitActive(CamOsTcond_t *ptTcond)
         }
         else
         {
-            if(CUS_OS_OK == MsGetDynSemCount(ptHandle->pTsem, &nSemCount))
+            if(CUS_OS_OK == MsGetDynSemCount(&ptHandle->Tsem, &nSemCount))
             {
                 if(nSemCount == 0)
                     eRet = CAM_OS_FAIL;
@@ -3479,35 +3483,35 @@ CamOsRet_e CamOsSpinUnlockIrqRestore(CamOsSpinlock_t *ptSpinlock)
 void* CamOsMemAlloc(u32 nSize)
 {
 #ifdef CAM_OS_RTK
-    return MsAllocateMem(nSize);
+    return MsGetHeapMemory(nSize);
 #elif defined(CAM_OS_LINUX_USER)
     return malloc(nSize);
 #elif defined(CAM_OS_LINUX_KERNEL)
     if (nSize > KMALLOC_THRESHOLD_SIZE)
         return vzalloc(nSize);
     else
-        return kzalloc(nSize, GFP_KERNEL);
+        return kzalloc(nSize, in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
 #endif
 }
 
 void* CamOsMemCalloc(u32 nNum, u32 nSize)
 {
 #ifdef CAM_OS_RTK
-    return MsCallocateMem(nNum * nSize);
+    return MsGetCHeapMemory(nNum * nSize);
 #elif defined(CAM_OS_LINUX_USER)
     return calloc(nNum, nSize);
 #elif defined(CAM_OS_LINUX_KERNEL)
     if ((nNum * nSize) > KMALLOC_THRESHOLD_SIZE)
         return vzalloc(nNum * nSize);
     else
-        return kzalloc(nNum * nSize, GFP_KERNEL);
+        return kzalloc(nNum * nSize, in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
 #endif
 }
 
 void* CamOsMemRealloc(void* pPtr, u32 nSize)
 {
 #ifdef CAM_OS_RTK
-    return MsMemoryReAllocate(pPtr, nSize);
+    return MsHeapRealloc(pPtr, nSize);
 #elif defined(CAM_OS_LINUX_USER)
     return realloc(pPtr, nSize);
 #elif defined(CAM_OS_LINUX_KERNEL)
@@ -3516,7 +3520,7 @@ void* CamOsMemRealloc(void* pPtr, u32 nSize)
     if (nSize > KMALLOC_THRESHOLD_SIZE)
         pAddr = vzalloc(nSize);
     else
-        pAddr = kzalloc(nSize, GFP_KERNEL);
+        pAddr = kzalloc(nSize, in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
 
     if(pPtr && pAddr)
     {
@@ -3535,9 +3539,19 @@ void CamOsMemFlush(void* pPtr, u32 nSize)
     // TODO: implement cache flush in linux user space.
     CAM_OS_WARN("not support in "OS_NAME);
 #elif defined(CAM_OS_LINUX_KERNEL)
-    //flush_icache_range((unsigned long)pPtr, nSize);
     Chip_Flush_Cache_Range((unsigned long)pPtr, nSize);
-    Chip_Flush_Memory();
+#endif
+}
+
+void CamOsMemFlushExt(void* pVa, void* pPA, u32 nSize)
+{
+#ifdef CAM_OS_RTK
+    CAM_OS_WARN("not support in "OS_NAME);
+#elif defined(CAM_OS_LINUX_USER)
+    // TODO: implement cache flush in linux user space.
+    CAM_OS_WARN("not support in "OS_NAME);
+#elif defined(CAM_OS_LINUX_KERNEL)
+    Chip_Flush_Cache_Range_VA_PA((unsigned long)pVa, (unsigned long)pPA, nSize);
 #endif
 }
 
@@ -3570,6 +3584,17 @@ void CamOsMemRelease(void* pPtr)
     {
         kvfree(pPtr);
     }
+#endif
+}
+
+void CamOsMiuPipeFlush(void)
+{
+#ifdef CAM_OS_RTK
+    DrvChipFlushMiuPipe();
+#elif defined(CAM_OS_LINUX_USER)
+    CAM_OS_WARN("not support in "OS_NAME);
+#elif defined(CAM_OS_LINUX_KERNEL)
+    Chip_Flush_MIU_Pipe();
 #endif
 }
 
@@ -3644,6 +3669,26 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
         ASSIGN_POINTER_VALUE(ppVirtPtr, pNonCachePtr);
         ASSIGN_POINTER_VALUE(ppPhysPtr, MsVA2PA(pNonCachePtr));
         ASSIGN_POINTER_VALUE(ppMiuPtr, (void *)HalUtilPHY2MIUAddr((u32)*ppPhysPtr));
+
+        /*CamOsPrintf("%s    0x%08X  0x%08X  0x%08X\n",
+                __FUNCTION__,
+                (u32)*ppVirtPtr,
+                (u32)*ppPhysPtr,
+                (u32)*ppMiuPtr);*/
+
+        _CheckDmemInfoListInited();
+
+        MsMutexLock(&_gtMemLock);
+        MemoryList_t* ptNewEntry = (MemoryList_t*) MsAllocateMem(sizeof(MemoryList_t));
+        ptNewEntry->pPhysPtr = *ppPhysPtr;
+        ptNewEntry->pVirtPtr = *ppVirtPtr;
+        ptNewEntry->pMemifoPtr = NULL;
+        ptNewEntry->szName = (char *)MsAllocateMem(strlen(szName) + 1);
+        if(ptNewEntry->szName)
+            strncpy(ptNewEntry->szName, szName, strlen(szName));
+        ptNewEntry->nSize = nSize;
+        CAM_OS_LIST_ADD_TAIL(&(ptNewEntry->tList), &_gtMemList.tList);
+        MsMutexUnlock(&_gtMemLock);
     }
     else
     {
@@ -3652,25 +3697,6 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
         ASSIGN_POINTER_VALUE(ppMiuPtr, NULL);
         eRet = CAM_OS_FAIL;
     }
-
-    /*CamOsPrintf("%s    0x%08X  0x%08X  0x%08X\n",
-            __FUNCTION__,
-            (u32)*ppVirtPtr,
-            (u32)*ppPhysPtr,
-            (u32)*ppMiuPtr);*/
-
-    _CheckDmemInfoListInited();
-
-    MsMutexLock(&_gtMemLock);
-    MemoryList_t* ptNewEntry = (MemoryList_t*) MsAllocateMem(sizeof(MemoryList_t));
-    ptNewEntry->pPtr = pNonCachePtr;
-    ptNewEntry->pMemifoPtr = NULL;
-    ptNewEntry->szName = (char *)MsAllocateMem(strlen(szName) + 1);
-    if(ptNewEntry->szName)
-        strncpy(ptNewEntry->szName, szName, strlen(szName));
-    ptNewEntry->nSize = nSize;
-    CAM_OS_LIST_ADD_TAIL(&(ptNewEntry->tList), &_gtMemList.tList);
-    MsMutexUnlock(&_gtMemLock);
 #elif defined(CAM_OS_LINUX_USER)
 #ifndef NO_MDRV_MSYS
     s32 nMsysFd = -1;
@@ -3690,7 +3716,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
         {
             ptTmp = CAM_OS_LIST_ENTRY(ptPos, MemoryList_t, tList);
 
-            if(ptTmp->pPtr && ptTmp->szName && 0 == strcmp(szName, ptTmp->szName))
+            if(ptTmp->pPhysPtr && ptTmp->pVirtPtr && ptTmp->szName && 0 == strcmp(szName, ptTmp->szName))
             {
                 fprintf(stderr, "%s request same dmem name: %s\n", __FUNCTION__, szName);
                 eRet = CAM_OS_PARAM_ERR;
@@ -3781,7 +3807,8 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
 
         pthread_mutex_lock(&_gtMemLock);
         MemoryList_t* ptNewEntry = (MemoryList_t*) malloc(sizeof(MemoryList_t));
-        ptNewEntry->pPtr = pMmapPtr;
+        ptNewEntry->pPhysPtr = *ppPhysPtr;
+        ptNewEntry->pVirtPtr = *ppVirtPtr;
         ptNewEntry->pMemifoPtr = (void *) ptMsysMem;
         ptNewEntry->szName = strdup(szName);
         ptNewEntry->nSize = ptMsysMem->length;
@@ -3821,7 +3848,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
         {
             ptTmp = CAM_OS_LIST_ENTRY(ptPos, MemoryList_t, tList);
 
-            if(ptTmp->pPtr && ptTmp->szName && 0 == strcmp(szName, ptTmp->szName))
+            if(ptTmp->pPhysPtr && ptTmp->pVirtPtr && ptTmp->szName && 0 == strcmp(szName, ptTmp->szName))
             {
                 printk(KERN_WARNING "%s name conflict: %s\n", __FUNCTION__, szName);
                 eRet = CAM_OS_PARAM_ERR;
@@ -3836,7 +3863,7 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
             break;
         }
 
-        if(0 == (ptDmem = (MSYS_DMEM_INFO *)kzalloc(sizeof(MSYS_DMEM_INFO), GFP_KERNEL)))
+        if(0 == (ptDmem = (MSYS_DMEM_INFO *)kzalloc(sizeof(MSYS_DMEM_INFO), in_interrupt() ? GFP_ATOMIC : GFP_KERNEL)))
         {
             printk(KERN_WARNING "%s alloc DMEM INFO fail\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
@@ -3864,15 +3891,16 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
                (u32)ptDmem->length);
 
         mutex_lock(&_gtMemLock);
-        if(0 == (ptNewEntry = (MemoryList_t*) kzalloc(sizeof(MemoryList_t), GFP_KERNEL)))
+        if(0 == (ptNewEntry = (MemoryList_t*) kzalloc(sizeof(MemoryList_t), in_interrupt() ? GFP_ATOMIC : GFP_KERNEL)))
         {
             printk(KERN_WARNING "%s alloc entry fail\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
             break;
         }
-        ptNewEntry->pPtr = (void *)(uintptr_t)ptDmem->kvirt;
+        ptNewEntry->pPhysPtr = *ppPhysPtr;
+        ptNewEntry->pVirtPtr = *ppVirtPtr;
         ptNewEntry->pMemifoPtr = (void *) ptDmem;
-        if(0 == (ptNewEntry->szName = (char *)kzalloc(strlen(szName) + 1, GFP_KERNEL)))
+        if(0 == (ptNewEntry->szName = (char *)kzalloc(strlen(szName) + 1, in_interrupt() ? GFP_ATOMIC : GFP_KERNEL)))
         {
             printk(KERN_WARNING "%s alloc entry name fail\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
@@ -3909,18 +3937,15 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
     return eRet;
 }
 
-CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
+CamOsRet_e CamOsDirectMemRelease(void* pPtr, u32 nSize)
 {
     CamOsRet_e eRet = CAM_OS_OK;
 #ifdef CAM_OS_RTK
     struct CamOsListHead_t *ptPos, *ptQ;
     MemoryList_t* ptTmp;
 
-    if(pVirtPtr)
+    if(pPtr)
     {
-        MsReleaseMemory(pVirtPtr);
-        //CamOsPrintf("%s do release\n", __FUNCTION__);
-
         _CheckDmemInfoListInited();
 
         MsMutexLock(&_gtMemLock);
@@ -3928,7 +3953,7 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
         {
             ptTmp = CAM_OS_LIST_ENTRY(ptPos, MemoryList_t, tList);
 
-            if(ptTmp->pPtr == pVirtPtr)
+            if(ptTmp->pPhysPtr == pPtr || ptTmp->pVirtPtr == pPtr)
             {
                 if(ptTmp->szName)
                     MsReleaseMemory(ptTmp->szName);
@@ -3937,6 +3962,8 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
             }
         }
         MsMutexUnlock(&_gtMemLock);
+
+        MsReleaseMemory(pPtr);
     }
 #elif defined(CAM_OS_LINUX_USER)
 #ifndef NO_MDRV_MSYS
@@ -3946,7 +3973,7 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
     s32 nErr = 0;
     MSYS_DMEM_INFO *pMsysMem = NULL;
 
-    if(pVirtPtr)
+    if(pPtr)
     {
         do
         {
@@ -3964,7 +3991,7 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
             {
                 ptTmp = CAM_OS_LIST_ENTRY(ptPos, MemoryList_t, tList);
 
-                if(ptTmp->pPtr == pVirtPtr)
+                if(ptTmp->pPhysPtr == pPtr || ptTmp->pVirtPtr == pPtr)
                 {
                     pMsysMem = (MSYS_DMEM_INFO *) ptTmp->pMemifoPtr;
                     break;
@@ -3973,27 +4000,27 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
             pthread_mutex_unlock(&_gtMemLock);
             if(pMsysMem == NULL)
             {
-                fprintf(stderr, "%s find Msys_DMEM_Info node failed!! <0x%08X>\n", __FUNCTION__, (u32)pVirtPtr);
+                fprintf(stderr, "%s find Msys_DMEM_Info node failed!! <0x%08X>\n", __FUNCTION__, (u32)pPtr);
                 eRet = CAM_OS_FAIL;
                 break;
             }
 
             if(nSize != pMsysMem->length)
             {
-                nErr = munmap((void *)pVirtPtr, pMsysMem->length);
+                nErr = munmap((void *)ptTmp->pVirtPtr, pMsysMem->length);
                 if(0 != nErr)
                 {
                     fprintf(stderr, "%s munmap failed!! <0x%08X> size<%d> err<%d> errno<%d, %s>\n",
-                            __FUNCTION__, (u32)pVirtPtr, (u32)pMsysMem->length, nErr, errno, strerror(errno));
+                            __FUNCTION__, (u32)ptTmp->pVirtPtr, (u32)pMsysMem->length, nErr, errno, strerror(errno));
                 }
             }
             else
             {
-                nErr = munmap((void *)pVirtPtr, nSize);
+                nErr = munmap((void *)ptTmp->pVirtPtr, nSize);
                 if(0 != nErr)
                 {
                     fprintf(stderr, "%s munmap failed!! <0x%08X> size<%d> err<%d> errno<%d, %s>\n",
-                            __FUNCTION__, (u32)pVirtPtr, (u32)nSize, nErr, errno, strerror(errno));
+                            __FUNCTION__, (u32)ptTmp->pVirtPtr, (u32)nSize, nErr, errno, strerror(errno));
                 }
             }
 
@@ -4013,7 +4040,7 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
             {
                 ptTmp = CAM_OS_LIST_ENTRY(ptPos, MemoryList_t, tList);
 
-                if(ptTmp->pPtr == pVirtPtr)
+                if(ptTmp->pPhysPtr == pPtr || ptTmp->pVirtPtr == pPtr)
                 {
                     if(ptTmp->szName)
                         free(ptTmp->szName);
@@ -4034,9 +4061,9 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
 #elif defined(CAM_OS_LINUX_KERNEL)
     MSYS_DMEM_INFO *tpDmem = NULL;
     struct CamOsListHead_t *ptPos, *ptQ;
-    MemoryList_t* ptTmp;
+    MemoryList_t* ptTmp = NULL;
 
-    if(pVirtPtr)
+    if(pPtr)
     {
         do
         {
@@ -4047,9 +4074,9 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
             {
                 ptTmp = CAM_OS_LIST_ENTRY(ptPos, MemoryList_t, tList);
 
-                //printk("search tmp->ptr: %08X  %s\n", (u32)ptTmp->pPtr, ptTmp->szName);
+                //printk("search tmp->ptr: %08X  %s\n", (u32)ptTmp->pVirtPtr, ptTmp->szName);
 
-                if(ptTmp->pPtr == pVirtPtr)
+                if(ptTmp->pPhysPtr == pPtr || ptTmp->pVirtPtr == pPtr)
                 {
                     tpDmem = ptTmp->pMemifoPtr;
                     //printk("search(2) pdmem->name: %s\n", tpDmem->name);
@@ -4059,7 +4086,7 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
             mutex_unlock(&_gtMemLock);
             if(tpDmem == NULL)
             {
-                printk(KERN_WARNING "%s find node fail <0x%08X>\n", __FUNCTION__, (u32)pVirtPtr);
+                printk(KERN_WARNING "%s find node fail <0x%08X>\n", __FUNCTION__, (u32)ptTmp->pVirtPtr);
                 eRet = CAM_OS_FAIL;
                 break;
             }
@@ -4076,7 +4103,7 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
             {
                 ptTmp = CAM_OS_LIST_ENTRY(ptPos, MemoryList_t, tList);
 
-                if(ptTmp->pPtr == pVirtPtr)
+                if(ptTmp->pPhysPtr == pPtr || ptTmp->pVirtPtr == pPtr)
                 {
                     if(ptTmp->szName)
                         kfree(ptTmp->szName);
@@ -4088,66 +4115,6 @@ CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize)
         }
         while(0);
     }
-#endif
-    return eRet;
-}
-
-CamOsRet_e CamOsDirectMemFlush(void* pVirtPtr)
-{
-    CamOsRet_e eRet = CAM_OS_OK;
-#ifdef CAM_OS_RTK
-    struct CamOsListHead_t *ptPos, *ptQ;
-    MemoryList_t* ptTmp;
-
-    if(pVirtPtr)
-    {
-        eRet = CAM_OS_FAIL;
-
-        _CheckDmemInfoListInited();
-
-        MsMutexLock(&_gtMemLock);
-        CAM_OS_LIST_FOR_EACH_SAFE(ptPos, ptQ, &_gtMemList.tList)
-        {
-            ptTmp = CAM_OS_LIST_ENTRY(ptPos, MemoryList_t, tList);
-
-            if(ptTmp->pPtr == pVirtPtr)
-            {
-                eRet = CAM_OS_OK;
-                sys_flush_data_cache_buffer((u32)MsVA2PA(ptTmp->pPtr), ptTmp->nSize);
-            }
-        }
-        MsMutexUnlock(&_gtMemLock);
-    }
-#elif defined(CAM_OS_LINUX_USER)
-#ifndef NO_MDRV_MSYS
-    s32 nMsysFd = -1;
-
-    do
-    {
-        if(0 > (nMsysFd = open("/dev/msys", O_RDWR | O_SYNC)))
-        {
-            fprintf(stderr, "%s open /dev/msys failed!!\n", __FUNCTION__);
-            eRet = CAM_OS_FAIL;
-            break;
-        }
-
-        if(ioctl(nMsysFd, IOCTL_MSYS_FLUSH_MEMORY, 1))
-        {
-            fprintf(stderr, "%s IOCTL_MSYS_FLUSH_MEMORY Failed!!\n", __FUNCTION__);
-            eRet = CAM_OS_FAIL;
-            break;
-        }
-    }
-    while(0);
-
-    if(nMsysFd >= 0)
-    {
-        close(nMsysFd);
-    }
-#endif
-#elif defined(CAM_OS_LINUX_KERNEL)
-    flush_cache_all();
-    Chip_Flush_Memory();
 #endif
     return eRet;
 }
@@ -4166,9 +4133,9 @@ CamOsRet_e CamOsDirectMemStat(void)
     {
         ptTmp = CAM_OS_LIST_ENTRY(ptPos, MemoryList_t, tList);
 
-        if(ptTmp->pPtr)
+        if(ptTmp->pVirtPtr)
         {
-            CamOsPrintf("%s memory allocated %p %s\n", __FUNCTION__, ptTmp->pPtr, ptTmp->szName);
+            CamOsPrintf("%s memory allocated %p %s\n", __FUNCTION__, ptTmp->pVirtPtr, ptTmp->szName);
         }
     }
     MsMutexUnlock(&_gtMemLock);
@@ -4184,9 +4151,9 @@ CamOsRet_e CamOsDirectMemStat(void)
     {
         ptTmp = CAM_OS_LIST_ENTRY(ptPos, MemoryList_t, tList);
 
-        if(ptTmp->pPtr)
+        if(ptTmp->pVirtPtr)
         {
-            fprintf(stderr, "%s memory allocated 0x%08X %s\n", __FUNCTION__, (u32)ptTmp->pPtr, ptTmp->szName);
+            fprintf(stderr, "%s memory allocated 0x%08X %s\n", __FUNCTION__, (u32)ptTmp->pVirtPtr, ptTmp->szName);
         }
     }
     pthread_mutex_unlock(&_gtMemLock);
@@ -4202,9 +4169,9 @@ CamOsRet_e CamOsDirectMemStat(void)
     {
         ptTmp = CAM_OS_LIST_ENTRY(ptPos, MemoryList_t, tList);
 
-        if(ptTmp->pPtr)
+        if(ptTmp->pVirtPtr)
         {
-            printk(KERN_WARNING "%s allocated 0x%08X %s\n", __FUNCTION__, (u32)ptTmp->pPtr, ptTmp->szName);
+            printk(KERN_WARNING "%s allocated 0x%08X %s\n", __FUNCTION__, (u32)ptTmp->pVirtPtr, ptTmp->szName);
         }
     }
     mutex_unlock(&_gtMemLock);
@@ -4361,7 +4328,14 @@ void* CamOsDirectMemVirtToPhys(void* pPtr)
 void* CamOsPhyMemMap(void* pPhyPtr, u32 nSize, u8 bNonCache)
 {
 #ifdef CAM_OS_RTK
-    return MsPA2VA(pPhyPtr);
+    if (bNonCache)
+    {
+        return MsPA2VA(pPhyPtr);
+    }
+    else
+    {
+        return pPhyPtr;
+    }
 #elif defined(CAM_OS_LINUX_USER)
     void* pMmapPtr = NULL;
 #ifndef NO_MDRV_MSYS
@@ -4415,7 +4389,7 @@ void* CamOsPhyMemMap(void* pPhyPtr, u32 nSize, u8 bNonCache)
 #endif
     return pMmapPtr;
 #elif defined(CAM_OS_LINUX_KERNEL)
-    unsigned long long nCpuBusAddr;
+    unsigned long long nCpuBusAddr = 0;
     void *pVirtPtr = NULL;
     int nRet, i, j, k;
     struct sg_table *pSgTable;
@@ -4432,14 +4406,14 @@ void* CamOsPhyMemMap(void* pPhyPtr, u32 nSize, u8 bNonCache)
     else
         tPgProt = PAGE_KERNEL;
 
-    pSgTable = kmalloc(sizeof(struct sg_table), GFP_KERNEL);
+    pSgTable = kmalloc(sizeof(struct sg_table), in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
     if(!pSgTable)
     {
         CAM_OS_WARN("kmalloc fail");
         return NULL;
     }
 
-    nRet = sg_alloc_table(pSgTable, 1, GFP_KERNEL);
+    nRet = sg_alloc_table(pSgTable, 1, in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
 
     if(unlikely(nRet))
     {
@@ -4583,7 +4557,7 @@ void *CamOsMemCacheAlloc(CamOsMemCache_t *ptMemCache)
     CamOsMemCacheRtk_t *ptHandle = (CamOsMemCacheRtk_t *)ptMemCache;
 
     if(ptHandle)
-        return MsGetPoolIdMemory(ptHandle->nPoolID);
+        return MsGetPoolMemory(ptHandle->nObjSize);
     else
         return NULL;
 #elif defined(CAM_OS_LINUX_USER)
@@ -4593,7 +4567,7 @@ void *CamOsMemCacheAlloc(CamOsMemCache_t *ptMemCache)
     CamOsMemCacheLK_t *ptHandle = (CamOsMemCacheLK_t *)ptMemCache;
 
     if(ptHandle && ptHandle->ptKmemCache)
-        return kmem_cache_alloc(ptHandle->ptKmemCache, GFP_KERNEL);
+        return kmem_cache_alloc(ptHandle->ptKmemCache, in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
     else
         return NULL;
 #endif
@@ -4613,17 +4587,6 @@ void CamOsMemCacheFree(CamOsMemCache_t *ptMemCache, void *pObjPtr)
 #endif
 }
 
-void CamOsMiuPipeFlush(void)
-{
-#ifdef CAM_OS_RTK
-    DrvChipFlushMiuPipe();
-#elif defined(CAM_OS_LINUX_USER)
-    CAM_OS_WARN("not support in "OS_NAME);
-#elif defined(CAM_OS_LINUX_KERNEL)
-    Chip_Flush_MIU_Pipe();
-#endif
-}
-
 CamOsRet_e CamOsPropertySet(const char *szKey, const char *szValue)
 {
     CamOsRet_e eRet = CAM_OS_OK;
@@ -4638,7 +4601,7 @@ CamOsRet_e CamOsPropertySet(const char *szKey, const char *szValue)
         pLibHandle = dlopen("libat.so", RTLD_NOW);
         if(NULL == pLibHandle)
         {
-            fprintf(stderr, "%s : load libat.so error \n", __FUNCTION__);
+            fprintf(stderr, "%s : load libat.so error\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
             break;
         }
@@ -4679,7 +4642,7 @@ CamOsRet_e CamOsPropertyGet(const char *szKey, char *szValue, const char *szDefa
         pLibHandle = dlopen("libat.so", RTLD_NOW);
         if(NULL == pLibHandle)
         {
-            fprintf(stderr, "%s : load libat.so error \n", __FUNCTION__);
+            fprintf(stderr, "%s : load libat.so error\n", __FUNCTION__);
             eRet = CAM_OS_FAIL;
             break;
         }
@@ -4708,12 +4671,13 @@ CamOsRet_e CamOsPropertyGet(const char *szKey, char *szValue, const char *szDefa
 u64 CamOsMathDivU64(u64 nDividend, u64 nDivisor, u64 *pRemainder)
 {
 #ifdef CAM_OS_RTK
-    return ss_div64_u64_rem(nDividend, nDivisor, pRemainder);
+    return (pRemainder)? ss_div64_u64_rem(nDividend, nDivisor, pRemainder) : ss_div64_u64(nDividend, nDivisor);
 #elif defined(CAM_OS_LINUX_USER)
-    *pRemainder = nDividend % nDivisor;
+    if (pRemainder)
+        *pRemainder = nDividend % nDivisor;
     return nDividend / nDivisor;
 #elif defined(CAM_OS_LINUX_KERNEL)
-    return div64_u64_rem(nDividend, nDivisor, pRemainder);
+    return (pRemainder)? div64_u64_rem(nDividend, nDivisor, pRemainder) : div64_u64(nDividend, nDivisor);
 #endif
 }
 
@@ -4721,14 +4685,17 @@ s64 CamOsMathDivS64(s64 nDividend, s64 nDivisor, s64 *pRemainder)
 {
 #ifdef CAM_OS_RTK
     s64 nQuotient = ss_div64_s64(nDividend, nDivisor);
-    *pRemainder = nDividend - nDivisor * nQuotient;
+    if (pRemainder)
+        *pRemainder = nDividend - nDivisor * nQuotient;
     return nQuotient;
 #elif defined(CAM_OS_LINUX_USER)
-    *pRemainder = nDividend % nDivisor;
+    if (pRemainder)
+        *pRemainder = nDividend % nDivisor;
     return nDividend / nDivisor;
 #elif defined(CAM_OS_LINUX_KERNEL)
     s64 nQuotient = div64_s64(nDividend, nDivisor);
-    *pRemainder = nDividend - nDivisor * nQuotient;
+    if (pRemainder)
+        *pRemainder = nDividend - nDivisor * nQuotient;
     return nQuotient;
 #endif
 }
@@ -4778,14 +4745,17 @@ CamOsRet_e CamOsTimerInit(CamOsTimer_t *ptTimer)
     CamOsRet_e eRet = CAM_OS_OK;
 #ifdef CAM_OS_RTK
     CamOsTimerRtk_t *ptHandle = (CamOsTimerRtk_t *)ptTimer;
+    unsigned long flags = 0;
+
     if(ptHandle)
     {
+        RtkEnterRegionSaveIrq(&flags);
         if(ptHandle->eTimerID != INIT_MAGIC_NUM && MsIsTimerActive(ptHandle->eTimerID))
         {
             MsStopTimer(ptHandle->eTimerID);
         }
-
         ptHandle->eTimerID = INIT_MAGIC_NUM;
+        RtkLeaveRegionRestoreIrq(&flags);
     }
     else
         eRet = CAM_OS_PARAM_ERR;
@@ -4809,10 +4779,16 @@ u32 CamOsTimerDelete(CamOsTimer_t *ptTimer)
 {
 #ifdef CAM_OS_RTK
     CamOsTimerRtk_t *ptHandle = (CamOsTimerRtk_t *)ptTimer;
+    unsigned long flags = 0;
+    unsigned long nRet = 0;
+
     if(ptHandle)
     {
         // MsStopTimer return the number of remain ticks, 1 means timeout
-        return (MsStopTimer(ptHandle->eTimerID) > 1) ? 1 : 0;
+        RtkEnterRegionSaveIrq(&flags);
+        nRet = (MsStopTimer(ptHandle->eTimerID) > 1) ? 1 : 0;
+        RtkLeaveRegionRestoreIrq(&flags);
+        return nRet;
     }
 #elif defined(CAM_OS_LINUX_USER)
     // TODO: implement timer in linux user space.
@@ -4828,12 +4804,44 @@ u32 CamOsTimerDelete(CamOsTimer_t *ptTimer)
     return 0;
 }
 
+u32 CamOsTimerDeleteSync(CamOsTimer_t *ptTimer)
+{
+#ifdef CAM_OS_RTK
+    CamOsTimerRtk_t *ptHandle = (CamOsTimerRtk_t *)ptTimer;
+    unsigned long flags = 0;
+    unsigned long nRet = 0;
+
+    if(ptHandle)
+    {
+        // MsStopTimer return the number of remain ticks, 1 means timeout
+        RtkEnterRegionSaveIrq(&flags);
+        nRet = (MsStopTimer(ptHandle->eTimerID) > 1) ? 1 : 0;
+        RtkLeaveRegionRestoreIrq(&flags);
+        return nRet;
+    }
+#elif defined(CAM_OS_LINUX_USER)
+    // TODO: implement timer in linux user space.
+    CAM_OS_WARN("not support in "OS_NAME);
+    return 0;
+#elif defined(CAM_OS_LINUX_KERNEL)
+    CamOsTimerLK_t *ptHandle = (CamOsTimerLK_t *)ptTimer;
+    if(ptHandle)
+    {
+        return del_timer_sync(&ptHandle->tTimerID);
+    }
+#endif
+    return 0;
+}
+
 CamOsRet_e CamOsTimerAdd(CamOsTimer_t *ptTimer, u32 nMsec, void *pDataPtr,
                          void (*pfnFunc)(unsigned long nDataAddr))
 {
     CamOsRet_e eRet = CAM_OS_OK;
 #ifdef CAM_OS_RTK
     CamOsTimerRtk_t *ptHandle = (CamOsTimerRtk_t *)ptTimer;
+    unsigned long flags = 0;
+    unsigned long nRet = 0;
+
     if(ptHandle)
     {
         if(ptHandle->eTimerID != INIT_MAGIC_NUM)
@@ -4842,10 +4850,13 @@ CamOsRet_e CamOsTimerAdd(CamOsTimer_t *ptTimer, u32 nMsec, void *pDataPtr,
             eRet = CAM_OS_FAIL;
         }
 
+        RtkEnterRegionSaveIrq(&flags);
         ptHandle->pfnCallback = pfnFunc;
         ptHandle->pDataPtr = pDataPtr;
+        nRet = MsStartCbTimerMs(&ptHandle->eTimerID, _CamOsTimerCallback, (u32)ptHandle, nMsec, 0);
+        RtkLeaveRegionRestoreIrq(&flags);
 
-        if(CUS_OS_OK != MsStartCbTimerMs(&ptHandle->eTimerID, _CamOsTimerCallback, (u32)ptHandle, nMsec, 0))
+        if(nRet != CUS_OS_OK)
         {
             CAM_OS_WARN("start timer fail");
             eRet = CAM_OS_FAIL;
@@ -4877,6 +4888,9 @@ CamOsRet_e CamOsTimerModify(CamOsTimer_t *ptTimer, u32 nMsec)
     CamOsRet_e eRet = CAM_OS_OK;
 #ifdef CAM_OS_RTK
     CamOsTimerRtk_t *ptHandle = (CamOsTimerRtk_t *)ptTimer;
+    unsigned long flags = 0;
+    unsigned long nRet = 0;
+
     if(ptHandle)
     {
         if(ptHandle->eTimerID == INIT_MAGIC_NUM)
@@ -4885,9 +4899,12 @@ CamOsRet_e CamOsTimerModify(CamOsTimer_t *ptTimer, u32 nMsec)
             eRet = CAM_OS_FAIL;
         }
 
+        RtkEnterRegionSaveIrq(&flags);
         MsStopTimer(ptHandle->eTimerID);
+        nRet = MsStartCbTimerMs(&ptHandle->eTimerID, _CamOsTimerCallback, (u32)ptHandle, nMsec, 0);
+        RtkLeaveRegionRestoreIrq(&flags);
 
-        if(CUS_OS_OK != MsStartCbTimerMs(&ptHandle->eTimerID, _CamOsTimerCallback, (u32)ptHandle, nMsec, 0))
+        if(nRet != CUS_OS_OK)
         {
             CAM_OS_WARN("start timer fail");
             eRet = CAM_OS_FAIL;
@@ -5246,7 +5263,7 @@ s32 CamOsAtomicFetchXor(CamOsAtomic_t *ptAtomic, s32 nValue)
 }
 
 #if defined(CAM_OS_RTK) || defined(CAM_OS_LINUX_USER)
-extern CamOsRet_e _CamOsIdrInit(CamOsIdr_t *ptIdr);
+extern CamOsRet_e _CamOsIdrInit(CamOsIdr_t *ptIdr, u32 nEntryNum);
 extern void _CamOsIdrDestroy(CamOsIdr_t *ptIdr);
 extern s32 _CamOsIdrAlloc(CamOsIdr_t *ptIdr, void *pPtr, s32 nStart, s32 nEnd);
 extern void _CamOsIdrRemove(CamOsIdr_t *ptIdr, s32 nId);
@@ -5257,7 +5274,25 @@ CamOsRet_e CamOsIdrInit(CamOsIdr_t *ptIdr)
 {
     CamOsRet_e eRet = CAM_OS_OK;
 #if defined(CAM_OS_RTK) || defined(CAM_OS_LINUX_USER)
-    eRet = _CamOsIdrInit(ptIdr);
+    eRet = _CamOsIdrInit(ptIdr, 0);
+#elif defined(CAM_OS_LINUX_KERNEL)
+    CamOsIdrLK_t *ptHandle = (CamOsIdrLK_t *)ptIdr;
+
+    if(ptHandle)
+    {
+        idr_init(&ptHandle->tIdr);
+    }
+    else
+        eRet = CAM_OS_PARAM_ERR;
+#endif
+    return eRet;
+}
+
+CamOsRet_e CamOsIdrInitEx(CamOsIdr_t *ptIdr, u32 nEntryNum)
+{
+    CamOsRet_e eRet = CAM_OS_OK;
+#if defined(CAM_OS_RTK) || defined(CAM_OS_LINUX_USER)
+    eRet = _CamOsIdrInit(ptIdr, nEntryNum);
 #elif defined(CAM_OS_LINUX_KERNEL)
     CamOsIdrLK_t *ptHandle = (CamOsIdrLK_t *)ptIdr;
 
@@ -5294,7 +5329,7 @@ s32 CamOsIdrAlloc(CamOsIdr_t *ptIdr, void *pPtr, s32 nStart, s32 nEnd)
 
     if(ptHandle)
     {
-        return idr_alloc(&ptHandle->tIdr, pPtr, nStart, nEnd, GFP_KERNEL);
+        return idr_alloc(&ptHandle->tIdr, pPtr, nStart, nEnd, in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
     }
     else
         return -1;
@@ -5334,129 +5369,115 @@ void *CamOsIdrFind(CamOsIdr_t *ptIdr, s32 nId)
 
 CamOsMemSize_e CamOsPhysMemSize(void)
 {
+    CamOsDramInfo_t tInfo = {0};
+    u32 i = 0;
+    u32 nMegaBytes = 0;
+
+    CamOsDramInfo(&tInfo);
+    nMegaBytes = tInfo.nBytes >> 20;
+    while (nMegaBytes >>= 1) ++i;
+
+    return i;
+}
+
+CamOsRet_e CamOsDramInfo(CamOsDramInfo_t *ptInfo)
+{
+    CamOsRet_e eRet = CAM_OS_OK;
 #ifdef CAM_OS_RTK
-    return (CamOsMemSize_e)((*(volatile u32 *)(RIU_BASE_ADDR + RIU_MEM_SIZE_OFFSET) & 0xF000) >> 12);
+    if (ptInfo)
+        sys_GetDramInfo(&ptInfo->nBytes, &ptInfo->nType, &ptInfo->nBusWidth);
+    else
+        eRet = CAM_OS_PARAM_ERR;
 #elif defined(CAM_OS_LINUX_USER)
-    void *map_addr = 0;
-    s32 nMemFd = -1;
-    u32 nRegs = 0;
-    u32 nPageSize;
+    int fd;
+    char buf[512];
+    int dram_freq, miupll_freq, data_rate;
 
-    nPageSize = getpagesize();
-
-    do
+    if (ptInfo)
     {
-        if(0 > (nMemFd = open("/dev/mem", O_RDWR | O_SYNC)))
+        fd = open("/sys/devices/system/miu/miu0/dram_info", O_RDONLY);
+        if (fd >= 0)
         {
-            CAM_OS_WARN("open /dev/mem fail");
-            break;
-        }
+            read(fd, buf, sizeof(buf));
+            sscanf (buf, "DRAM Type:   DDR%hd\n"
+                         "DRAM Size:   %dMB\n"
+                         "DRAM Freq:   %dMHz\n"
+                         "MIUPLL Freq: %dMHz\n"
+                         "Data Rate:   %dx Mode\n"
+                         "Bus Width:   %hdbit",
+                         &ptInfo->nType,
+                         &ptInfo->nBytes,
+                         &dram_freq,
+                         &miupll_freq,
+                         &data_rate,
+                         &ptInfo->nBusWidth);
+            close(fd);
 
-        map_addr = mmap(0, nPageSize, PROT_READ | PROT_WRITE, MAP_SHARED, nMemFd, (RIU_BASE_ADDR + RIU_MEM_SIZE_OFFSET) & ~(nPageSize - 1));
-
-        if(map_addr == MAP_FAILED)
-        {
-            CAM_OS_WARN("mmap fail");
-            break;
+            ptInfo->nBytes = (ptInfo->nBytes << 20);
         }
         else
         {
-            nRegs = *(u32 *)(map_addr + RIU_MEM_SIZE_OFFSET % nPageSize);
-            if(munmap(map_addr, nPageSize))
-            {
-                CamOsPrintf("%s: mumap %p is error(%s)\n", __func__,  map_addr, strerror(errno));
-            }
+            eRet = CAM_OS_FAIL;
         }
-    }
-    while(0);
-
-    if(nMemFd >= 0)
-    {
-        close(nMemFd);
-    }
-
-    //CamOsPrintf("CamOsPhysMemSize: %d\n", (nRegs & 0xF000) >> 12);
-
-    return (CamOsMemSize_e)((nRegs & 0xF000) >> 12);
-#elif defined(CAM_OS_LINUX_KERNEL)
-    CamOsMemSize_e eMemSize=CAM_OS_MEM_UNKNOWN;
-    void *pRegs;
-
-    if((pRegs = ioremap(RIU_BASE_ADDR + RIU_MEM_SIZE_OFFSET, 4)) != NULL)
-    {
-        eMemSize = (CamOsMemSize_e)((readl(pRegs) & 0xF000) >> 12);
-        iounmap(pRegs);
     }
     else
     {
-        CAM_OS_WARN("ioremap fail");
+        eRet = CAM_OS_PARAM_ERR;
     }
-
-    return eMemSize;
+#elif defined(CAM_OS_LINUX_KERNEL)
+    MIU_DramInfo stDramInfo;
+    MDrv_MIU_Info(&stDramInfo);
+    ptInfo->nBytes = stDramInfo.size;
+    ptInfo->nType = stDramInfo.type;
+    ptInfo->nBusWidth = stDramInfo.bus_width;
 #endif
+    return eRet;
 }
 
 u32 CamOsChipId(void)
 {
 #ifdef CAM_OS_RTK
-    return *(volatile u32 *)(RIU_BASE_ADDR + RIU_CHIP_ID_OFFSET) & 0x3FFFFF;
+    return sys_GetChipId();
 #elif defined(CAM_OS_LINUX_USER)
-    void *map_addr = 0;
-    s32 nMemFd = -1;
-    u32 nRegs = 0;
-    u32 nPageSize;
+    int fd;
+    char buf[32];
+    u32 id = 0;
 
-    nPageSize = getpagesize();
-
-    do
+    fd = open("/sys/devices/virtual/mstar/msys/CHIP_ID", O_RDONLY);
+    if (fd >= 0)
     {
-        if(0 > (nMemFd = open("/dev/mem", O_RDWR | O_SYNC)))
-        {
-            CAM_OS_WARN("open /dev/mem fail");
-            break;
-        }
-
-        map_addr = mmap(0, nPageSize, PROT_READ | PROT_WRITE, MAP_SHARED, nMemFd, (RIU_BASE_ADDR + RIU_CHIP_ID_OFFSET) & ~(nPageSize - 1));
-
-        if(map_addr == MAP_FAILED)
-        {
-            CAM_OS_WARN("mmap fail");
-            break;
-        }
-        else
-        {
-            nRegs = *(u32 *)(map_addr + RIU_CHIP_ID_OFFSET % nPageSize);
-            if(munmap(map_addr, nPageSize))
-            {
-                CamOsPrintf("%s: mumap %p is error(%s)\n", __func__,  map_addr, strerror(errno));
-            }
-        }
-    }
-    while(0);
-
-    if(nMemFd >= 0)
-    {
-        close(nMemFd);
+        read(fd, buf, sizeof(buf));
+        sscanf (buf, "Chip_ID: 0x%X", &id);
+        close(fd);
     }
 
-    //CamOsPrintf("CamOsChipId: %d\n", nRegs & 0x3FFFFF);
-
-    return nRegs & 0x3FFFFF;
+    return id;
 #elif defined(CAM_OS_LINUX_KERNEL)
-    u32 nId=0;
-    void *pRegs;
+    return Chip_Get_Device_ID();
+#endif
+}
 
-    if((pRegs = ioremap(RIU_BASE_ADDR + RIU_CHIP_ID_OFFSET, 4)) != NULL)
+u32 CamOsChipRevision(void)
+{
+#ifdef CAM_OS_RTK
+    return sys_GetChipRevisionId();
+#elif defined(CAM_OS_LINUX_USER)
+    int fd;
+    char buf[32];
+    u32 rev = 0;
+
+    fd = open("/sys/devices/virtual/mstar/msys/CHIP_VERSION", O_RDONLY);
+    if (fd >= 0)
     {
-        nId = readl(pRegs) & 0x3FFFFF;
-        iounmap(pRegs);
-    }
-    else
-    {
-        CAM_OS_WARN("ioremap fail");
+        read(fd, buf, sizeof(buf));
+        sscanf (buf, "Chip_Version: %u", &rev);
+        rev += 1;   // 1:U01, 2:U02 ...
+        close(fd);
     }
 
-    return nId;
+    return rev;
+#elif defined(CAM_OS_LINUX_KERNEL)
+    return Chip_Get_Revision();;
 #endif
 }
 
@@ -5470,6 +5491,7 @@ CamOsRet_e CamOsIrqRequest(u32 nIrq, CamOsIrqHandler pfnHandler, const char *szN
     uInitParam.intc.pfnIsr = pfnHandler;
     uInitParam.intc.pDevId = pDevId;
     DrvInitInterrupt(&uInitParam, nIrq);
+    DrvUnmaskInterrupt(nIrq);
 #elif defined(CAM_OS_LINUX_USER)
     CAM_OS_WARN("not support in "OS_NAME);
 #elif defined(CAM_OS_LINUX_KERNEL)
@@ -5539,6 +5561,11 @@ CamOsRet_e FORCE_INLINE CamOsInInterrupt(void)
         eRet = CAM_OS_FAIL;
 #endif
     return eRet;
+}
+
+void FORCE_INLINE CamOsMemoryBarrier(void)
+{
+    asm volatile("": : :"memory");
 }
 
 void FORCE_INLINE CamOsSmpMemoryBarrier(void)
@@ -5738,7 +5765,7 @@ void CamOsListSort(void *priv, struct CamOsListHead_t *head,
                               struct CamOsListHead_t *b))
 {
     struct CamOsListHead_t *part[CAM_OS_MAX_LIST_LENGTH_BITS + 1]; /* sorted partial lists
-						-- last slot is a sentinel */
+                        -- last slot is a sentinel */
     int lev;  /* index into part[] */
     int max_lev = 0;
     struct CamOsListHead_t *list;

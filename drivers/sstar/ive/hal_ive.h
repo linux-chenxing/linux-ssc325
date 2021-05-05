@@ -71,6 +71,8 @@ void ive_hal_set_coeff_ncc(ive_hal_handle *handle, u64 output_addr);
 void ive_hal_set_coeff_lbp(ive_hal_handle *handle, ive_ioc_coeff_lbp *coeff);
 void ive_hal_set_coeff_bat(ive_hal_handle *handle, ive_ioc_coeff_bat *coeff);
 void ive_hal_set_coeff_adp_thresh(ive_hal_handle *handle, ive_ioc_coeff_adp_thresh *coeff);
+void ive_hal_set_coeff_matrix_transform(ive_hal_handle *handle, ive_ioc_coeff_matrix_transform *coeff);
+void ive_hal_set_coeff_image_dot(ive_hal_handle *handle, ive_ioc_coeff_image_dot *coeff);
 
 void ive_hal_start(ive_hal_handle *handle);
 void ive_hal_sw_reset(ive_hal_handle *handle);

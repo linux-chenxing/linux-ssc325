@@ -77,13 +77,9 @@
 
 #define CARD_BANK(Bank_Addr)                   IO_MAPADDR(Bank_Addr)
 
-volatile void* Hal_CREG_GET_REG_BANK(IPEmType eIP, U8_T u8Bank);
-void Hal_CREG_SET_PORT(IPEmType eIP, PortEmType ePort);
-volatile PortEmType Hal_CREG_GET_PORT(IPEmType eIP);
+volatile void* Hal_CREG_GET_REG_BANK(IpOrder eIP, U8_T u8Bank);
 
 #define GET_CARD_BANK                          Hal_CREG_GET_REG_BANK
-#define GET_CARD_PORT                          Hal_CREG_GET_PORT
-#define SET_CARD_PORT                          Hal_CREG_SET_PORT
 
 //***********************************************************************************************************
 // (3) BASE FCIE Reg Meaning Position (Including File)

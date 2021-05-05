@@ -983,7 +983,7 @@ static int intr_submit(
 	/* ... update usbfs periodic stats */
 	ehci_to_hcd(ehci)->self.bandwidth_int_reqs++;
 #if (MP_USB_MSTAR==1) && (_USB_T3_WBTIMEOUT_PATCH)
-	Chip_Flush_Memory();
+	Chip_Flush_MIU_Pipe();
 #endif
 done:
 	if (unlikely(status))
@@ -2089,7 +2089,7 @@ static int itd_submit(struct ehci_hcd *ehci, struct urb *urb,
 		usb_hcd_unlink_urb_from_ep(ehci_to_hcd(ehci), urb);
 	}
 #if (MP_USB_MSTAR==1) && (_USB_T3_WBTIMEOUT_PATCH)
-	Chip_Flush_Memory();
+	Chip_Flush_MIU_Pipe();
 #endif
  done_not_linked:
 	spin_unlock_irqrestore(&ehci->lock, flags);
@@ -2492,7 +2492,7 @@ static int sitd_submit(struct ehci_hcd *ehci, struct urb *urb,
 		usb_hcd_unlink_urb_from_ep(ehci_to_hcd(ehci), urb);
 	}
 #if (MP_USB_MSTAR==1) && (_USB_T3_WBTIMEOUT_PATCH)
-	Chip_Flush_Memory();
+	Chip_Flush_MIU_Pipe();
 #endif
  done_not_linked:
 	spin_unlock_irqrestore(&ehci->lock, flags);

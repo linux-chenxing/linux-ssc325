@@ -18,6 +18,7 @@
 #ifndef __VCORE_DEFS_H
 #define __VCORE_DEFS_H
 
+#define VOLTAGE_CORE_INIT  0
 #define VOLTAGE_CORE_850   850
 #define VOLTAGE_CORE_900   900
 #define VOLTAGE_CORE_950   950

@@ -124,7 +124,7 @@ extern  void    Chip_Flush_Cache_Range(unsigned long u32Addr, unsigned long u32S
 extern  void    Chip_Clean_Cache_Range(unsigned long u32Addr, unsigned long u32Size);
 extern  void    Chip_Inv_Cache_Range(unsigned long u32Addr, unsigned long u32Size);
 extern  void    Chip_Flush_CacheAll(void);
-
+extern void     Chip_Flush_Dcache_Page(struct page *page);
 extern  u64     Chip_Phys_to_MIU(u64 phys);
 extern  u64     Chip_MIU_to_Phys(u64 miu);
 

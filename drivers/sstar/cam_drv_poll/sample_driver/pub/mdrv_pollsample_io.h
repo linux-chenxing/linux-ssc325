@@ -15,8 +15,9 @@
 * GNU General Public License for more details.
 *
 */
-#ifndef _MDRV_POLLSAMPLE_IO_H_
-#define _MDRV_POLLSAMPLE_IO_H_
+
+#ifndef __MDRV_POLLSAMPLE_IO_H__
+#define __MDRV_POLLSAMPLE_IO_H__
 
 ////////////////////////////////////////////////////////////////////////////////
 // Header Files
@@ -30,4 +31,4 @@
 #define IOCTL_POLLSAMPLE_START_TIMER  CAM_OS_IOR(MAGIC_POLLSAMPLE, 0, unsigned int)
 #define IOCTL_POLLSAMPLE_GET_TIME     CAM_OS_IOR(MAGIC_POLLSAMPLE, 1, unsigned int)
 
-#endif//_MDRV_POLLSAMPLE_IO_H_
+#endif//__MDRV_POLLSAMPLE_IO_H__

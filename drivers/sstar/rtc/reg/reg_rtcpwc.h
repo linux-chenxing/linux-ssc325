@@ -63,5 +63,12 @@
 #define RTCPWC_DIG2RTC_CNT_RD_TRIG				(0x38) //(0x0E << 2)
 	#define RTCPWC_DIG2RTC_CNT_RD_TRIG_BIT		BIT0
 
+#define RTCPWC_DIG2PWC_OPT                      (0x40) //(0x10 << 2)
+    #define RTCPWC_SW_RST                       BIT8
+
+#define RTCPWC_DIG2PWC_RTC_TESTBUS              (0x54) //(0x15 << 2)
+    #define RTCPWC_ISO_EN                       BIT0
+    #define RTCPWC_CLK_1K                       BIT5
+
 #endif /* __KERNEL_RTC_PWC_H__ */
 

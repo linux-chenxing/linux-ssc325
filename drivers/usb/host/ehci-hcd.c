@@ -49,12 +49,8 @@
 #include <asm/firmware.h>
 #endif
 
-#ifndef MP_USB_MSTAR
-#include <usb_patch_mstar.h>
-#endif
-
-#if (MP_USB_MSTAR==1)
-#include "ehci-mstar.h"
+#ifdef CONFIG_MP_USB_MSTAR
+#include "usb_common_sstar.h"
 #endif
 
 /*-------------------------------------------------------------------------*/
@@ -461,7 +457,7 @@ static void ehci_work (struct ehci_hcd *ehci)
 	 * attempts at re-entrant schedule scanning.
 	 */
 #if (MP_USB_MSTAR==1) && (_USB_T3_WBTIMEOUT_PATCH)
-	Chip_Read_Memory();	//Flush Read buffer when H/W finished
+	Chip_Flush_MIU_Pipe();	//Flush Read buffer when H/W finished
 #endif
 	if (ehci->scanning) {
 		ehci->need_rescan = true;

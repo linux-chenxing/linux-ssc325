@@ -65,6 +65,17 @@ typedef enum
     E_MIU_BLOCK_NUM,
 } MIU_BLOCK_ID;
 
+typedef struct
+{
+    unsigned int    size;           // bytes
+    unsigned int    dram_freq;      // MHz
+    unsigned int    miupll_freq;    // MHz
+    unsigned char   type;           // 2:DDR2, 3:DDR3
+    unsigned char   data_rate;      // 4:4x mode, 8:8x mode,
+    unsigned char   bus_width;      // 16:16bit, 32:32bit, 64:64bit
+    unsigned char   ssc;            // 0:off, 1:on
+} MIU_DramInfo_Hal;
+
 //-------------------------------------------------------------------------------------------------
 //  Function and Variable
 //-------------------------------------------------------------------------------------------------
@@ -78,6 +89,7 @@ MS_BOOL HAL_MIU_Protect(    MS_U8   u8Blockx,
 MS_BOOL HAL_MIU_ParseOccupiedResource(void);
 unsigned int HAL_MIU_ProtectDramSize(void);
 int HAL_MIU_ClientIdToName(MS_U16 clientId, char *clientName);
+int HAL_MIU_Info(MIU_DramInfo_Hal *pDramInfo);
 
 #endif // _MHAL_MIU_H_
 

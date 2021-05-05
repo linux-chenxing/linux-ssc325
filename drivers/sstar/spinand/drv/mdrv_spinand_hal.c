@@ -105,7 +105,7 @@ static BOOL _MDrv_SPINAND_GET_INFO(void)
 
         //read data to cache first
         u32Ret = HAL_SPINAND_RFC(u16PageIndex, &u8Status);
-        if (u32Ret != ERR_SPINAND_SUCCESS || (u8Status & ECC_STATUS_ERR))
+       if (u32Ret != ERR_SPINAND_SUCCESS || (u8Status == ERR_SPINAND_ECC_ERROR))
             continue;
 
         // Read SPINand Data
@@ -246,6 +246,19 @@ BOOL MDrv_SPINAND_ForceInit(SPINAND_FLASH_INFO_t *tSpinandInfo)
     return TRUE;
 }
 
+static U8 MDrv_SPINAND_CountBits(U32 u32_x)
+{
+    U8 u8_i = 0;
+
+    while (u32_x)
+    {
+        u8_i++;
+        u32_x >>= 1;
+    }
+
+    return u8_i-1;
+}
+
 //-------------------------------------------------------------------------------------------------
 // Read SPINAND Data
 // @param u32_PageIdx : page index of read data in specific block
@@ -257,6 +270,7 @@ U32 MDrv_SPINAND_Read(U32 u32_PageIdx, U8 *u8Data, U8 *pu8_SpareBuf)
 {
     U8 u8Status;
     U32 u32Ret = ERR_SPINAND_SUCCESS;
+    U16 u16ColumnAddr = 0;
 
     MS_ASSERT( MS_SPINAND_IN_INTERRUPT() == FALSE );
     if (FALSE == MS_SPINAND_OBTAIN_MUTEX(_s32SPINAND_Mutex, SPINAND_MUTEX_WAIT_TIME))
@@ -265,24 +279,35 @@ U32 MDrv_SPINAND_Read(U32 u32_PageIdx, U8 *u8Data, U8 *pu8_SpareBuf)
         return FALSE;
     }
 
+    if ((ID1 == 0xEF) && (ID2 == 0xAB) && (ID3 == 0x21))
+    {
+        U16 u16DiePageCnt = MDrv_SPINAND_CountBits(BLOCKCNT * BLOCK_PAGE_SIZE);
+        HAL_SPINAND_DieSelect((U8)(u32_PageIdx >> (u16DiePageCnt - 1)));
+    }
+
     //read data to cache first
     u32Ret = HAL_SPINAND_RFC(u32_PageIdx, &u8Status);
+
     if (u32Ret != ERR_SPINAND_SUCCESS)
     {
         MS_SPINAND_RELEASE_MUTEX(_s32SPINAND_Mutex);
         return u32Ret;
     }
 
-    HAL_SPINAND_PLANE_HANDLER(u32_PageIdx);
+    if (PLANE && (((u32_PageIdx / BLOCK_PAGE_SIZE)&0x1) == 1)) //odd numbered blocks
+    {
+        u16ColumnAddr |= (1<<12); // plane select for MICRON & 2GB
+    }
+//    HAL_SPINAND_PLANE_HANDLER(u32_PageIdx);
 
 #if (defined(SUPPORT_SPINAND_QUAD) && SUPPORT_SPINAND_QUAD) || defined(CONFIG_NAND_QUAL_READ)
     HAL_SPINAND_SetMode(E_SPINAND_QUAD_MODE);
     // Read SPINand Data
-    u32Ret = HAL_SPINAND_Read (0x0, PAGE_SIZE, u8Data);
+    u32Ret = HAL_SPINAND_Read (u16ColumnAddr, PAGE_SIZE, u8Data);
     HAL_SPINAND_SetMode(E_SPINAND_SINGLE_MODE);
 #else
     // Read SPINand Data
-    u32Ret = HAL_SPINAND_Read (0x0, PAGE_SIZE, u8Data);
+    u32Ret = HAL_SPINAND_Read (u16ColumnAddr, PAGE_SIZE, u8Data);
 #endif
     if (u32Ret != ERR_SPINAND_SUCCESS)
     {
@@ -291,12 +316,19 @@ U32 MDrv_SPINAND_Read(U32 u32_PageIdx, U8 *u8Data, U8 *pu8_SpareBuf)
     }
 
     // Read SPINand Spare Data
-    u32Ret= HAL_SPINAND_Read(PAGE_SIZE, SPARE_SIZE, pu8_SpareBuf);
+    u32Ret= HAL_SPINAND_Read(u16ColumnAddr|PAGE_SIZE, SPARE_SIZE, pu8_SpareBuf);
+
     if (u32Ret == ERR_SPINAND_SUCCESS) {
-        if (u8Status & ECC_STATUS_ERR)
+       if(u8Status == ECC_1_3_CORRECTED)
+            u32Ret = ERR_SPINAND_ECC_1_3_CORRECTED;
+        if(u8Status == ECC_4_6_CORRECTED)
+           u32Ret = ERR_SPINAND_ECC_4_6_CORRECTED;
+        if(u8Status == ECC_7_8_CORRECTED)
+            u32Ret = ERR_SPINAND_ECC_7_8_CORRECTED;
+        if(u8Status == ECC_NOT_CORRECTED){
             u32Ret = ERR_SPINAND_ECC_ERROR;
-        else if (u8Status & ECC_STATUS_BITFLIP)
-            u32Ret = ERR_SPINAND_ECC_BITFLIP;
+            printk("ecc error P: %lx\r\n", u32_PageIdx);
+        }
     }
 
 #if defined(SPINAND_MEASURE_PERFORMANCE) && SPINAND_MEASURE_PERFORMANCE
@@ -346,10 +378,16 @@ U32 MDrv_SPINAND_Read_RandomIn(U32 u32_PageIdx, U32 u32_Column, U32 u32_Byte, U8
     }
 
     if (u32Ret == ERR_SPINAND_SUCCESS) {
-        if (u8Status & ECC_STATUS_ERR)
+       if(u8Status == ECC_1_3_CORRECTED)
+            u32Ret = ERR_SPINAND_ECC_1_3_CORRECTED;
+        if(u8Status == ECC_4_6_CORRECTED)
+           u32Ret = ERR_SPINAND_ECC_4_6_CORRECTED;
+        if(u8Status == ECC_7_8_CORRECTED)
+            u32Ret = ERR_SPINAND_ECC_7_8_CORRECTED;
+        if(u8Status == ECC_NOT_CORRECTED){
             u32Ret = ERR_SPINAND_ECC_ERROR;
-        else if (u8Status & ECC_STATUS_BITFLIP)
-            u32Ret = ERR_SPINAND_ECC_BITFLIP;
+            printk("ecc error P: %lx\r\n", u32_PageIdx);
+        }
     }
 
 #if defined(SPINAND_MEASURE_PERFORMANCE) && SPINAND_MEASURE_PERFORMANCE
@@ -386,6 +424,11 @@ U32 MDrv_SPINAND_Write(U32 u32_PageIdx, U8 *u8Data, U8 *pu8_SpareBuf)
         return FALSE;
     }
 
+    if ((ID1 == 0xEF) && (ID2 == 0xAB) && (ID3 == 0x21))
+    {
+        U16 u16DiePageCnt = MDrv_SPINAND_CountBits(BLOCKCNT * BLOCK_PAGE_SIZE);
+        HAL_SPINAND_DieSelect((U8)(u32_PageIdx >> (u16DiePageCnt - 1)));
+    }
 #if defined(SPINAND_MEASURE_PERFORMANCE) && SPINAND_MEASURE_PERFORMANCE
     u64_TotalWriteBytes += _gtSpinandInfo.u16_PageByteCnt;
 #endif
@@ -421,6 +464,12 @@ U32 MDrv_SPINAND_BLOCK_ERASE(U32 u32_PageIdx)
     {
         spi_nand_err("%s ENTRY fails!\n", __FUNCTION__);
         return FALSE;
+    }
+
+    if ((ID1 == 0xEF) && (ID2 == 0xAB) && (ID3 == 0x21))
+    {
+        U16 u16DiePageCnt = MDrv_SPINAND_CountBits(BLOCKCNT * BLOCK_PAGE_SIZE);
+        HAL_SPINAND_DieSelect((U8)(u32_PageIdx >> (u16DiePageCnt - 1)));
     }
 
     u32Ret=HAL_SPINAND_BLOCKERASE(u32_PageIdx);

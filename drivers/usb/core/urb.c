@@ -8,12 +8,10 @@
 #include <linux/usb/hcd.h>
 #include <linux/scatterlist.h>
 
-#ifndef MP_USB_MSTAR
-#include <usb_patch_mstar.h>
+#ifdef CONFIG_MP_USB_MSTAR
+#include "usb_common_sstar.h"
 #endif
-#if (MP_USB_MSTAR==1)
-#include "../host/ehci-mstar.h"
-#endif
+
 #define to_urb(d) container_of(d, struct urb, kref)
 
 

@@ -1,3 +1,4 @@
+EXTRA_CFLAGS      +=  -Idrivers/sstar/include
 
 obj-$(CONFIG_ATA)		+= libata.o
 

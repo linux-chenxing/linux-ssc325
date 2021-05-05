@@ -38,7 +38,7 @@
 #endif
 
 #if (MP_USB_MSTAR==1) && (XHCI_FLUSHPIPE_PATCH)
-extern void Chip_Flush_Memory(void);
+extern void Chip_Flush_MIU_Pipe(void);
 #endif
 
 #define DRIVER_AUTHOR "Sarah Sharp"
@@ -582,7 +582,7 @@ int xhci_init(struct usb_hcd *hcd)
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init, "Finished xhci_init");
 
 #if (MP_USB_MSTAR==1) && (XHCI_FLUSHPIPE_PATCH)
-	Chip_Flush_Memory();
+	Chip_Flush_MIU_Pipe();
 #endif
 
 	/* Initializing Compliance Mode Recovery Data If Needed */

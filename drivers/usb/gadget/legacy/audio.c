@@ -66,6 +66,22 @@ static char *fn_cntl = FILE_CONTROL;
 module_param(fn_cntl, charp, S_IRUGO);
 MODULE_PARM_DESC(fn_cntl, "Control device file name");
 
+static int playback_channel_count = UAC1_PLAYBACK_CHANNEL_COUNT;
+module_param(playback_channel_count, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(playback_channel_count, "Speaker Channel Counts");
+
+static int capture_channel_count = UAC1_CAPTURE_CHANNEL_COUNT;
+module_param(capture_channel_count, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(capture_channel_count, "Microphone Channel Counts");
+
+static int playback_sample_rate = UAC1_PLAYBACK_SAMPLE_RATE;
+module_param(playback_sample_rate, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(playback_sample_rate, "Speaker Sample Rate");
+
+static int capture_sample_rate = UAC1_CAPTURE_SAMPLE_RATE;
+module_param(capture_sample_rate, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(capture_sample_rate, "Microphone Sample Rate");
+
 static int out_req_buf_size = UAC1_OUT_EP_MAX_PACKET_SIZE;
 module_param(out_req_buf_size, int, S_IRUGO);
 MODULE_PARM_DESC(out_req_buf_size, "ISO OUT endpoint request buffer size");
@@ -252,6 +268,10 @@ static int audio_bind(struct usb_composite_dev *cdev)
 	uac1_opts->fn_play = fn_play;
 	uac1_opts->fn_cap = fn_cap;
 	uac1_opts->fn_cntl = fn_cntl;
+	uac1_opts->playback_channel_count = playback_channel_count;
+	uac1_opts->playback_sample_rate = playback_sample_rate;
+	uac1_opts->capture_channel_count = capture_channel_count;
+	uac1_opts->capture_sample_rate = capture_sample_rate;
 	uac1_opts->out_req_buf_size = out_req_buf_size;
 	uac1_opts->out_req_count = out_req_count;
 	uac1_opts->audio_playback_buf_size = audio_playback_buf_size;

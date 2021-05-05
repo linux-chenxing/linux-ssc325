@@ -30,6 +30,7 @@
 #include "regMIU.h"
 #include "mhal_miu.h"
 #include "registers.h"
+#include "ms_platform.h"
 //-------------------------------------------------------------------------------------------------
 //  Macro Define
 //-------------------------------------------------------------------------------------------------
@@ -218,17 +219,20 @@ const eMIUClientID clientTbl[MIU_MAX_DEVICE][MIU_MAX_TBL_CLIENT] =
 static MS_U16 clientId_KernelProtect[IDNUM_KERNELPROTECT] =
 {
     MIU_CLIENT_MIPS_RW,
-    MIU_CLIENT_MCU51_RW,
     MIU_CLIENT_USB20_1_RW,
+    MIU_CLIENT_USB20_2_RW,
+    MIU_CLIENT_USB20_3_RW,
     MIU_CLIENT_WAVE511_RW,
     MIU_CLIENT_MIIC1_RW,
     MIU_CLIENT_EMAC_RW,
+    MIU_CLIENT_EMAC1_RW,
     MIU_CLIENT_SATA_RW,
     MIU_CLIENT_SDIO30_RW,
     MIU_CLIENT_AESDMA_RW,
     MIU_CLIENT_URDMA_RW,
     MIU_CLIENT_BDMA_RW,
     MIU_CLIENT_MOVDMA0_RW,
+    MIU_CLIENT_GE_RW,
     0,
 };
 
@@ -266,7 +270,7 @@ static MS_S16 HAL_MIU_GetClientIndex(MS_U8 u8MiuSel, eMIUClientID eClientID)
     MS_U8 idx = 0;
 
     if (MIU_MAX_DEVICE <= u8MiuSel) {
-        MIU_HAL_ERR("Wrong MIU device:%u\n", u8MiuSel);
+        MIU_HAL_ERR("%s not support MIU%u!\n", __FUNCTION__, u8MiuSel );
         return (-1);
     }
 
@@ -296,7 +300,7 @@ static MS_U16 HAL_MIU_Read2Byte(MS_U32 u32RegProtectId)
 static MS_BOOL HAL_MIU_WriteByte(MS_U32 u32RegProtectId, MS_U8 u8Val)
 {
     if (!u32RegProtectId) {
-        MIU_HAL_ERR("%s reg error!\n", __FUNCTION__);
+        MIU_HAL_ERR("%s reg err\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -311,7 +315,7 @@ static MS_BOOL HAL_MIU_WriteByte(MS_U32 u32RegProtectId, MS_U8 u8Val)
 static MS_BOOL HAL_MIU_Write2Byte(MS_U32 u32RegProtectId, MS_U16 u16Val)
 {
     if (!u32RegProtectId) {
-        MIU_HAL_ERR("%s reg error!\n", __FUNCTION__);
+        MIU_HAL_ERR("%s reg err\n", __FUNCTION__);
         return FALSE;
     }
 
@@ -493,6 +497,8 @@ MS_BOOL HAL_MIU_GetHitProtectInfo(MS_U8 u8MiuSel, MIU_PortectInfo *pInfo)
     u16LoAddr   = HAL_MIU_Read2Byte(u32RegBase + REG_MIU_PROTECT_LOADDR);
     u16HiAddr   = HAL_MIU_Read2Byte(u32RegBase + REG_MIU_PROTECT_HIADDR);
 
+    HAL_MIU_ClientIdToName((MS_U8)(GET_HIT_CLIENT(u16Ret)), clientName);
+
     if (REG_MIU_PROTECT_HIT_FALG & u16Ret)
     {
         pInfo->bHit         = TRUE;
@@ -504,15 +510,29 @@ MS_BOOL HAL_MIU_GetHitProtectInfo(MS_U8 u8MiuSel, MIU_PortectInfo *pInfo)
 
         u32EndAddr = (pInfo->uAddress + MIU_PROTECT_ADDRESS_UNIT - 1);
 
-        HAL_MIU_ClientIdToName((MS_U8)(GET_HIT_CLIENT(u16Ret)), clientName);
-        printk("MIU%u Block:%u Client:%s ID:%u-%u Hitted_Address(MIU):0x%x<->0x%x\n",
-               u8MiuSel, pInfo->u8Block, clientName,
-               pInfo->u8Group, pInfo->u8ClientID,
-               pInfo->uAddress, u32EndAddr);
+        if (pInfo->u8Block == 6 || pInfo->u8Block == 7)
+        {
+            printk(KERN_EMERG "MIU%u %s Out of Range Client:%s ID:%u-%u Hitted_Addr:0x%x<->0x%x (Valid Range: 0x00000000 ~ 0x%08X)\n",
+                   u8MiuSel, (pInfo->u8Block == 6)? "Read" : "Write", clientName,
+                   pInfo->u8Group, pInfo->u8ClientID,
+                   pInfo->uAddress, u32EndAddr, HAL_MIU_ProtectDramSize());
+        }
+        else
+        {
+            printk(KERN_EMERG "MIU%u Block:%u Client:%s ID:%u-%u Hitted_Addr:0x%x<->0x%x\n",
+                   u8MiuSel, pInfo->u8Block, clientName,
+                   pInfo->u8Group, pInfo->u8ClientID,
+                   pInfo->uAddress, u32EndAddr);
+        }
 
         // Clear log
         HAL_MIU_Write2BytesMask(u32RegBase + REG_MIU_PROTECT_STATUS, REG_MIU_PROTECT_LOG_CLR, TRUE);
         HAL_MIU_Write2BytesMask(u32RegBase + REG_MIU_PROTECT_STATUS, REG_MIU_PROTECT_LOG_CLR, FALSE);
+
+        if ((MIU_CLIENT_WAVE511_RW == GET_HIT_CLIENT(u16Ret)) && (pInfo->u8Block == 6))
+        {
+             pInfo->bHit = FALSE;
+        }
 
     }
 
@@ -528,6 +548,14 @@ MS_U16* HAL_MIU_GetDefaultKernelProtectClientID(void)
 {
      if (IDNUM_KERNELPROTECT > 0) {
          return (MS_U16 *)&clientId_KernelProtect[0];
+     }
+     return NULL;
+}
+
+MS_U16* HAL_MIU_GetKernelProtectClientID(MS_U8 u8MiuSel)
+{
+     if (IDNUM_KERNELPROTECT > 0) {
+         return (MS_U16 *)&IDList[u8MiuSel][0];
      }
      return NULL;
 }
@@ -581,18 +609,18 @@ MS_BOOL HAL_MIU_Protect(    MS_U8   u8Blockx,
     // Parameter check
     if (u8Blockx >= E_MIU_BLOCK_NUM)
     {
-        MIU_HAL_ERR("Err: Out of the number of protect device\n");
+        MIU_HAL_ERR("Err: Blk Num out of range\n");
         return FALSE;
     }
     else if (((u32Start & ((1 << MIU_PAGE_SHIFT) -1)) != 0) ||
              ((u32End & ((1 << MIU_PAGE_SHIFT) -1)) != 0))
     {
-        MIU_HAL_ERR("Err: Protected address should be aligned to 8KB\n");
+        MIU_HAL_ERR("Err: Protected addr not 8KB aligned\n");
         return FALSE;
     }
     else if (u32Start >= u32End)
     {
-        MIU_HAL_ERR("Err: Start address is equal to or more than end address\n");
+        MIU_HAL_ERR("Err: Invalid end addr\n");
         return FALSE;
     }
 
@@ -868,7 +896,7 @@ unsigned int HAL_MIU_ProtectDramSize(void)
     u8Val = (u8Val >> 4) & 0xF;
 
     if (0 == u8Val) {
-        MIU_HAL_ERR("MIU protect DRAM size is undefined. Using 0x40000000 as default\n");
+        MIU_HAL_ERR("MIU protect size undefined. Using 0x40000000\n");
         return 0x40000000;
     }
     return (0x1 << (20 + u8Val));
@@ -880,7 +908,7 @@ int HAL_MIU_ClientIdToName(MS_U16 clientId, char *clientName)
 
     if (!clientName) {
         iRet = -1;
-        MIU_HAL_ERR("do nothing, input wrong clientName\n");
+        MIU_HAL_ERR("Wrong clientName\n");
         return iRet;
     }
 
@@ -1038,12 +1066,13 @@ int HAL_MIU_ClientIdToName(MS_U16 clientId, char *clientName)
             strcpy(clientName, "CPU_RW");
             break;
         default:
-            MIU_HAL_ERR("Input wrong clientId [%d]\n", clientId);
+            MIU_HAL_ERR("Wrong clientId %d\n", clientId);
             iRet = -1;
             break;
     }
     return iRet;
 }
+EXPORT_SYMBOL(HAL_MIU_ClientIdToName);
 
 int clientId_KernelProtectToName(MS_U16 clientId, char *clientName)
 {
@@ -1051,13 +1080,45 @@ int clientId_KernelProtectToName(MS_U16 clientId, char *clientName)
 }
 EXPORT_SYMBOL(clientId_KernelProtectToName);
 
+int HAL_MIU_Info(MIU_DramInfo_Hal *pDramInfo)
+{
+    int ret = -1;
+    unsigned int ddfset = 0;
+
+    if (pDramInfo)
+    {
+        ddfset = (INREGMSK16(BASE_REG_ATOP_PA + REG_ID_19, 0x00FF) << 16) + INREGMSK16(BASE_REG_ATOP_PA + REG_ID_18, 0xFFFF);
+
+        pDramInfo->size = HAL_MIU_ProtectDramSize();
+        pDramInfo->dram_freq = ((432 * 4 * 4) << 19) / ddfset;
+        pDramInfo->miupll_freq = 24 * INREGMSK16(BASE_REG_MIUPLL_PA + REG_ID_03, 0x00FF) / ((INREGMSK16(BASE_REG_MIUPLL_PA + REG_ID_03, 0x0700) >> 8) + 2);
+        pDramInfo->type = INREGMSK16(BASE_REG_MIU_PA + REG_ID_01, 0x0003);;
+        pDramInfo->data_rate = (1 << (INREGMSK16(BASE_REG_MIU_PA + REG_ID_01, 0x0300) >> 8));
+        pDramInfo->bus_width = (16 << (INREGMSK16(BASE_REG_MIU_PA + REG_ID_01, 0x000C) >> 2));
+        pDramInfo->ssc = ((INREGMSK16(BASE_REG_ATOP_PA + REG_ID_14, 0xC000)==0x8000)? 0 : 1);
+
+        ret = 0;
+    }
+
+    return ret;
+}
+
+//-------------------------------------------------------------------------------------------------
 int HAL_MMU_SetRegion(unsigned short u16Region)
 {
     MS_U16 u16CtrlRegVal;
 
+#ifndef CONFIG_FPGA
+    if(Chip_Get_Revision() == 0x2)
+    {
+        printk("[%s] not support , chipId = %d \n", __FUNCTION__, Chip_Get_Revision() );
+        return -1;
+    }
+#endif
+
     if (u16Region >> 5)
     {
-        MIU_HAL_ERR("Region value over range(0x%x)\n", u16Region);
+        MIU_HAL_ERR("Region over range(0x%x)\n", u16Region);
         return -1;
     }
 
@@ -1069,13 +1130,49 @@ int HAL_MMU_SetRegion(unsigned short u16Region)
     return 0;
 }
 
+
+int HAL_MMU_SetRegionReplaceable(unsigned short u16Region, unsigned short u16ReplaceRegion)
+{
+    MS_U16 u16CtrlRegVal;
+
+#ifndef CONFIG_FPGA
+    if(Chip_Get_Revision() == 0x1)
+    {
+        printk("[%s] not support , chipId = %d \n", __FUNCTION__, Chip_Get_Revision() );
+        return -1;
+    }
+#endif
+
+    if ((u16Region >> 5) || (u16ReplaceRegion >> 5))
+    {
+        MIU_HAL_ERR("Region(0x%X) or ReplaceRegion(0x%X) over range \n", u16Region,u16ReplaceRegion);
+        return -1;
+    }
+
+    u16CtrlRegVal = HAL_MIU_Read2Byte(REG_MMU_CTRL) & ~(BITS_RANGE(REG_MMU_CTRL_REGION_MASK));
+    u16CtrlRegVal |= (u16Region << 8);
+
+    HAL_MIU_Write2Byte(REG_MMU_CTRL, u16CtrlRegVal);
+
+
+    u16CtrlRegVal = HAL_MIU_Read2Byte(REG_MMU_REPLACE_MSB) & ~(BITS_RANGE(REG_MMU_REPLACE_MSB_MASK));
+    u16CtrlRegVal |= u16ReplaceRegion;
+
+    HAL_MIU_Write2Byte(REG_MMU_REPLACE_MSB, u16CtrlRegVal);
+
+    return 0;
+}
+
+
+
+
 int HAL_MMU_Map(unsigned short u16PhyAddrEntry, unsigned short u16VirtAddrEntry)
 {
     MS_U16 u16RegVal;
 
     if ((u16PhyAddrEntry >> 9) || (u16VirtAddrEntry >> 9))
     {
-        MIU_HAL_ERR("Entry value over range(Phy:0x%x, Virt:0x%x)\n", u16PhyAddrEntry, u16VirtAddrEntry);
+        MIU_HAL_ERR("Entry over range(Phy:0x%x, Virt:0x%x)\n", u16PhyAddrEntry, u16VirtAddrEntry);
         return -1;
     }
 
@@ -1098,7 +1195,7 @@ unsigned short HAL_MMU_MapQuery(unsigned short u16PhyAddrEntry)
 
     if (u16PhyAddrEntry >> 9)
     {
-        MIU_HAL_ERR("Entry value over range(Phy:0x%x)\n", u16PhyAddrEntry);
+        MIU_HAL_ERR("Entry over range(Phy:0x%x)\n", u16PhyAddrEntry);
         return -1;
     }
 
@@ -1107,6 +1204,9 @@ unsigned short HAL_MMU_MapQuery(unsigned short u16PhyAddrEntry)
 
     // reg_mmu_access
     HAL_MIU_Write2Byte(REG_MMU_ACCESS, BIT0);
+
+    // delay 100ns for SRAM read latency(designer comfirmed)
+    ndelay(100);
 
     // reg_mmu_rdata
     u16RegVal = HAL_MIU_Read2Byte(REG_MMU_R_DATA);
@@ -1120,7 +1220,7 @@ int HAL_MMU_UnMap(unsigned short u16PhyAddrEntry)
 
     if (u16PhyAddrEntry >> 9)
     {
-        MIU_HAL_ERR("Entry value over range(Phy:0x%x)\n", u16PhyAddrEntry);
+        MIU_HAL_ERR("Entry over range(Phy:0x%x)\n", u16PhyAddrEntry);
         return -1;
     }
 
@@ -1143,6 +1243,14 @@ int HAL_MMU_AddClientId(unsigned short u16ClientId)
 {
     MS_U16 u16ClientIdx, u16RegVal;
     MS_U32 u32RegOffset;
+
+#ifndef CONFIG_FPGA
+    if(Chip_Get_Revision() == 0x2)
+    {
+        printk("[%s] not support , chipId = %d \n", __FUNCTION__, Chip_Get_Revision() );
+        return -1;
+    }
+#endif
 
     for (u16ClientIdx = 0; u16ClientIdx < MMU_MAX_CLIENT_NUM; u16ClientIdx++)
     {
@@ -1200,7 +1308,7 @@ int HAL_MMU_AddClientId(unsigned short u16ClientId)
         return 0;
     }
     else
-        MIU_HAL_ERR("Client ID is full(max num:%d)\n", MMU_MAX_CLIENT_NUM);
+        MIU_HAL_ERR("Client ID is full(max:%d)\n", MMU_MAX_CLIENT_NUM);
 
     return -1;
 }
@@ -1209,6 +1317,14 @@ int HAL_MMU_RemoveClientId(unsigned short u16ClientId)
 {
     MS_U16 u16ClientIdx, u16RegVal;
     MS_U32 u32RegOffset;
+
+#ifndef CONFIG_FPGA
+    if(Chip_Get_Revision() == 0x2)
+    {
+        printk("[%s] not support , chipId = %d \n", __FUNCTION__, Chip_Get_Revision() );
+        return -1;
+    }
+#endif
 
     for (u16ClientIdx = 0; u16ClientIdx < MMU_MAX_CLIENT_NUM; u16ClientIdx++)
     {
@@ -1353,6 +1469,9 @@ unsigned int HAL_MMU_Status(unsigned short *u16PhyAddrEntry, unsigned short *u16
         HAL_MIU_Write2Byte(REG_MMU_IRQ_CTRL, u16IrqRegVal);
         HAL_MIU_Write2Byte(REG_MMU_IRQ_CTRL, 0x0);
     }
+
+    if (!u32Status)
+        MIU_HAL_ERR("Unknown MIU MMU error: 0x%x\n", u16IrqRegVal);
 
     return u32Status;
 }

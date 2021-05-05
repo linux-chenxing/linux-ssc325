@@ -39,8 +39,8 @@
 #include <linux/of_irq.h>
 #include <linux/interrupt.h>
 
-#define CONFIG_PATCH_STATUS_FAILS 1
-
+#define CONFIG_PATCH_STATUS_FAILS 0
+#define CONFIG_I2M_PM_INTC_ECO 1
 
 #define PMGPIO_OEN                BIT0
 #define PMGPIO_OUTPUT             BIT1
@@ -51,6 +51,9 @@
 #define PMGPIO_FIQ_POLARITY       BIT7
 #define PMGPIO_FIQ_FINAL_STATUS   BIT8
 #define PMGPIO_FIQ_RAW_STATUS     BIT9
+#if CONFIG_I2M_PM_INTC_ECO
+#define PMGPIO_FIQ_FINAL_STATUS_ECO BIT14
+#endif
 
 static void ms_pm_irq_ack(struct irq_data *d)
 {
@@ -152,7 +155,7 @@ static int ms_pm_irq_set_type(struct irq_data *d, unsigned int type)
             SETREG16(BASE_REG_PMGPIO_PA + (pmsleep_fiq << 2), PMGPIO_FIQ_POLARITY);
             break;
         case IRQ_TYPE_EDGE_RISING:
-        case IRQ_TYPE_LEVEL_HIGH:            
+        case IRQ_TYPE_LEVEL_HIGH:
             CLRREG16(BASE_REG_PMGPIO_PA + (pmsleep_fiq << 2), PMGPIO_FIQ_POLARITY);
             break;
         default:
@@ -168,7 +171,7 @@ static int ms_pm_irq_set_type(struct irq_data *d, unsigned int type)
             SETREG8(BASE_REG_PMSLEEP_PA + REG_ID_09, 1<<(pmsleep_fiq-PMSLEEP_IRQ_START) );
             break;
         case IRQ_TYPE_EDGE_RISING:
-        case IRQ_TYPE_LEVEL_HIGH:            
+        case IRQ_TYPE_LEVEL_HIGH:
             CLRREG8(BASE_REG_PMSLEEP_PA + REG_ID_09, 1<<(pmsleep_fiq-PMSLEEP_IRQ_START) );
             break;
         default:
@@ -199,30 +202,64 @@ static DEFINE_SPINLOCK(ss_irq_controller_lock);
 static void ms_handle_cascade_pm_irq(struct irq_desc *desc)
 {
     unsigned int cascade_irq = 0xFFFFFFFF, i;
-    unsigned int virq ;
+    unsigned int virq = 0xDEADBEEF;
     struct irq_chip *chip = irq_desc_get_chip(desc);
     struct irq_domain *domain = irq_desc_get_handler_data(desc);
-    unsigned int final_status;
+    unsigned int final_status = 0xDEADBEEF;
+    int triggered = 0;
 
     if(!domain)
     {
-        printk("[%s] error %d \n", __FUNCTION__, __LINE__);
+        printk("[%s] err %d \n", __FUNCTION__, __LINE__);
         goto exit;
     }
 
     spin_lock(&ss_irq_controller_lock);
-#ifdef CONFIG_PATCH_STATUS_FAILS
-    for(i=0;i<=9;i++)
+#if CONFIG_PATCH_STATUS_FAILS
+    for(i=0;i<=75;i++)
     {
         final_status =INREG16(BASE_REG_PMGPIO_PA+i*4);
         if(!(final_status&PMGPIO_FIQ_MASK))
         {
             if( (final_status&PMGPIO_FIQ_POLARITY)? !(final_status&PMGPIO_INPUT):(final_status&PMGPIO_INPUT))
             {
-                cascade_irq = i+2; //shift 2 for IR and RC detection
+                cascade_irq = i;
                 pr_debug("[%s] Get hwirq:%d, Reg:0x%04x\n", __FUNCTION__, cascade_irq, final_status);
                 break;
             }
+        }
+    }
+#elif CONFIG_I2M_PM_INTC_ECO
+    // FIXME: traverse through the following active PMSLEEP interrupts
+    for(i=INT_PMSLEEP_DUMMY_0;i<=INT_PMSLEEP_LED1;i++)
+    {
+        if( (i>=INT_PMSLEEP_IRIN && i<=INT_PMSLEEP_SPI_DO) ||
+            (i>=INT_PMSLEEP_SPI_WPZ && i<=INT_PMSLEEP_SPI_HLD) )
+        {
+            final_status = INREG16(BASE_REG_PMGPIO_PA+i*4);
+            triggered = ( final_status & PMGPIO_FIQ_FINAL_STATUS_ECO );
+        }
+        else if(i == INT_PMSLEEP_SD_CDZ) /* PAD_PM_SD_CDZ: Addr 7f Bit0 */
+        {
+            final_status = INREG16(BASE_REG_PMGPIO_PA + 0x7f*4);
+            triggered = final_status & BIT0;
+        }
+        else if (i == INT_PMSLEEP_LED0) /* PAD_PM_LED0: Addr 7f Bit1 */
+        {
+            final_status = INREG16(BASE_REG_PMGPIO_PA + 0x7f*4);
+            triggered = final_status & BIT1;
+        }
+        else if (i == INT_PMSLEEP_LED1) /* PAD_PM_LED1: Addr 7f Bit2 */
+        {
+            final_status = INREG16(BASE_REG_PMGPIO_PA + 0x7f*4);
+            triggered = final_status & BIT2;
+        }
+
+        if( triggered )
+        {
+            cascade_irq = i;
+            pr_debug("[%s] Get hwirq:%d, Reg:0x%04x\n", __FUNCTION__, cascade_irq, final_status);
+            break;
         }
     }
 #else
@@ -241,15 +278,15 @@ static void ms_handle_cascade_pm_irq(struct irq_desc *desc)
     if(0xFFFFFFFF==cascade_irq)
     {
 
-#ifdef CONFIG_PATCH_STATUS_FAILS
+#if CONFIG_PATCH_STATUS_FAILS
         pr_err("[%s:%d] Clean all pmgpio status\n", __FUNCTION__, __LINE__);
-        for(i=0;i<=9;i++)
+        for(i=0;i<=75;i++)
         {
             SETREG16(BASE_REG_PMGPIO_PA+i*4, PMGPIO_FIQ_CLEAR);
         }
 #else
         pr_err("[%s:%d] error final_status:%d 0x%04X virq:%d\n", __FUNCTION__, __LINE__, cascade_irq, final_status, virq);
-        panic();
+        panic("%s(%d) invalid cascade_irq: %d\n", __FUNCTION__, __LINE__, cascade_irq);
 #endif
         chained_irq_exit(chip, desc);
         goto exit;
@@ -258,7 +295,7 @@ static void ms_handle_cascade_pm_irq(struct irq_desc *desc)
     virq = irq_find_mapping(domain, cascade_irq);
     if(!virq)
     {
-        printk("[%s] error %d \n", __FUNCTION__, __LINE__);
+        printk("[%s] err %d (irq=%d)\n", __FUNCTION__, __LINE__, cascade_irq);
         goto exit;
     }
     pr_debug("%s %d final_status:%d 0x%04X virq:%d\n", __FUNCTION__, __LINE__, cascade_irq, final_status, virq);
@@ -330,7 +367,7 @@ static int __init ms_init_pm_intc(struct device_node *np, struct device_node *in
     int irq=0;
     if (!interrupt_parent)
     {
-        pr_err("%s: %s no parent, return\n", __func__, np->name);
+        pr_err("%s: %s no parent\n", __func__, np->name);
         return -ENODEV;
     }
 
@@ -339,7 +376,7 @@ static int __init ms_init_pm_intc(struct device_node *np, struct device_node *in
     parent_domain = irq_find_host(interrupt_parent);
     if (!parent_domain)
     {
-        pr_err("%s: %s unable to obtain intc parent domain, return\n", __func__, np->name);
+        pr_err("%s: %s unable to obtain parent domain\n", __func__, np->name);
         return -ENXIO;
     }
 
@@ -349,14 +386,14 @@ static int __init ms_init_pm_intc(struct device_node *np, struct device_node *in
 
     if (!ms_pm_irq_domain)
     {
-        pr_err("%s: %s failed to allocated domain\n", __func__, np->name);
+        pr_err("%s: %s allocat domain fail\n", __func__, np->name);
         return -ENOMEM;
     }
 
     irq = irq_of_parse_and_map(np, 0);
     if (!irq)
     {
-        pr_err("Get irq number error from DTS\n");
+        pr_err("Get irq err from DTS\n");
         return -EPROBE_DEFER;
     }
 

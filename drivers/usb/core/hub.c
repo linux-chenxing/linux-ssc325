@@ -33,20 +33,7 @@
 #include "hub.h"
 #include "otg_whitelist.h"
 
-#ifndef MP_USB_MSTAR
-#include <usb_patch_mstar.h>
-#endif
-
-#if (MP_USB_MSTAR==1)
-#include "../host/ehci-mstar.h"
-#include "../host/xhci-mstar.h"
-#include <asm/io.h>
-#if (_UTMI_PWR_SAV_MODE_ENABLE == 1) || \
-	defined(USB_MAC_SRAM_POWER_DOWN_ENABLE)
-#include "bc-mstar.h"
-#endif
-
-#endif
+#include "usb_common_sstar.h"
 
 #define USB_VENDOR_GENESYS_LOGIC		0x05e3
 #define HUB_QUIRK_CHECK_PORT_AUTOSUSPEND	0x01
@@ -2901,6 +2888,12 @@ static int hub_port_wait_reset(struct usb_hub *hub, int port1,
 	#if !defined(ENABLE_NEW_HW_CHRIP_PATCH) //_USB_HS_CHIRP_PATCH
 	u8  bRestore = 1;
 	#endif
+	if(hcd->reduce_wait_reset_time_flag == 1) {
+		if(delay >=30){
+			delay -= 30;
+			printk("Reduce wait reset time to %d\n", delay);
+		}
+	}
 #endif
 
 	for (delay_time = 0;
@@ -5400,6 +5393,7 @@ do_port_reset:
 		/* Aigo MP3 :  Add more delay to wait device ready */
 		msleep (400);
 	}
+	hcd->reduce_wait_reset_time_flag = 0;
 #endif
 
 	retval = 0;
@@ -5411,6 +5405,8 @@ fail:
 	if (retval) {
 #if (MP_USB_MSTAR==1)
 		/* also consider PLS at in-active case */
+		if (retval != -ENODEV)
+            hcd->reduce_wait_reset_time_flag = 1;
 		hub_port_disable(hub, port1, 0, (retval == -ENOTCONN) ? 0 : 1);
 #else
 		hub_port_disable(hub, port1, 0);

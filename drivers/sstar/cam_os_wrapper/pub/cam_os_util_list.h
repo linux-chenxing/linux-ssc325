@@ -57,16 +57,16 @@ struct CamOsListHead_t
     CAM_OS_LIST_ENTRY((ptr)->pPrev, type, member)
 
 #define CAM_OS_LIST_NEXT_ENTRY(pos, member) \
-    CAM_OS_LIST_ENTRY((pos)->member.pNext, typeof(*(pos)), member)
+    CAM_OS_LIST_ENTRY((pos)->member.pNext, __typeof__(*(pos)), member)
 
 #define CAM_OS_LIST_FOR_EACH_ENTRY_SAFE(pos, n, head, member)                  \
-    for (pos = CAM_OS_LIST_FIRST_ENTRY(head, typeof(*pos), member),        \
+    for (pos = CAM_OS_LIST_FIRST_ENTRY(head, __typeof__(*pos), member),        \
             n = CAM_OS_LIST_NEXT_ENTRY(pos, member);                       \
             &pos->member != (head);                                    \
             pos = n, n = CAM_OS_LIST_NEXT_ENTRY(n, member))
 
 #define CAM_OS_LIST_FOR_EACH_ENTRY(pos, head, member)                          \
-    for (pos = CAM_OS_LIST_FIRST_ENTRY(head, typeof(*pos), member);        \
+    for (pos = CAM_OS_LIST_FIRST_ENTRY(head, __typeof__(*pos), member);        \
             &pos->member != (head);                                    \
             pos = CAM_OS_LIST_NEXT_ENTRY(pos, member))
 
@@ -145,6 +145,8 @@ void CamOsListSort(void *priv, struct CamOsListHead_t *head,
 	       int (*cmp)(void *priv, struct CamOsListHead_t *a,
 			  struct CamOsListHead_t *b));
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
 // HList API
 static FORCE_INLINE
 void _CAM_OS_READ_ONCE_SIZE(const volatile void *p, void *res, int size)
@@ -160,14 +162,17 @@ void _CAM_OS_READ_ONCE_SIZE(const volatile void *p, void *res, int size)
 		asm volatile("": : :"memory"); // barrier()
 	}
 }
+#pragma GCC diagnostic pop
 
 #define CAM_OS_READ_ONCE(x)						\
 ({									\
-	union { typeof(x) __val; char __c[1]; } __u;			\
+	union { __typeof__(x) __val; char __c[1]; } __u = {0};			\
     _CAM_OS_READ_ONCE_SIZE(&(x), __u.__c, sizeof(x));		\
     __u.__val;							\
 })
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
 static FORCE_INLINE void _CAM_OS_WRITE_ONCE_SIZE(volatile void *p, void *res, int size)
 {
 	switch (size) {
@@ -181,6 +186,7 @@ static FORCE_INLINE void _CAM_OS_WRITE_ONCE_SIZE(volatile void *p, void *res, in
 		asm volatile("": : :"memory"); // barrier()
 	}
 }
+#pragma GCC diagnostic pop
 
 #define CAM_OS_WRITE_ONCE(x, val) \
 ({							\
@@ -286,14 +292,14 @@ static inline void CAM_OS_HLIST_ADD_HEAD(struct CamOsHListNode_t *n, struct CamO
 #define CAM_OS_HLIST_ENTRY(ptr, type, member) CAM_OS_CONTAINER_OF(ptr,type,member)
 
 #define CAM_OS_HLIST_ENTRY_SAFE(ptr, type, member) \
-	({ typeof(ptr) ____ptr = (ptr); \
+	({ __typeof__(ptr) ____ptr = (ptr); \
 	   ____ptr ? CAM_OS_HLIST_ENTRY(____ptr, type, member) : NULL; \
 	})
 
 #define CAM_OS_HLIST_FOR_EACH_ENTRY(pos, head, member)				\
-	for (pos = CAM_OS_HLIST_ENTRY_SAFE((head)->pFirst, typeof(*(pos)), member);\
+	for (pos = CAM_OS_HLIST_ENTRY_SAFE((head)->pFirst, __typeof__(*(pos)), member);\
 	     pos;							\
-	     pos = CAM_OS_HLIST_ENTRY_SAFE((pos)->member.pNext, typeof(*(pos)), member))
+	     pos = CAM_OS_HLIST_ENTRY_SAFE((pos)->member.pNext, __typeof__(*(pos)), member))
 
 #ifdef __cplusplus
 }

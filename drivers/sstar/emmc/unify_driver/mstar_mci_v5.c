@@ -314,6 +314,9 @@ static void mstar_mci_pre_adma_read(struct mstar_mci_host *pSstarHost_st)
     dma_map_sg(mmc_dev(pSstarHost_st->mmc), pData_st->sg, pData_st->sg_len, mstar_mci_get_dma_dir(pData_st));
     #endif
 
+    // Flush L3, For sg_buffer DMA_FROM_DEVICE.
+    Chip_Flush_MIU_Pipe();
+
     REG_FCIE_W(FCIE_BLK_SIZE, eMMC_SECTOR_512BYTE);
     for(i=0; i<pData_st->sg_len; i++)
     {
@@ -370,9 +373,8 @@ static void mstar_mci_pre_adma_read(struct mstar_mci_host *pSstarHost_st)
 
     gAdmaDesc_st[pData_st->sg_len-1].u32_End = 1;
 
-    Chip_Flush_Cache_Range_VA_PA((uintptr_t)gAdmaDesc_st,
-                                 (uintptr_t)virt_to_phys(gAdmaDesc_st),
-                                 sizeof(struct _AdmaDescriptor)*pData_st->sg_len);
+    // Flush L1,L2,L3, For gAdmaDesc_st.
+    Chip_Flush_Cache_Range((uintptr_t)gAdmaDesc_st, sizeof(struct _AdmaDescriptor)*pData_st->sg_len);
 
     eMMC_FCIE_ClearEvents();
 
@@ -489,6 +491,9 @@ static void mstar_mci_pre_dma_read(struct mstar_mci_host *pSstarHost_st)
     dma_map_sg(mmc_dev(pSstarHost_st->mmc), pData_st->sg, pData_st->sg_len, mstar_mci_get_dma_dir(pData_st));
     #endif
 
+    // Flush L3, For sg_buffer DMA_FROM_DEVICE.
+    Chip_Flush_MIU_Pipe();
+
     dmaaddr = sg_dma_address(pSG_st);
     dmalen = sg_dma_len(pSG_st);
 
@@ -603,7 +608,7 @@ static U32 mstar_mci_post_dma_read(struct mstar_mci_host *pSstarHost_st)
 //        REG_FCIE_R(FCIE_SD_MODE, sdmode);
 //        REG_FCIE_W(FCIE_SD_MODE, sdmode | BIT_SD_DMA_R_CLK_STOP);
 
-//        REG_FCIE_W(FCIE_SD_CTRL, BIT_SD_DAT_EN|BIT_ERR_DET_ON);
+        REG_FCIE_W(FCIE_SD_CTRL, BIT_SD_DAT_EN|BIT_ERR_DET_ON);
         REG_FCIE_W(FCIE_SD_CTRL, BIT_SD_DAT_EN|BIT_JOB_START|BIT_ERR_DET_ON);
 
         if((eMMC_FCIE_WaitEvents(FCIE_MIE_EVENT, (BIT_DMA_END|BIT_ERR_STS), eMMC_GENERIC_WAIT_TIME) != eMMC_ST_SUCCESS)||
@@ -723,6 +728,9 @@ static U32 mstar_mci_dma_write(struct mstar_mci_host *pSstarHost_st)
     dma_map_sg(mmc_dev(pSstarHost_st->mmc), pData_st->sg, pData_st->sg_len, mstar_mci_get_dma_dir(pData_st));
     #endif
 
+    // Flush L3, For sg_buffer DMA_TO_DEVICE.
+    Chip_Flush_MIU_Pipe();
+
     #if defined(ENABLE_FCIE_ADMA) && ENABLE_FCIE_ADMA
     pSG_st = pData_st->sg;
     for(i=0; i<pData_st->sg_len; i++)
@@ -770,9 +778,8 @@ static U32 mstar_mci_dma_write(struct mstar_mci_host *pSstarHost_st)
 
     gAdmaDesc_st[pData_st->sg_len-1].u32_End = 1;
 
-    Chip_Flush_Cache_Range_VA_PA((uintptr_t)gAdmaDesc_st,
-                                 (uintptr_t)virt_to_phys(gAdmaDesc_st),
-                                 sizeof(struct _AdmaDescriptor)*pData_st->sg_len);
+    // Flush L1,L2,L3, For gAdmaDesc_st.
+    Chip_Flush_Cache_Range((uintptr_t)gAdmaDesc_st, sizeof(struct _AdmaDescriptor)*pData_st->sg_len);
 
     //eMMC_FCIE_ClearEvents();
 
@@ -1265,13 +1272,12 @@ static void mstar_mci_send_command(struct mstar_mci_host *pSstarHost_st, struct 
     u8  u8_retry_D0H    = 0;
     struct mmc_data *pData_st;
 
-    //eMMC_debug(eMMC_DEBUG_LEVEL_ERROR,1,
-    //        "eMMC: cmd.%u arg.%Xh\n", pCmd_st->opcode, pCmd_st->arg);
-
     #if !(defined(ENABLE_EMMC_ASYNC_IO) && ENABLE_EMMC_ASYNC_IO)
     static u8  u8_retry_data=0;
     #endif
     u32 err = 0;
+
+    //eMMC_debug(eMMC_DEBUG_LEVEL_ERROR, 1, "eMMC: cmd.%u arg.%Xh\n", pCmd_st->opcode, pCmd_st->arg);
 
     LABEL_SEND_CMD:
     g_eMMCDrv.u32_DrvFlag &= ~DRV_FLAG_ERROR_RETRY;
@@ -1336,7 +1342,7 @@ static void mstar_mci_send_command(struct mstar_mci_host *pSstarHost_st, struct 
     }
 
     u32_sd_ctl |= BIT_SD_CMD_EN;
-    u32_mie_int |= BIT_CMD_END;
+    u32_mie_int |= BIT_SD_CMD_END;
 
     REG_FCIE_W(GET_REG_ADDR(FCIE_CMDFIFO_BASE_ADDR, 0x00),
         (((pCmd_st->arg >> 24)<<8) | (0x40|pCmd_st->opcode)));
@@ -1370,9 +1376,14 @@ static void mstar_mci_send_command(struct mstar_mci_host *pSstarHost_st, struct 
 
     #if 0
     //eMMC_debug(0,0,"\n");
-    eMMC_debug(0,0,"cmd:%u, arg:%Xh, buf:%Xh, block:%u, ST:%Xh, mode:%Xh, ctrl:%Xh \n",
-        pCmd_st->opcode, pCmd_st->arg, (u32)pData_st, pData_st ? pData_st->blocks : 0,
-        REG_FCIE(FCIE_SD_STATUS), u32_sd_mode, u32_sd_ctl);
+    eMMC_debug(0, 1,"cmd:%u, arg:%Xh, buf:%Xh, block:%u, ST:%Xh, mode:%Xh, ctrl:%Xh \n",
+               pCmd_st->opcode,
+               pCmd_st->arg,
+               (u32)pData_st,
+               pData_st ? pData_st->blocks : 0,
+               REG_FCIE(FCIE_SD_STATUS),
+               u32_sd_mode,
+               u32_sd_ctl);
     //eMMC_debug(0,0,"cmd:%u arg:%Xh\n", pCmd_st->opcode, pCmd_st->arg);
     //while(1);
     #endif
@@ -1425,7 +1436,7 @@ static void mstar_mci_send_command(struct mstar_mci_host *pSstarHost_st, struct 
     REG_FCIE_W(FCIE_SD_CTRL, u32_sd_ctl|BIT_JOB_START);
 
     // [FIXME]: retry and timing, and omre...
-    if(eMMC_FCIE_WaitEvents(FCIE_MIE_EVENT, BIT_CMD_END, HW_TIMER_DELAY_1s) != eMMC_ST_SUCCESS ||
+    if(eMMC_FCIE_WaitEvents(FCIE_MIE_EVENT, BIT_SD_CMD_END, HW_TIMER_DELAY_1s) != eMMC_ST_SUCCESS ||
        (REG_FCIE(FCIE_SD_STATUS)&(BIT_SD_RSP_TIMEOUT|BIT_SD_RSP_CRC_ERR)))
     {
         // ------------------------------------
@@ -2610,6 +2621,12 @@ static s32 mstar_mci_probe(struct platform_device *pDev_st)
     s32 s32_ret                             = 0;
 	U16 u16_i;
     U32 u32_buswidth = 0;
+#if MAX_CLK_CTRL
+    U32 u32_max_clk = 0;
+#endif
+#if DRIVING_CTRL
+    U32 u32_clk_driving = 0,u32_cmd_driving = 0,u32_data_driving = 0;
+#endif
 
     #if IF_FCIE_SHARE_IP && defined(CONFIG_MSTAR_SDMMC)
     eMMC_debug(0,0,"eMMC: has SD 1006\n");
@@ -2646,15 +2663,15 @@ static s32 mstar_mci_probe(struct platform_device *pDev_st)
 	}
 
 	clkdata->num_parents = of_clk_get_parent_count(pDev_st->dev.of_node);
-		if(clkdata->num_parents > 0)
-		{
-			clkdata->clk_fcie = kzalloc(sizeof(struct clk*) * clkdata->num_parents, GFP_KERNEL);
-		}
-		else
-		{
-			printk(KERN_ERR "Unable to get nand clk count from dts\n");
-			return -ENODEV;
-		}
+	if(clkdata->num_parents > 0)
+	{
+		clkdata->clk_fcie = kzalloc(sizeof(struct clk*) * clkdata->num_parents, GFP_KERNEL);
+	}
+	else
+	{
+		printk(KERN_ERR "Unable to get nand clk count from dts\n");
+		return -ENODEV;
+	}
 
 	for(u16_i = 0 ; u16_i < clkdata->num_parents; u16_i ++)
 	{
@@ -2666,7 +2683,6 @@ static s32 mstar_mci_probe(struct platform_device *pDev_st)
 		}
 	}
 
-
     if(of_property_read_u32(pDev_st->dev.of_node, "bus-width" , &u32_buswidth))
     {
        pr_err(">> [emmc] Err: Could not get dts [bus-width] option!\n");
@@ -2674,6 +2690,76 @@ static s32 mstar_mci_probe(struct platform_device *pDev_st)
     } else {
        pr_err(">> [emmc] get dts [bus-width]: %u\n", u32_buswidth);
     }
+
+#if MAX_CLK_CTRL
+
+    if(of_property_read_u32(pDev_st->dev.of_node, "max-clks" , &u32_max_clk))
+    {
+       pr_err(">> [emmc] Err: Could not get dts [max-clks] option!\n");
+        return -ENODEV;
+    } else {
+       pr_err(">> [emmc] get dts [max-clks]: %u\n", u32_max_clk);
+    }
+
+    eMMC_SetMaxClk(u32_max_clk);
+
+#endif
+
+#if DRIVING_CTRL
+
+    if(of_property_read_u32(pDev_st->dev.of_node, "clk-driving" , &u32_clk_driving))
+    {
+       pr_err(">> [emmc] Err: Could not get dts [clk-driving] option!\n");
+        return -ENODEV;
+    } else {
+       pr_err(">> [emmc] get dts [clk-driving]: %u\n", u32_clk_driving);
+    }
+
+    if(of_property_read_u32(pDev_st->dev.of_node, "cmd-driving" , &u32_cmd_driving))
+    {
+       pr_err(">> [emmc] Err: Could not get dts [cmd-driving] option!\n");
+        return -ENODEV;
+    } else {
+       pr_err(">> [emmc] get dts [cmd-driving]: %u\n", u32_cmd_driving);
+    }
+
+    if(of_property_read_u32(pDev_st->dev.of_node, "data-driving" , &u32_data_driving))
+    {
+       pr_err(">> [emmc] Err: Could not get dts [data-driving] option!\n");
+        return -ENODEV;
+    } else {
+       pr_err(">> [emmc] get dts [data-driving]: %u\n", u32_data_driving);
+    }
+
+    if (u32_clk_driving)
+    {
+        REG_FCIE_SETBIT(reg_driving_config, BIT_DRIVING_CLK);
+    }
+    else
+    {
+        REG_FCIE_CLRBIT(reg_driving_config, BIT_DRIVING_CLK);
+    }
+
+    if (u32_cmd_driving)
+    {
+        REG_FCIE_SETBIT(reg_driving_config, BIT_DRIVING_CMD);
+    }
+    else
+    {
+        REG_FCIE_CLRBIT(reg_driving_config, BIT_DRIVING_CMD);
+    }
+
+    if (u32_data_driving)
+    {
+        REG_FCIE_SETBIT(reg_driving_config, BIT_DRIVING_DATA);
+    }
+    else
+    {
+        REG_FCIE_CLRBIT(reg_driving_config, BIT_DRIVING_DATA);
+    }
+
+#endif
+
     #endif
 
     g_eMMCDrv.u8_PadType = FCIE_eMMC_BYPASS;
@@ -2689,6 +2775,7 @@ static s32 mstar_mci_probe(struct platform_device *pDev_st)
 #else
     // FIXME: force 8 bit bus width if not DTS configuration.
     g_eMMCDrv.u16_of_buswidth = 8;
+    pr_err(">> [emmc] force 8 bit bus width, no DTS cfg bus:%u\n", g_eMMCDrv.u16_of_buswidth);
 #endif
 
     pMMCHost_st = mmc_alloc_host(sizeof(struct mstar_mci_host), &pDev_st->dev);
@@ -2734,6 +2821,27 @@ static s32 mstar_mci_probe(struct platform_device *pDev_st)
             // FIXME: fall back to 8bits
             pMMCHost_st->caps           = MMC_CAP_8_BIT_DATA;
             if(Chip_Get_Revision() == 2) REG_FCIE_CLRBIT(reg_emmc_4bit_mod, BIT_4BIT_MODE_MASK);
+            break;
+    };
+#elif defined(BIT_EMMC_MODE_8X)
+    REG_FCIE_CLRBIT(reg_emmc_config, BIT_EMMC_MODE_MASK);
+    switch(g_eMMCDrv.u16_of_buswidth) {
+        case 1:
+            pMMCHost_st->caps           = MMC_CAP_1_BIT_DATA;
+            REG_FCIE_SETBIT(reg_emmc_config, BIT_EMMC_MODE_1);
+            break;
+        case 4:
+            pMMCHost_st->caps           = MMC_CAP_4_BIT_DATA;
+            REG_FCIE_SETBIT(reg_emmc_config, BIT_EMMC_MODE_1);
+            break;
+        case 8:
+            pMMCHost_st->caps           = MMC_CAP_8_BIT_DATA;
+            REG_FCIE_SETBIT(reg_emmc_config, BIT_EMMC_MODE_8X);
+            break;
+        default:
+            pr_err(">> [emmc] Err: wrong buswidth config: %u!\n", g_eMMCDrv.u16_of_buswidth);
+            pMMCHost_st->caps           = MMC_CAP_8_BIT_DATA;
+            REG_FCIE_SETBIT(reg_emmc_config, BIT_EMMC_MODE_8X);
             break;
     };
 #else //reg_emmc_4bit_mod is not defined. it does not support mmc
@@ -3009,7 +3117,7 @@ static struct platform_driver sg_mstar_mci_driver =
         .owner = THIS_MODULE,
 #if defined(MSTAR_EMMC_CONFIG_OF)
 		.of_match_table = ms_mstar_mci_dt_ids,
-#endif        
+#endif
     },
 };
 

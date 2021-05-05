@@ -744,7 +744,8 @@ void MHal_EMAC_Write_JULIAN_0100(void* hal, int bMIU_reset)
     if (!pHal->phyRIU)
         val |= 0x0002;
     val |= 0x0004;
-    val = (val_h & 0xFFFF0000) | val;
+    // val = (val_h & 0xFFFF0000) | val;
+    val = (val_h & 0xFFFF00C0) | val;
     MHal_EMAC_WritReg32(hal, REG_EMAC_JULIAN_0100, val);
 }
 
@@ -1194,6 +1195,8 @@ void MHal_EMAC_update_speed_duplex(void* hal, int speed, int duplex )
         {
             xval = xval | EMAC_SPD;
         }
+
+        MHal_EMAC_Set_MIU_Out_Of_Range_Fix(hal, 1);
     }
     else
     {
@@ -1204,6 +1207,10 @@ void MHal_EMAC_update_speed_duplex(void* hal, int speed, int duplex )
         else                           // 10 Half Duplex //
         {
         }
+
+        //disable fix miu write out of range only for 10M,
+        //if enable, rx can't receive 256 byte packet
+        MHal_EMAC_Set_MIU_Out_Of_Range_Fix(hal, 0);
     }
     MHal_EMAC_WritReg32(hal, REG_ETH_CFG, xval );
 }
@@ -1379,6 +1386,7 @@ void MHal_EMAC_phy_trunMax(void* hal)
 // #endif // #if (KERNEL_PHY == 0)
 
 // clock should be set by clock tree. This function is only for the case of FPGA since clock tree is unavailable
+#ifndef CONFIG_CAM_CLK
 static void _MHal_EMAC_Clk(void* hal, int bOn)
 {
     if (bOn)
@@ -1400,16 +1408,18 @@ static void _MHal_EMAC_Clk(void* hal, int bOn)
         MHal_EMAC_WritReg8(EMAC_RIU_REG_BASE, REG_BANK_SCGPCTRL, 0x47, 0x01);
     }
 }
-
+#endif
 //-------------------------------------------------------------------------------------------------
 // EMAC clock on/off
 //-------------------------------------------------------------------------------------------------
 void MHal_EMAC_Power_On_Clk(void* hal, struct device *dev )
 {
     u8 uRegVal;
+#ifndef CONFIG_CAM_CLK
     int num_parents, i;
     struct clk **emac_clks;
     struct clk *clk_parent;
+#endif
     mhal_emac_t* pHal = (mhal_emac_t*) hal;
 
     //Triming PHY setting via efuse value
@@ -1440,6 +1450,7 @@ void MHal_EMAC_Power_On_Clk(void* hal, struct device *dev )
         wriu    0x113344    0x00        //Set CLK_EMAC_RX to CLK_EMAC_RX_in (25MHz) (Enabled)
         wriu    0x113346    0x00        //Set CLK_EMAC_TX to CLK_EMAC_TX_IN (25MHz) (Enabled)
     */
+#ifndef CONFIG_CAM_CLK
 #if CONFIG_OF
     num_parents = of_clk_get_parent_count(dev->of_node);
     if(num_parents > 0)
@@ -1495,15 +1506,16 @@ void MHal_EMAC_Power_On_Clk(void* hal, struct device *dev )
 */
     _MHal_EMAC_Clk(hal, 1);
 #endif
-
+#endif
     pHal->phy_op.phy_clk_on(hal);
 }
 
 void MHal_EMAC_Power_Off_Clk(void* hal, struct device *dev )
 {
+    mhal_emac_t* pHal = (mhal_emac_t*) hal;
+#ifndef CONFIG_CAM_CLK
     int num_parents, i;
     struct clk **emac_clks;
-    mhal_emac_t* pHal = (mhal_emac_t*) hal;
 
 #if CONFIG_OF
     num_parents = of_clk_get_parent_count(dev->of_node);
@@ -1546,7 +1558,7 @@ void MHal_EMAC_Power_Off_Clk(void* hal, struct device *dev )
 */
     _MHal_EMAC_Clk(hal, 0);
 #endif
-
+#endif
     pHal->phy_op.phy_clk_off(hal);
 }
 
@@ -2529,3 +2541,31 @@ int MHal_EMAC_FlowControl_TX(void* hal)
     return 0;
 }
 
+void MHal_EMAC_MIU_Protect_RX(void* hal, u32 start, u32 end)
+{
+    u32 j100, j11c, j120, j124;
+
+    if ((0xF & start) || (0xF& end))
+    {
+        printk("[%s][%d] warning for protection area without 16 byte alignment (start, end) = (0x%08x, 0x%08x)\n", __FUNCTION__, __LINE__, start, end);
+        printk("[%s][%d] warning for protection area without 16 byte alignment (start, end) = (0x%08x, 0x%08x)\n", __FUNCTION__, __LINE__, start, end);
+        printk("[%s][%d] warning for protection area without 16 byte alignment (start, end) = (0x%08x, 0x%08x)\n", __FUNCTION__, __LINE__, start, end);
+    }
+    start >>= 4;
+    end >>= 4;
+
+    j100 = MHal_EMAC_ReadReg32(hal, REG_EMAC_JULIAN_0100);
+    j11c = MHal_EMAC_ReadReg32(hal, REG_EMAC_JULIAN_011C);
+    j120 = MHal_EMAC_ReadReg32(hal, REG_EMAC_JULIAN_0120);
+    j124 = MHal_EMAC_ReadReg32(hal, REG_EMAC_JULIAN_0124);
+
+    j11c = ((j11c & 0x0000ffff) | ((end & 0x0000ffff) << 16));
+    j120 = ((j120 & 0x0000e000) | ((end & 0x1fff0000) >> 16) | ((start & 0x0000ffff) << 16) );
+    j124 = ((j124 & 0xffffe000) | ((start & 0x1fff0000) >> 16) );
+    j100 |= 0x40;
+
+    MHal_EMAC_WritReg32(hal, REG_EMAC_JULIAN_011C, j11c);
+    MHal_EMAC_WritReg32(hal, REG_EMAC_JULIAN_0120, j120);
+    MHal_EMAC_WritReg32(hal, REG_EMAC_JULIAN_0124, j124);
+    MHal_EMAC_WritReg32(hal, REG_EMAC_JULIAN_0100, j100);
+}

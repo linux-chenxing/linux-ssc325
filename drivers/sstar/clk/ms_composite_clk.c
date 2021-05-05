@@ -23,9 +23,11 @@
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/cpu.h>
+#ifdef CONFIG_PM_SLEEP
+#include <linux/syscore_ops.h>
+#endif
 #include "ms_types.h"
 #include "ms_platform.h"
-
 
 struct ms_clk_mux {
     struct clk_hw   hw;
@@ -36,7 +38,17 @@ struct ms_clk_mux {
     u8              flags;
     u8              glitch;  //this is specific usage for MSTAR
     spinlock_t      *lock;
+#ifdef CONFIG_PM_SLEEP
+    //u8              parent;  //store parent index for resume
+    struct clk_gate *gate;
+    struct list_head list;
+#endif
 };
+
+#ifdef CONFIG_PM_SLEEP
+static u8 _is_syscore_register = 0;
+LIST_HEAD(ms_clk_mux_list);
+#endif
 
 #define to_ms_clk_mux(_hw) container_of(_hw, struct ms_clk_mux, hw)
 
@@ -131,6 +143,67 @@ static unsigned long ms_clk_mux_recalc_rate(struct clk_hw *hw, unsigned long par
 
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int ms_clk_mux_suspend(void)
+{
+    struct ms_clk_mux *mux;
+    //struct clk *clk;
+
+    //keep parent index for restoring clocks in resume
+    list_for_each_entry(mux, &ms_clk_mux_list, list)
+    {
+        /*
+        if (mux && mux->hw.clk) {
+            clk = mux->hw.clk;
+            pr_err("clk %s cnt %d parnet %d\n", __clk_get_name(clk),
+                                                __clk_get_enable_count(clk),
+                                                ms_clk_mux_get_parent(&mux->hw));
+            mux->parent = ms_clk_mux_get_parent(&mux->hw);
+        }
+        */
+        if (mux && mux->gate) {
+            //clock already disabled, not need to restore it in resume
+            if (clk_gate_ops.is_enabled(&mux->gate->hw) == 0) {
+                mux->gate = NULL;
+            }
+        }
+    }
+    //pr_debug("ms_clk_mux_suspend\n");
+
+    return 0;
+}
+
+static void ms_clk_mux_resume(void)
+{
+    struct ms_clk_mux *mux;
+
+    //restore auto-enable clocks in list
+    list_for_each_entry(mux, &ms_clk_mux_list, list)
+    {
+        /*
+        if (mux) {
+            //ms_clk_mux_set_parent(&mux->hw, mux->parent);
+            if (clk_gate_ops.enable && mux->gate) {
+                clk_gate_ops.enable(&mux->gate->hw);
+            }
+            pr_err("clk %s cnt %d parnet %d\n", __clk_get_name(mux->hw.clk),
+                                                __clk_get_enable_count(mux->hw.clk),
+                                                mux->parent);
+        }
+        */
+        if (mux && mux->gate) {
+            clk_gate_ops.enable(&mux->gate->hw);
+        }
+    }
+    //pr_debug("ms_clk_mux_resume\n");
+}
+
+struct syscore_ops ms_clk_mux_syscore_ops = {
+    .suspend = ms_clk_mux_suspend,
+    .resume = ms_clk_mux_resume,
+};
+#endif
+
 struct clk_ops ms_clk_mux_ops = {
     .get_parent = ms_clk_mux_get_parent,
     .set_parent = ms_clk_mux_set_parent,
@@ -147,7 +220,7 @@ static void __init ms_clk_composite_init(struct device_node *node)
     struct ms_clk_mux *mux = NULL;
     struct clk_gate *gate = NULL;
     void __iomem *reg;
-    u32 i, mux_shift, mux_width, mux_glitch, bit_idx;
+    u32 i, mux_shift, mux_width, mux_glitch, bit_idx, auto_enable,ignore;
     struct clk *clk;
     unsigned int flag = 0;
 
@@ -160,14 +233,14 @@ static void __init ms_clk_composite_init(struct device_node *node)
 
     if (!parent_names || !mux || !gate)
     {
-        pr_err("<%s> failed to allocate memory\n", clk_name);
+        pr_err("<%s> allocate mem fail\n", clk_name);
         goto fail;
     }
 
     reg = of_iomap(node, 0);
     if (!reg)
     {
-        pr_err("<%s> could not map region\n", clk_name);
+        pr_err("<%s> map region fail\n", clk_name);
         goto fail;
     }
 
@@ -179,7 +252,14 @@ static void __init ms_clk_composite_init(struct device_node *node)
     gate->flags = CLK_GATE_SET_TO_DISABLE;
 
     //flag = CLK_GET_RATE_NOCACHE | CLK_IGNORE_UNUSED; //remove ignore_unused flag when all drivers use clk framework, so some clks will be gated
-
+    if(!of_property_read_u32(node, "ignore", &ignore))
+    {
+        if(ignore)
+        {
+            pr_debug("<%s> ignore gate clock\n",clk_name);
+            flag = CLK_IGNORE_UNUSED;
+        }
+    }
     if(of_property_read_u32(node, "mux-shift", &mux_shift))
     {
         pr_debug("<%s> no mux-shift, treat as gate clock\n", clk_name);
@@ -228,6 +308,7 @@ static void __init ms_clk_composite_init(struct device_node *node)
                                     &mux->hw, &ms_clk_mux_ops,
                                     NULL, NULL, flag);
         kfree(gate);
+        gate = NULL;
     }
     else if(gate->bit_idx != 0xFF)
     {
@@ -239,25 +320,39 @@ static void __init ms_clk_composite_init(struct device_node *node)
     }
     else
     {
-        pr_err("clock <%s> info. error!\n", clk_name);
+        pr_err("clock <%s> info err\n", clk_name);
         goto fail;
     }
 
     if (IS_ERR(clk))
     {
-        pr_err("%s: failed to register clock <%s>\n", __func__, clk_name);
+        pr_err("%s: register clock <%s> fail\n", __func__, clk_name);
         goto fail;
     }
 
     of_clk_add_provider(node, of_clk_src_simple_get, clk);
     clk_register_clkdev(clk, clk_name, NULL);
 
-    if(of_property_read_bool(node, "auto-enable"))
+    if(!of_property_read_u32(node, "auto-enable", &auto_enable))
     {
-        clk_prepare_enable(clk);
-        pr_debug("clk_prepare_enable <%s>\n", clk_name);
+        if (auto_enable)
+        {
+            clk_prepare_enable(clk);
+#ifdef CONFIG_PM_SLEEP
+            //keep auto-enable clocks into list for restoring clock in resume
+            mux->gate = gate;
+            list_add(&mux->list, &ms_clk_mux_list);
+#endif
+            pr_debug("clk_prepare_enable <%s>\n", clk_name);
+        }
     }
 
+#ifdef CONFIG_PM_SLEEP
+    if (!_is_syscore_register) {
+        register_syscore_ops(&ms_clk_mux_syscore_ops);
+        _is_syscore_register = 1;
+    }
+#endif
     return;
 
 fail:

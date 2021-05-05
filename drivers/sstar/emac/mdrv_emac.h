@@ -27,6 +27,8 @@
 #define MINOR_EMAC_NUM               1
 #define MAJOR_EMAC_NUM               241
 
+#define EXT_PHY_PATCH                1
+
 /////////////////////////////////
 // to be refined
 /////////////////////////////////
@@ -226,6 +228,9 @@ struct emac_handle
     /* Receive */
     // spinlock_t mutexRXD;
     rx_desc_queue_t rx_desc_queue;
+#if EXT_PHY_PATCH
+    char* pu8RXBuf;
+#endif    
 
     /* Suspend and resume */
     unsigned long ep_flag;
@@ -365,7 +370,10 @@ struct emac_handle
     // int                 TxBufIdx;
     int                 maxSG;
 #endif // #if EMAC_SG
-
+#ifdef CONFIG_CAM_CLK
+    void **pvclk;
+    int EmacParentCnt;
+#endif
 };
 
 #endif

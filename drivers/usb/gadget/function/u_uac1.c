@@ -99,6 +99,8 @@ static int capture_default_hw_params(struct gaudio_snd_dev *snd)
 	struct snd_pcm_hw_params *params;
 	struct snd_pcm_sw_params sparams;
 	snd_pcm_sframes_t result;
+	struct f_uac1_opts	*audio_opts =
+            container_of(snd->card->func.fi, struct f_uac1_opts, func_inst);
 
 	/*
 	 * SNDRV_PCM_ACCESS_RW_INTERLEAVED,
@@ -108,10 +110,10 @@ static int capture_default_hw_params(struct gaudio_snd_dev *snd)
 	 */
 	snd->access = SNDRV_PCM_ACCESS_RW_INTERLEAVED;
 	snd->format = SNDRV_PCM_FORMAT_S16_LE;
-	snd->channels = 1;
-	snd->rate = 16000;
-	snd->period_bytes = UAC1_AUDIO_CAPTURE_BUF_SIZE/2;
-	snd->buffer_bytes = UAC1_AUDIO_CAPTURE_BUF_SIZE;
+	snd->channels = audio_opts->capture_channel_count;
+	snd->rate = audio_opts->capture_sample_rate;
+	snd->period_bytes = audio_opts->audio_capture_buf_size / 2;
+	snd->buffer_bytes = audio_opts->audio_capture_buf_size;
 
 	params = kzalloc(sizeof(*params), GFP_KERNEL);
 	if (!params)
@@ -179,6 +181,8 @@ static int playback_default_hw_params(struct gaudio_snd_dev *snd)
 	struct snd_pcm_substream *substream = snd->substream;
 	struct snd_pcm_hw_params *params;
 	snd_pcm_sframes_t result;
+	struct f_uac1_opts	*audio_opts =
+            container_of(snd->card->func.fi, struct f_uac1_opts, func_inst);
 
    /*
 	* SNDRV_PCM_ACCESS_RW_INTERLEAVED,
@@ -188,10 +192,10 @@ static int playback_default_hw_params(struct gaudio_snd_dev *snd)
 	*/
 	snd->access = SNDRV_PCM_ACCESS_RW_INTERLEAVED;
 	snd->format = SNDRV_PCM_FORMAT_S16_LE;
-	snd->channels = 1;
-	snd->rate = 16000;
-	snd->period_bytes = UAC1_AUDIO_PLAYBACK_BUF_SIZE / 2;
-	snd->buffer_bytes = UAC1_AUDIO_PLAYBACK_BUF_SIZE;
+	snd->channels = audio_opts->playback_channel_count;
+	snd->rate = audio_opts->playback_sample_rate;
+	snd->period_bytes = audio_opts->audio_playback_buf_size / 2;
+	snd->buffer_bytes = audio_opts->audio_playback_buf_size;
 
 	params = kzalloc(sizeof(*params), GFP_KERNEL);
 	if (!params)
@@ -291,7 +295,7 @@ try_again:
 #else
 	result = snd_pcm_lib_read(substream, buf, frames);
 	if (result != frames) {
-		pr_err("Capture error: %d count%d, state%d \n", (int)result, count, runtime->status->state);
+		pr_info("Capture warring: %d count%d, state%d \n", (int)result, count, runtime->status->state);
 		set_fs(old_fs);
 		goto try_again;
 	}

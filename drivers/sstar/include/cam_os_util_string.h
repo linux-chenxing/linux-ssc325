@@ -31,6 +31,7 @@ extern "C" {
 #else
 #include "string.h"
 #include "stdlib.h"
+#include "stdio.h"
 #endif
 
 #if defined(__KERNEL__)

@@ -219,11 +219,22 @@ extern int DTS_DRAM_start;
 
 
 #ifdef CONFIG_ARM_LPAE
-phys_addr_t lx_mem_addr = 0xFFFFFFFFUL;//UL(CONFIG_PHYS_OFFSET);//UL(CONFIG_MEMORY_START_ADDRESS);
+
+    #ifdef CONFIG_ARM_PATCH_PHYS_VIRT
+        phys_addr_t lx_mem_addr = 0xFFFFFFFFUL;//UL(CONFIG_PHYS_OFFSET);//UL(CONFIG_MEMORY_START_ADDRESS);
+    #else
+        phys_addr_t lx_mem_addr = UL(CONFIG_PHYS_OFFSET);//UL(CONFIG_MEMORY_START_ADDRESS);
+    #endif
 phys_addr_t lx_mem2_addr = 0xFFFFFFFFUL; //default setting
 phys_addr_t lx_mem3_addr = 0xFFFFFFFFUL; //default setting
+
 #else
-unsigned long lx_mem_addr = 0xFFFFFFFFUL;//UL(CONFIG_PHYS_OFFSET);//UL(CONFIG_MEMORY_START_ADDRESS);
+
+    #ifdef CONFIG_ARM_PATCH_PHYS_VIRT
+        unsigned long lx_mem_addr = 0xFFFFFFFFUL;//UL(CONFIG_PHYS_OFFSET);//UL(CONFIG_MEMORY_START_ADDRESS);
+    #else
+        unsigned long lx_mem_addr = UL(CONFIG_PHYS_OFFSET);//UL(CONFIG_MEMORY_START_ADDRESS);
+    #endif
 unsigned long lx_mem2_addr = 0xFFFFFFFFUL; //default setting
 unsigned long lx_mem3_addr = 0xFFFFFFFFUL; //default setting
 #endif
@@ -602,6 +613,29 @@ static int MALI_RESERVE_migrate(char *str)
 #endif
 #endif
 
+#if !defined(CONFIG_ARM_PATCH_PHYS_VIRT)
+/*
+ * Pick out the reserved memory size.  We look for reserve_mem=size,
+ * where start and size are "size[M]"
+ */
+
+#include "registers.h"
+
+int reserveMemSize = 0;
+int addToSystemRAMSize = 0;
+static int __init early_reserve_mem(char *p)
+{
+
+       sscanf(p,"%dM",&reserveMemSize);
+       reserveMemSize *= SZ_1M; // 1 MB alignment
+       addToSystemRAMSize = __pa(PAGE_OFFSET)- MIU0_BASE - reserveMemSize;
+       pr_info("[%s]: reserveMemSize=%#x, addToSystemRAMSize=%#x, \n",__func__, reserveMemSize, addToSystemRAMSize);
+       return 0;
+}
+early_param("reserve_mem", early_reserve_mem);
+#endif
+
+
 //early_param("mem", MEM_setup);
 early_param("LX_MEM", LX_MEM_setup);
 early_param("LX_MEM2", LX_MEM2_setup);
@@ -906,6 +940,13 @@ void __init prom_meminit(void)
     u64 size = 0;
     u64 start = 0;
 
+#if defined(CONFIG_ARCH_INFINITY2)
+    if(PHYS_OFFSET>MIU0_BASE)
+    {
+        memblock_reserve(MIU0_BASE, PHYS_OFFSET-MIU0_BASE);
+    }
+#endif
+
     //check_boot_mem_info();
     get_boot_mem_info(LINUX_MEM, &linux_memory_address, &linux_memory_length);
     get_boot_mem_info(LINUX_MEM2, &linux_memory2_address, &linux_memory2_length);
@@ -914,9 +955,7 @@ void __init prom_meminit(void)
     if ((linux_memory_address | linux_memory_length | linux_memory2_address | linux_memory2_length
                 | linux_memory3_address | linux_memory3_length) & (0x100000-1))
     {
-        printk("[ERROR] LX_MEM, LX_MEM2, LX_MEM3 should be aligned to 1MB\n");
-        printk("[ERROR] LX_MEM, LX_MEM2, LX_MEM3 should be aligned to 1MB\n");
-        printk("[ERROR] LX_MEM, LX_MEM2, LX_MEM3 should be aligned to 1MB\n");
+        printk("[ERR] LX_MEM, LX_MEM2, LX_MEM3 not 1MB aligned\n");
         //while(1); can't block it, it will cause printk message not output
     }
 
@@ -929,9 +968,7 @@ void __init prom_meminit(void)
     if ((linux_memory_address | linux_memory_length | linux_memory2_address | linux_memory2_length
                 | linux_memory3_address | linux_memory3_length) & (0x2000-1))
     {
-        printk("[ERROR] LX_MEM, LX_MEM2, LX_MEM3 should be aligned to 8K\n");
-        printk("[ERROR] LX_MEM, LX_MEM2, LX_MEM3 should be aligned to 8K\n");
-        printk("[ERROR] LX_MEM, LX_MEM2, LX_MEM3 should be aligned to 8K\n");
+        printk("[ERR] LX_MEM, LX_MEM2, LX_MEM3 not 8K aligned\n");
         //while(1); can't block it, it will cause printk message not output
     }
 #endif
@@ -1026,6 +1063,11 @@ EXPORT_SYMBOL(get_coredump_path);
 #if 0
 
 
+
+
+
+
+
 inline unsigned long get_BBAddr(void)
 {
     return BBAddr;
@@ -1097,9 +1139,7 @@ void mstar_lx_mem_alignment_check(void)
     if ((linux_memory_address | linux_memory_length | linux_memory2_address | linux_memory2_length
                 | linux_memory3_address | linux_memory3_length) & (0x100000-1))
     {
-        printk("[ERROR] LX_MEM, LX_MEM2, LX_MEM3 should be aligned to 1MB\n");
-        printk("[ERROR] LX_MEM, LX_MEM2, LX_MEM3 should be aligned to 1MB\n");
-        printk("[ERROR] LX_MEM, LX_MEM2, LX_MEM3 should be aligned to 1MB\n");
+        printk("[ERR] LX_MEM, LX_MEM2, LX_MEM3 not 1MB aligned\n");
         while(1);
     }
 }

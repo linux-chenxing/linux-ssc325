@@ -216,6 +216,17 @@ typedef struct
     unsigned int    uAddress;
 } MIU_PortectInfo;
 
+typedef struct
+{
+    unsigned int    size;           // bytes
+    unsigned int    dram_freq;      // MHz
+    unsigned int    miupll_freq;    // MHz
+    unsigned char   type;           // 2:DDR2, 3:DDR3
+    unsigned char   data_rate;      // 4:4x mode, 8:8x mode,
+    unsigned char   bus_width;      // 16:16bit, 32:32bit, 64:64bit
+    unsigned char   ssc;            // 0:off, 1:on
+} MIU_DramInfo;
+
 //-------------------------------------------------------------------------------------------------
 //  Function and Variable
 //-------------------------------------------------------------------------------------------------
@@ -231,6 +242,8 @@ typedef void (*MDrv_MMU_Callback)(unsigned int, unsigned short, unsigned short, 
 
 unsigned char MDrv_MIU_Init(void);
 unsigned short* MDrv_MIU_GetDefaultClientID_KernelProtect(void);
+unsigned short* MDrv_MIU_GetClientID_KernelProtect(unsigned char u8MiuSel);
+
 unsigned char MDrv_MIU_Protect( unsigned char   u8Blockx,
                                 unsigned short  *pu8ProtectId,
                                 phy_addr        u64BusStart,
@@ -243,9 +256,11 @@ unsigned char MDrv_MIU_Slits(unsigned char u8Blockx, phy_addr u64SlitsStart, phy
 unsigned char MDrv_MIU_Get_IDEnables_Value(unsigned char u8MiuDev, unsigned char u8Blockx, unsigned char u8ClientIndex);
 unsigned int MDrv_MIU_ProtectDramSize(void);
 int MDrv_MIU_ClientIdToName(unsigned short clientId, char *clientName);
+int MDrv_MIU_Info(MIU_DramInfo *pDramInfo);
 
 #ifdef CONFIG_MIU_HW_MMU
-int MDrv_MMU_SetRegion(unsigned short u16Region);
+int MDrv_MMU_SetRegion(unsigned short u16Region, unsigned short u16ReplaceRegion);
+int MDrv_MMU_SetPageSize(unsigned char u8PgSz256En);
 int MDrv_MMU_Map(unsigned short u16PhyAddrEntry, unsigned short u16VirtAddrEntry);
 unsigned short MDrv_MMU_MapQuery(unsigned short u16PhyAddrEntry);
 int MDrv_MMU_UnMap(unsigned short u16PhyAddrEntry);

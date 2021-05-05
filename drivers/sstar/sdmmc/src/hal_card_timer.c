@@ -36,10 +36,6 @@
 #include "linux/sched.h"
 #endif
 
-static BOOL_T _gbSaveTimeSleep = FALSE;
-
-
-
 /*----------------------------------------------------------------------------------------------------------
  *
  * Function: Hal_Timer_mDelay
@@ -103,7 +99,7 @@ U32_T Hal_Timer_mSleep(U32_T u32_msec)
 #if (D_OS == D_OS__LINUX)
 //###########################################################################################################
 #if (HZ) <= 100
-    if ((u32_msec < 1000 / HZ) && (_gbSaveTimeSleep == TRUE))
+    if (u32_msec < 1000 / HZ)
     {
         cond_resched();
         mdelay(u32_msec);
@@ -122,18 +118,3 @@ U32_T Hal_Timer_mSleep(U32_T u32_msec)
 
 }
 
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_Timer_SaveTimeSleep
- *     @author harry.lin (2019/5/15)
- * Desc: Set SaveTimeSleep
- *
- * @param bEnable : Enable (TRUE) or Disable (FALSE)
- *
- * @return : None
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_Timer_SaveTimeSleep(BOOL_T bEnable)
-{
-    _gbSaveTimeSleep = bEnable;
-    return;
-}

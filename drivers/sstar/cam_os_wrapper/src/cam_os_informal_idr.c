@@ -29,33 +29,36 @@
 #include "cam_os_wrapper.h"
 #include "cam_os_util_bitmap.h"
 
-#define IDR_ENTRY_NUM   0x10000
+#define IDR_ENTRY_NUM   0x4000
 
 typedef struct
 {
     void **ppEntryPtr;
     unsigned long *pBitmap;
+    unsigned long entry_num;
 } CamOsInformalIdr_t, *pCamOsInformalIdr;
 
-CamOsRet_e _CamOsIdrInit(CamOsIdr_t *ptIdr)
+CamOsRet_e _CamOsIdrInit(CamOsIdr_t *ptIdr, u32 nEntryNum)
 {
     CamOsRet_e eRet = CAM_OS_OK;
     CamOsInformalIdr_t *pInformalIdr = (CamOsInformalIdr_t *)ptIdr;
 
     if (pInformalIdr)
     {
-        if (NULL == (pInformalIdr->ppEntryPtr = CamOsMemAlloc(sizeof(void *)*IDR_ENTRY_NUM)))
+        pInformalIdr->entry_num = (nEntryNum)? nEntryNum : IDR_ENTRY_NUM;
+
+        if (NULL == (pInformalIdr->ppEntryPtr = CamOsMemAlloc(sizeof(void *)*pInformalIdr->entry_num)))
             eRet = CAM_OS_ALLOCMEM_FAIL;
 
-        if (NULL == (pInformalIdr->pBitmap = CamOsMemAlloc(sizeof(unsigned long)*CAM_OS_BITS_TO_LONGS(IDR_ENTRY_NUM))))
+        if (NULL == (pInformalIdr->pBitmap = CamOsMemAlloc(sizeof(unsigned long)*CAM_OS_BITS_TO_LONGS(pInformalIdr->entry_num))))
         {
             CamOsMemRelease(pInformalIdr->ppEntryPtr);
             pInformalIdr->ppEntryPtr = NULL;
             eRet = CAM_OS_ALLOCMEM_FAIL;
         }
 
-        memset(pInformalIdr->ppEntryPtr, 0, sizeof(void *)*IDR_ENTRY_NUM);
-        memset(pInformalIdr->pBitmap, 0, sizeof(unsigned long)*CAM_OS_BITS_TO_LONGS(IDR_ENTRY_NUM));
+        memset(pInformalIdr->ppEntryPtr, 0, sizeof(void *)*pInformalIdr->entry_num);
+        memset(pInformalIdr->pBitmap, 0, sizeof(unsigned long)*CAM_OS_BITS_TO_LONGS(pInformalIdr->entry_num));
     }
     else
         eRet = CAM_OS_PARAM_ERR;
@@ -85,9 +88,9 @@ s32 _CamOsIdrAlloc(CamOsIdr_t *ptIdr, void *pDataPtr, s32 nStart, s32 nEnd)
     if (pInformalIdr && pDataPtr && pInformalIdr->ppEntryPtr)
     {
         if (nEnd < nStart || nEnd == 0)
-            nEnd = IDR_ENTRY_NUM - 1;
+            nEnd = pInformalIdr->entry_num - 1;
 
-        nEmptyID = CAM_OS_FIND_NEXT_ZERO_BIT(pInformalIdr->pBitmap, IDR_ENTRY_NUM, nStart);
+        nEmptyID = CAM_OS_FIND_NEXT_ZERO_BIT(pInformalIdr->pBitmap, pInformalIdr->entry_num, nStart);
 
         if (nEmptyID < nStart || nEmptyID > nEnd)
             nEmptyID = -1;

@@ -33,6 +33,7 @@
 #include <linux/scatterlist.h>
 #include <linux/dma-mapping.h>
 #include <linux/of_device.h>
+#include <linux/of_irq.h>
 #include <linux/delay.h>
 #include <linux/time.h>
 #include <linux/crypto.h>
@@ -47,7 +48,8 @@
 #include "halAESDMA.h"
 #include "mdrv_aes.h"
 #include <linux/miscdevice.h>
-
+#include "mdrv_cipher.h"
+#include "drv_camclk_Api.h"
 #else
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -73,11 +75,12 @@ int gbSupportAES256 = 0;
 #else
 #define AESDMA_DBG(fmt, arg...)
 #endif
-
+#if defined(CONFIG_SS_AESDMA_INTR) && CONFIG_SS_AESDMA_INTR
+#define AESDMA_ISR
+#endif
 
 #define AESDMA_DES (0)
-
-#define LOOP_CNT    100000 //100ms
+#define LOOP_CNT    100 //100ms
 
 #define MSOS_PROCESS_PRIVATE    0x00000000
 #define MSOS_PROCESS_SHARED     0x00000001
@@ -87,7 +90,13 @@ int gbSupportAES256 = 0;
 struct mutex _mtcrypto_lock;
 struct platform_device *psg_mdrv_aesdma;
 struct aesdma_alloc_dmem ALLOC_DMEM = {0, 0, "AESDMA_ENG", "AESDMA_ENG1", 0, 0};
-
+#ifdef AESDMA_ISR
+static bool _isr_requested = 0;
+static struct completion _mdmadone;
+#endif
+#ifdef CONFIG_CAM_CLK
+void **pvaesclkhandler;
+#endif
 extern int infinity_sha_create(void);
 extern int infinity_sha_destroy(void);
 extern struct miscdevice rsadev;
@@ -129,9 +138,47 @@ void _ms_aes_mem_free(void)
        ALLOC_DMEM.aesdma_phy_SHABuf_addr = 0;
        }
 }
-
 void enableClock(void)
 {
+#ifdef CONFIG_CAM_CLK
+	int num_parents, i;
+	int *aes_clks;
+
+	if(of_find_property(psg_mdrv_aesdma->dev.of_node,"camclk",&num_parents))
+	{
+	   	 num_parents /= sizeof(int);
+		//printk( "[%s] Number : %d\n", __func__, num_parents);
+		if(num_parents < 0)
+		{
+			printk( "[%s] Fail to get parent count! Error Number : %d\n", __func__, num_parents);
+			return;
+		}
+		aes_clks = kzalloc((sizeof(int) * num_parents), GFP_KERNEL);
+		pvaesclkhandler = kzalloc((sizeof(void *) * num_parents), GFP_KERNEL);
+		if(!aes_clks){
+			return;
+		}
+		for(i = 0; i < num_parents; i++)
+		{
+		    aes_clks[i] = 0;
+            of_property_read_u32_index(psg_mdrv_aesdma->dev.of_node,"camclk", i,&aes_clks[i]);
+            if (!aes_clks[i])
+            {
+                printk( "[%s] Fail to get clk!\n", __func__);
+            }
+            else
+            {
+                CamClkRegister("aesdma",aes_clks[i],&pvaesclkhandler[i]);
+                CamClkSetOnOff(pvaesclkhandler[i],1);
+            }
+	    }
+		kfree(aes_clks);
+	}
+	else
+	{
+	    printk( "[%s] W/O Camclk \n", __func__);
+	}
+#else
     int num_parents = 0, i = 0;
     struct clk **aesdma_clks;
 
@@ -164,10 +211,49 @@ void enableClock(void)
         }
         kfree(aesdma_clks);
     }
+#endif
 }
 
 void disableClock(void)
 {
+#ifdef CONFIG_CAM_CLK
+	int num_parents, i;
+	int *aes_clks;
+	if(of_find_property(psg_mdrv_aesdma->dev.of_node,"camclk",&num_parents))
+	{
+		num_parents /= sizeof(int);
+		//printk( "[%s] Number : %d\n", __func__, num_parents);
+		if(num_parents < 0)
+		{
+			printk( "[%s] Fail to get parent count! Error Number : %d\n", __func__, num_parents);
+			return;
+		}
+		aes_clks = kzalloc((sizeof(int) * num_parents), GFP_KERNEL);
+		if(!aes_clks){
+			return;
+		}
+		for(i = 0; i < num_parents; i++)
+		{
+			of_property_read_u32_index(psg_mdrv_aesdma->dev.of_node,"camclk", i,&aes_clks[i]);
+			if (!aes_clks[i])
+			{
+	    			printk( "[%s] Fail to get clk!\n", __func__);
+			}
+			else
+			{
+	    			CamClkSetOnOff(pvaesclkhandler[i],0);
+	    			CamClkUnregister(pvaesclkhandler[i]);
+			}
+		}
+		kfree(aes_clks);
+		kfree(pvaesclkhandler);
+		pvaesclkhandler = NULL;
+	}
+	else
+	{
+		printk( "[%s] W/O Camclk \n", __func__);
+	}
+#else
     int num_parents = 0, i = 0;
 
     struct clk **aesdma_clks;
@@ -201,6 +287,7 @@ void disableClock(void)
         }
         kfree(aesdma_clks);
     }
+#endif
 }
 
 void allocMem(U32 len)
@@ -213,10 +300,29 @@ void allocMem(U32 len)
     memset(ALLOC_DMEM.aesdma_vir_addr, 0, len);//AESDMA_ALLOC_MEMSIZE);
 }
 
+#ifdef AESDMA_ISR
+static irqreturn_t aes_dma_interrupt(int irq, void *argu)
+{
+    int status = 0;
+
+    status = HAL_AESDMA_GetStatus();
+    if(status & AESDMA_CTRL_DMA_DONE)
+    {
+        complete(&_mdmadone);
+        HAL_AESDMA_INTDISABLE();
+    }
+
+    return IRQ_HANDLED;
+}
+#endif
+
 int infinity_aes_crypt_pub(struct infinity_aes_op *op, u32 in_addr, u32 out_addr)
 {
     unsigned long start = 0, err = 0;
     unsigned long timeout;
+    unsigned int wait_min = 0, wait_max = 0;
+    int bIn_atomic=0;
+    bIn_atomic = in_atomic();
 
     AESDMA_DBG("%s %d\n",__FUNCTION__,__LINE__);
 
@@ -227,9 +333,20 @@ int infinity_aes_crypt_pub(struct infinity_aes_op *op, u32 in_addr, u32 out_addr
     HAL_AESDMA_SetXIULength(op->len);
     HAL_AESDMA_SetFileoutAddr(Chip_Phys_to_MIU(out_addr), op->len);
 
-    HAL_AESDMA_UseCipherKey();
-
-    HAL_AESDMA_SetCipherKey2((U16*)op->key, op->keylen);
+    if(op->key[0]=='S' && op->key[1]=='S' && op->key[2]=='t' && op->key[3]=='a' && op->key[4]=='r' && op->key[5]=='U') //SStarU
+    {
+        AESDMA_DBG("%s %d, use AES unique key\n", __FUNCTION__, __LINE__);
+        HAL_AESDMA_UseEfuseKey();
+    }
+    else if(op->keylen==1 && op->key[0]==E_AES_KEY_SRC_INT_CONST)
+    {
+        HAL_AESDMA_UseHwKey();
+    }
+    else
+    {
+        HAL_AESDMA_UseCipherKey();
+        HAL_AESDMA_SetCipherKey2((U16*)op->key, op->keylen);
+    }
 
     if ((op->mode == AES_MODE_CBC) || (op->mode == AES_MODE_CTR))
     {
@@ -257,31 +374,66 @@ int infinity_aes_crypt_pub(struct infinity_aes_op *op, u32 in_addr, u32 out_addr
     }
 
     HAL_AESDMA_FileOutEnable(1);
+#ifdef AESDMA_ISR
+    /* CAUTION: In tcrypt.ko test self, someone use atomic operation  that make BUG()*/
+    if(_isr_requested && !bIn_atomic)
+    {
+        reinit_completion(&_mdmadone);
+        HAL_AESDMA_INTMASK();
+    }
+#endif
     HAL_AESDMA_Start(1);
 
-    // Wait for ready.
     start = jiffies;
-    timeout = start + msecs_to_jiffies(LOOP_CNT);
-    while((HAL_AESDMA_GetStatus() & AESDMA_CTRL_DMA_DONE) != AESDMA_CTRL_DMA_DONE)
+#ifdef AESDMA_ISR
+    if(_isr_requested && !bIn_atomic)
     {
-        if (time_after_eq(jiffies, timeout))
+        if(!wait_for_completion_timeout(&_mdmadone, msecs_to_jiffies(LOOP_CNT)))
         {
-            err = 1;
-            break;
+            err = -1;
         }
     }
+    else
+#endif
+    {
+        timeout = start + msecs_to_jiffies(LOOP_CNT);
+
+        // Wait for ready.
+        wait_min = (op->len * 8) >> 10;
+        wait_max = (op->len * 10) >> 10;
+        if(!bIn_atomic && wait_min >= 10)
+        {
+            usleep_range(wait_min, wait_max);
+        }
+
+        while((HAL_AESDMA_GetStatus() & AESDMA_CTRL_DMA_DONE) != AESDMA_CTRL_DMA_DONE)
+        {
+            if (time_after_eq(jiffies, timeout))
+            {
+                err = -1;
+                break;
+            }
+            /* CAUTION: In crypto test self task, crypto_ecb_crypt use atomic operation kmap_atomic that make BUG()*/
+            if(!bIn_atomic)
+            {
+                schedule();
+            }
+        }
+    }
+
     AESDMA_DBG("Elapsed time: %lu jiffies\n", jiffies - start);
 
     Chip_Flush_MIU_Pipe();
     HAL_AESDMA_Reset();
-    if (err)
+    if (err<0)
     {
         printk("AES timeout\n");
-        return -1;
+        return err;
     }
     return op->len;
 }
 
+// return: op length
 static unsigned int infinity_aes_crypt(struct infinity_aes_op *op)
 {
     int ret = 0;
@@ -397,6 +549,7 @@ static int fallback_blk_enc(struct blkcipher_desc *desc,
 static void infinity_encrypt(struct crypto_tfm *tfm, u8 *out, const u8 *in)
 {
     struct infinity_aes_op *op = crypto_tfm_ctx(tfm);
+    int ret=0;
     AESDMA_DBG("%s %d\n",__FUNCTION__,__LINE__);
 
     if (!gbSupportAES256 && op->keylen != AES_KEYSIZE_128) {
@@ -410,13 +563,19 @@ static void infinity_encrypt(struct crypto_tfm *tfm, u8 *out, const u8 *in)
     op->flags = 0;
     op->len = AES_BLOCK_SIZE;
     op->dir = AES_DIR_ENCRYPT;
-    infinity_aes_crypt(op);
+    ret = infinity_aes_crypt(op);
+    if (ret < 0)
+    {
+        printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+    }
+
 }
 
 
 static void infinity_decrypt(struct crypto_tfm *tfm, u8 *out, const u8 *in)
 {
     struct infinity_aes_op *op = crypto_tfm_ctx(tfm);
+    int ret=0;
     AESDMA_DBG("%s %d\n",__FUNCTION__,__LINE__);
 
     if (!gbSupportAES256 && op->keylen != AES_KEYSIZE_128) {
@@ -430,7 +589,13 @@ static void infinity_decrypt(struct crypto_tfm *tfm, u8 *out, const u8 *in)
     op->flags = 0;
     op->len = AES_BLOCK_SIZE;
     op->dir = AES_DIR_DECRYPT;
-    infinity_aes_crypt(op);
+
+    ret = infinity_aes_crypt(op);
+    if (ret < 0)
+    {
+        printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+    }
+
 }
 
 static int fallback_init_cip(struct crypto_tfm *tfm)
@@ -507,12 +672,19 @@ static int infinity_cbc_decrypt(struct blkcipher_desc *desc,
         memcpy(ivTemp, op->src+(op->len)-16, 16);
         op->dir = AES_DIR_DECRYPT;
         ret = infinity_aes_crypt(op);
+        if (ret < 0)
+        {
+            printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+            err=ret;
+            goto finish;
+        }
+
         nbytes -= ret;
         err = blkcipher_walk_done(desc, &walk, nbytes);
 
 		if (err != 0)
 		{
-			printk("[AESDMA] ERR blkcipher_walk_done %s!\n", __FUNCTION__);
+			printk("[AESDMA][%s] blkcipher_walk_done return err:%d!\n", __FUNCTION__, ret);
 			goto finish;
 		}
         memcpy(walk.iv, ivTemp, 16);
@@ -553,12 +725,19 @@ static int infinity_cbc_encrypt(struct blkcipher_desc *desc,
         op->len = nbytes - (nbytes % AES_BLOCK_SIZE);
         op->dir = AES_DIR_ENCRYPT;
         ret = infinity_aes_crypt(op);
+        if (ret < 0)
+        {
+            printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+            err=ret;
+            goto finish;
+        }
+
         nbytes -= ret;
         err = blkcipher_walk_done(desc, &walk, nbytes);
 
 		if (err != 0)
 		{
-			printk("[AESDMA] ERR blkcipher_walk_done %s!\n", __FUNCTION__);
+			printk("[AESDMA][%s] blkcipher_walk_done return err:%d!\n", __FUNCTION__, ret);
 			goto finish;
 		}
 
@@ -600,12 +779,19 @@ static int infinity_ecb_decrypt(struct blkcipher_desc *desc,
         op->len = nbytes - (nbytes % AES_BLOCK_SIZE);
         op->dir = AES_DIR_DECRYPT;
         ret = infinity_aes_crypt(op);
+        if (ret < 0)
+        {
+            printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+            err=ret;
+            goto finish;
+        }
+
         nbytes -= ret;
         err = blkcipher_walk_done(desc, &walk, nbytes);
 
 		if (err != 0)
 		{
-			printk("[AESDMA] ERR blkcipher_walk_done %s!\n", __FUNCTION__);
+			printk("[AESDMA][%s] blkcipher_walk_done return err:%d!\n", __FUNCTION__, ret);
 			goto finish;
 		}
     }
@@ -622,7 +808,6 @@ static int infinity_ecb_encrypt(struct blkcipher_desc *desc,
     struct infinity_aes_op *op = crypto_blkcipher_ctx(desc->tfm);
     struct blkcipher_walk walk;
     int err = 0, ret = 0;
-	memset(&walk, 0, sizeof(walk));
 
     AESDMA_DBG("%s name %s\n",__FUNCTION__,desc->tfm->base.__crt_alg->cra_name);
 
@@ -631,6 +816,7 @@ static int infinity_ecb_encrypt(struct blkcipher_desc *desc,
     }
 
     mutex_lock(&_mtcrypto_lock);
+    memset(&walk, 0, sizeof(walk));
 
     blkcipher_walk_init(&walk, dst, src, nbytes);
     err = blkcipher_walk_virt(desc, &walk);
@@ -641,12 +827,20 @@ static int infinity_ecb_encrypt(struct blkcipher_desc *desc,
         op->len = nbytes - (nbytes % AES_BLOCK_SIZE);
         op->dir = AES_DIR_ENCRYPT;
         ret = infinity_aes_crypt(op);
+        if (ret < 0)
+        {
+            printk("[AESDMA][%s] infinity_aes_crypt return err:%d!\n", __FUNCTION__, ret);
+            err=ret;
+            goto finish;
+        }
+
         nbytes -= ret;
         ret =  blkcipher_walk_done(desc, &walk, nbytes);
 
 		if (ret != 0)
 		{
-			printk("[AESDMA] ERR blkcipher_walk_done %s!\n", __FUNCTION__);
+            printk("[AESDMA][%s] blkcipher_walk_done return err:%d!\n", __FUNCTION__, ret);
+            err=ret;
 			goto finish;
 		}
     }
@@ -664,11 +858,10 @@ static int infinity_ctr_encrypt(struct blkcipher_desc *desc,
 {
     struct infinity_aes_op *op = crypto_blkcipher_ctx(desc->tfm);
     struct blkcipher_walk walk;
-    int err=0, ret=0, counter=0, n = 0;
-    U32 *tempIV=NULL;
-	memset(&walk, 0, sizeof(walk));
+    int err=0, ret=0;
+    int counter=0, n = 0;
 
-    AESDMA_DBG("%s name %s\n",__FUNCTION__,desc->tfm->base.__crt_alg->cra_name);
+    AESDMA_DBG("%s name %s nbytes(%d)\n",__FUNCTION__,desc->tfm->base.__crt_alg->cra_name, nbytes);
 
 
     if (!gbSupportAES256 && op->keylen != AES_KEYSIZE_128) {
@@ -676,64 +869,58 @@ static int infinity_ctr_encrypt(struct blkcipher_desc *desc,
     }
 
     mutex_lock(&_mtcrypto_lock);
+    memset(&walk, 0, sizeof(walk));
 
-    blkcipher_walk_init(&walk, dst, src, nbytes);
-    err = blkcipher_walk_virt(desc, &walk);
+    blkcipher_walk_init(&walk, dst, src, nbytes);  
+    err = blkcipher_walk_virt_block(desc, &walk, AES_BLOCK_SIZE);
 
-    while ((nbytes = walk.nbytes)) {
-//	        AESDMA_DBG(" 1%s %d\n",__FUNCTION__,nbytes);
+
+    while (walk.nbytes >= AES_BLOCK_SIZE) {
+        U8 *pdata;
         op->iv = walk.iv;
         op->src = walk.src.virt.addr,
         op->dst = walk.dst.virt.addr;
         op->mode = AES_MODE_CTR;
-        op->len = nbytes - (nbytes % AES_BLOCK_SIZE);
+        op->len = walk.nbytes - (walk.nbytes % AES_BLOCK_SIZE);
         op->dir = AES_DIR_ENCRYPT;
+
+        pdata = ( U8 *)walk.src.virt.addr;
+
         ret = infinity_aes_crypt(op);
-        nbytes -= ret;
+        if (ret < 0)
+        {
+            err=ret;
+            goto finish;
+        }
+        nbytes = walk.nbytes - ret;  //the remain data
         err = blkcipher_walk_done(desc, &walk, nbytes);
 
-		if (err != 0)
-		{
-			printk("[AESDMA] ERR blkcipher_walk_done %s!\n", __FUNCTION__);
-			goto finish;
-		}
-
-        if (walk.nbytes > 0)
+        counter = op->len >> 4;
+        for (n = 0; n < counter; n++)
         {
-            tempIV=(U32* )op->iv;
-            counter = op->len >> 4;
-
-            for (n = 0; n <= 3; n++)
-            {
-                (tempIV[n]) = be32_to_cpu(tempIV[n]);
-            }
-            // iv=iv+1;
-            while(counter)
-            {
-                tempIV[3] = tempIV[3] + 1;
-                if (tempIV[3]==0x0)
-                {
-                    tempIV[2] = tempIV[2] + 1;
-                    if (tempIV[2]==0x0)
-                    {
-                        tempIV[1] = tempIV[1] + 1;
-                        if (tempIV[1]==0x0)
-                        {
-                            tempIV[0] = tempIV[0] + 1;
-                            if (tempIV[1]==0x0)
-                            AESDMA_DBG("IV counter overflow! %s %d\n",__FUNCTION__,__LINE__);
-                        }
-                    }
-                }
-                counter--;
-            }
-
-            for (n=0; n <= 3; n++)
-            {
-                (tempIV[n]) = cpu_to_be32(tempIV[n]);
-            }
+            crypto_inc((U8*)op->iv, AES_BLOCK_SIZE);
         }
     }
+
+ 
+	if (walk.nbytes) {
+        op->iv = walk.iv;
+        op->src = walk.src.virt.addr,
+        op->dst = walk.dst.virt.addr;
+        op->mode = AES_MODE_CTR;
+        op->len = walk.nbytes;
+        op->dir = AES_DIR_ENCRYPT;
+        ret = infinity_aes_crypt(op);
+        if (ret < 0)
+        {
+            err=ret;
+            goto finish;
+        }
+        nbytes = walk.nbytes - ret;
+        err = blkcipher_walk_done(desc, &walk, nbytes);
+        crypto_inc((U8*)op->iv, AES_BLOCK_SIZE);
+	}
+
 finish:
     mutex_unlock(&_mtcrypto_lock);
     return err;
@@ -875,7 +1062,7 @@ static struct crypto_alg infinity_ctr_alg = {
                             CRYPTO_ALG_NEED_FALLBACK,
     .cra_init           =   fallback_init_blk,
     .cra_exit           =   fallback_exit_blk,
-    .cra_blocksize      =   AES_BLOCK_SIZE,
+    .cra_blocksize      =   1,
     .cra_ctxsize        =   sizeof(struct infinity_aes_op),
     .cra_alignmask      =   15,
     .cra_type           =   &crypto_blkcipher_type,
@@ -1048,15 +1235,19 @@ static struct crypto_alg infinity_tdes_ctr_alg = {
 };
 #endif
 
+#ifdef CONFIG_PM_SLEEP
 static int infinity_aes_resume(struct platform_device *pdev)
 {
+    enableClock();
     return 0;
 }
 
 static int infinity_aes_suspend(struct platform_device *pdev, pm_message_t state)
 {
+    disableClock();
     return 0;
 }
+#endif
 
 static int infinity_aes_remove(struct platform_device *pdev)
 {
@@ -1072,13 +1263,16 @@ static int infinity_aes_remove(struct platform_device *pdev)
 
 static int infinity_aes_probe(struct platform_device *pdev)
 {
-
     int ret = 0;
+#ifdef AESDMA_ISR
+    int irq;
+#endif
 
     mutex_init(&_mtcrypto_lock);
     psg_mdrv_aesdma = pdev;
     enableClock();
 	allocMem(4096);
+
 #if 0
     ret = crypto_register_alg(&infinity_des_alg);
     if (ret)
@@ -1130,15 +1324,30 @@ static int infinity_aes_probe(struct platform_device *pdev)
 
     infinity_sha_create();
 	misc_register(&rsadev);
-    dev_notice(&pdev->dev, "MSTAR AES engine enabled.\n");
-
+    dev_dbg(&pdev->dev, "SSTAR AES engine enabled.\n");
+#ifdef AESDMA_ISR
+    irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
+    if (request_irq(irq, aes_dma_interrupt, 0, "aes interrupt", NULL) == 0)
+    {
+        init_completion(&_mdmadone);
+        AESDMA_DBG("sstar AES interrupt registered\n");
+        _isr_requested = 1;
+    }
+    else
+    {
+        pr_err("sstar AES interrupt failed\n");
+        _isr_requested = 0;
+    }
+#endif
     return 0;
- eecb:
-    crypto_unregister_alg(&infinity_ecb_alg);
- ecbc:
-    crypto_unregister_alg(&infinity_cbc_alg);
- ectr:
+
+ectr:
     crypto_unregister_alg(&infinity_ctr_alg);
+ecbc:
+    crypto_unregister_alg(&infinity_cbc_alg);
+eecb:
+    crypto_unregister_alg(&infinity_ecb_alg);
+
 #if 0
  edesecb:
     crypto_unregister_alg(&infinity_des_ecb_alg);
@@ -1159,7 +1368,7 @@ static int infinity_aes_probe(struct platform_device *pdev)
  eiomap:
     crypto_unregister_alg(&infinity_alg);
 
-    dev_err(&pdev->dev, "MSTAR AES initialization failed.\n");
+    pr_err("SSTAR AES initialization failed.\n");
     return ret;
 }
 
@@ -1173,8 +1382,10 @@ MODULE_DEVICE_TABLE(of, infinity_aes_dt_ids);
 static struct platform_driver infinity_aes_driver = {
 	.probe		= infinity_aes_probe,
 	.remove		= infinity_aes_remove,
+#ifdef CONFIG_PM_SLEEP
 	.suspend    = infinity_aes_suspend,
     .resume     = infinity_aes_resume,
+#endif
 	.driver		= {
 		.name	= "infinity_aes",
 		.owner	= THIS_MODULE,

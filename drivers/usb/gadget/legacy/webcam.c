@@ -52,6 +52,7 @@ module_param(trace, uint, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(trace, "Trace level bitmask");
 
 #if defined(CONFIG_SS_GADGET) || defined(CONFIG_SS_GADGET_MODULE)
+#if defined(CONFIG_USB_WEBCAM_UAC)
 /* module parameters specific to the audio streaming endpoint */
 #include "u_uac1.h"
 
@@ -67,35 +68,71 @@ static char *fn_cntl = FILE_CONTROL;
 module_param(fn_cntl, charp, S_IRUGO);
 MODULE_PARM_DESC(fn_cntl, "Control device file name");
 
+static int playback_channel_count = UAC1_PLAYBACK_CHANNEL_COUNT;
+module_param(playback_channel_count, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(playback_channel_count, "Speaker Channel Counts");
+
+static int capture_channel_count = UAC1_CAPTURE_CHANNEL_COUNT;
+module_param(capture_channel_count, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(capture_channel_count, "Microphone Channel Counts");
+
+static int playback_sample_rate = UAC1_PLAYBACK_SAMPLE_RATE;
+module_param(playback_sample_rate, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(playback_sample_rate, "Speaker Sample Rate");
+
+static int capture_sample_rate = UAC1_CAPTURE_SAMPLE_RATE;
+module_param(capture_sample_rate, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(capture_sample_rate, "Microphone Sample Rate");
+
 static int out_req_buf_size = UAC1_OUT_EP_MAX_PACKET_SIZE;
-module_param(out_req_buf_size, int, S_IRUGO);
+module_param(out_req_buf_size, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(out_req_buf_size, "ISO OUT endpoint request buffer size");
 
 static int in_req_buf_size = UAC1_IN_EP_MAX_PACKET_SIZE;
-module_param(in_req_buf_size, int, S_IRUGO);
+module_param(in_req_buf_size, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(in_req_buf_size, "ISO IN endpoint request buffer size");
 
 static int out_req_count = UAC1_OUT_REQ_COUNT;
-module_param(out_req_count, int, S_IRUGO);
+module_param(out_req_count, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(out_req_count, "ISO OUT endpoint request count");
 
 static int in_req_count = UAC1_IN_REQ_COUNT;
-module_param(in_req_count, int, S_IRUGO);
+module_param(in_req_count, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(in_req_count, "ISO IN endpoint request count");
 
 static int audio_playback_buf_size = UAC1_AUDIO_PLAYBACK_BUF_SIZE;
-module_param(audio_playback_buf_size, int, S_IRUGO);
+module_param(audio_playback_buf_size, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(audio_playback_buf_size, "Audio playback buffer size");
 
 static int audio_capture_buf_size = UAC1_AUDIO_CAPTURE_BUF_SIZE;
-module_param(audio_capture_buf_size, int, S_IRUGO);
+module_param(audio_capture_buf_size, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(audio_capture_buf_size, "Audio capture buffer size");
 
 static int uac_function_enable	= 0;
-#if defined(CONFIG_USB_WEBCAM_UAC)
 module_param(uac_function_enable, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(uac_function_enable, "Audio Play Mode, 0: Disable UAC Function, "
 					  "1: Speaker Only, 2: Microphone Only, 3: Speaker & Microphone");
+#endif
+
+#if defined(CONFIG_USB_WEBCAM_RNDIS)
+#include "u_ether.h"
+
+#include "u_gether.h"
+#include "u_rndis.h"
+#include "rndis.h"
+
+USB_ETHERNET_MODULE_PARAMETERS();
+
+static int rndis_function_enable	= 0;
+module_param(rndis_function_enable, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(rndis_function_enable, "RNDIS Function Enable");
+#endif
+#if defined(CONFIG_USB_WEBCAM_DFU)
+#include "f_dfu.h"
+
+static int dfu_function_enable	= 0;
+module_param(dfu_function_enable, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(dfu_function_enable, "0: Disable 1: Enable");
 #endif
 #endif
 
@@ -154,8 +191,18 @@ static struct usb_gadget_strings *webcam_device_strings[] = {
 static struct usb_function_instance *fi_uvc;
 static struct usb_function *f_uvc;
 #if defined(CONFIG_SS_GADGET) || defined(CONFIG_SS_GADGET_MODULE)
+#if defined(CONFIG_USB_WEBCAM_UAC)
 static struct usb_function_instance *fi_uac1;
 static struct usb_function *f_uac1;
+#endif
+#if defined(CONFIG_USB_WEBCAM_RNDIS) // need to be the first interface
+static struct usb_function_instance *fi_rndis;
+static struct usb_function *f_rndis;
+#endif
+#if defined(CONFIG_USB_WEBCAM_DFU)
+static struct usb_function_instance *fi_dfu;
+static struct usb_function *f_dfu;
+#endif
 #endif
 
 static struct usb_device_descriptor webcam_device_descriptor = {
@@ -1028,9 +1075,15 @@ static int
 video_unbind(struct usb_composite_dev *cdev)
 {
 	if (!IS_ERR_OR_NULL(f_uvc))
+	{
 		usb_put_function(f_uvc);
+		f_uvc = NULL;
+	}
 	if (!IS_ERR_OR_NULL(fi_uvc))
+	{
 		usb_put_function_instance(fi_uvc);
+		fi_uvc = NULL;
+	}
 	return 0;
 }
 
@@ -1064,6 +1117,109 @@ static int __init video_bind(struct usb_composite_dev *cdev)
 }
 
 #if defined(CONFIG_SS_GADGET) || defined(CONFIG_SS_GADGET_MODULE)
+#if defined(CONFIG_USB_WEBCAM_DFU)
+static int __init dfu_bind_config(struct usb_configuration *c)
+{
+	int status;
+	f_dfu = usb_get_function(fi_dfu);
+	if (IS_ERR(f_dfu)) {
+		status = PTR_ERR(f_dfu);
+		return status;
+	}
+	status = usb_add_function(c, f_dfu);
+	if (status < 0) {
+		usb_put_function(f_dfu);
+		return status;
+	}
+	return 0;
+}
+static int __init dfu_bind(struct usb_composite_dev *cdev)
+{
+	struct f_dfu_opts	*dfu_opts;
+
+	fi_dfu = usb_get_function_instance("dfu");
+	if (IS_ERR(fi_dfu))
+		return PTR_ERR(fi_dfu);
+
+	dfu_opts = container_of(fi_dfu, struct f_dfu_opts, func_inst);
+	if(IS_ERR(dfu_opts))
+		return PTR_ERR(dfu_opts);
+
+	return 0;
+}
+static int __exit dfu_unbind(struct usb_composite_dev *cdev)
+{
+	if (!IS_ERR_OR_NULL(f_dfu))
+		usb_put_function(f_dfu);
+	if (!IS_ERR_OR_NULL(fi_dfu))
+		usb_put_function_instance(fi_dfu);
+	return 0;
+}
+#endif
+#if defined(CONFIG_USB_WEBCAM_RNDIS)
+static int __init rndis_bind_config(struct usb_configuration *c)
+{
+	int status = 0;
+
+	f_rndis = usb_get_function(fi_rndis);
+	if (IS_ERR(f_rndis))
+		return PTR_ERR(f_rndis);
+
+	status = usb_add_function(c, f_rndis);
+	if (status < 0)
+		usb_put_function(f_rndis);
+
+	return status;
+}
+
+static int __init rndis_bind(struct usb_composite_dev *cdev)
+{
+	struct f_rndis_opts	*rndis_opts = NULL;
+	struct net_device	*net;
+	int			status;
+
+	fi_rndis = usb_get_function_instance("rndis");
+	if (IS_ERR(fi_rndis)) {
+		status = PTR_ERR(fi_rndis);
+		goto fail;
+	}
+
+	/* set up main config label and device descriptor */
+	rndis_opts = container_of(fi_rndis, struct f_rndis_opts,
+				 func_inst);
+
+	net = rndis_opts->net;
+
+	gether_set_qmult(net, qmult);
+	if (!gether_set_host_addr(net, host_addr))
+		pr_info("using host ethernet address: %s", host_addr);
+	if (!gether_set_dev_addr(net, dev_addr))
+		pr_info("using self ethernet address: %s", dev_addr);
+
+	fi_rndis = usb_get_function_instance("rndis");
+	if (IS_ERR(fi_rndis)) {
+		status = PTR_ERR(fi_rndis);
+		goto fail;
+	}
+
+	return 0;
+
+fail:
+	fi_rndis = NULL;
+	return status;
+}
+
+static int __exit rndis_unbind(struct usb_composite_dev *cdev)
+{
+	usb_put_function(f_rndis);
+	usb_put_function_instance(fi_rndis);
+	f_rndis = NULL;
+	fi_rndis = NULL;
+
+	return 0;
+}
+#endif
+#if defined(CONFIG_USB_WEBCAM_UAC)
 static int __init audio_bind_config(struct usb_configuration *c)
 {
 	int status;
@@ -1092,6 +1248,10 @@ static int __init audio_bind(struct usb_composite_dev *cdev)
 	uac1_opts->fn_play = fn_play;
 	uac1_opts->fn_cap = fn_cap;
 	uac1_opts->fn_cntl = fn_cntl;
+	uac1_opts->playback_channel_count = playback_channel_count;
+	uac1_opts->playback_sample_rate = playback_sample_rate;
+	uac1_opts->capture_channel_count = capture_channel_count;
+	uac1_opts->capture_sample_rate = capture_sample_rate;
 	uac1_opts->out_req_buf_size = out_req_buf_size;
 	uac1_opts->out_req_count = out_req_count;
 	uac1_opts->audio_playback_buf_size = audio_playback_buf_size;
@@ -1105,11 +1265,18 @@ static int __init audio_bind(struct usb_composite_dev *cdev)
 static int __exit audio_unbind(struct usb_composite_dev *cdev)
 {
 	if (!IS_ERR_OR_NULL(f_uac1))
+	{
 		usb_put_function(f_uac1);
+		f_uac1 = NULL;
+	}
 	if (!IS_ERR_OR_NULL(fi_uac1))
+	{
 		usb_put_function_instance(fi_uac1);
+		fi_uac1 = NULL;
+	}
 	return 0;
 }
+#endif
 #endif
 static struct usb_configuration webcam_config_driver = {
 	.label			= webcam_config_label,
@@ -1123,6 +1290,15 @@ static int __init webcam_bind_config(struct usb_configuration *c)
 {
 	int ret;
 #if defined(CONFIG_SS_GADGET) || defined(CONFIG_SS_GADGET_MODULE)
+#if defined(CONFIG_USB_WEBCAM_RNDIS)
+	if(rndis_function_enable)
+	{
+		ret = rndis_bind_config(c);
+		if(ret < 0)
+			return ret;
+	}
+#endif
+
 	if(uvc_function_enable)
 #endif
 	{
@@ -1131,12 +1307,22 @@ static int __init webcam_bind_config(struct usb_configuration *c)
 			return ret;
 	}
 #if defined(CONFIG_SS_GADGET) || defined(CONFIG_SS_GADGET_MODULE)
+#if defined(CONFIG_USB_WEBCAM_UAC)
 	if(uac_function_enable)
 	{
 		ret = audio_bind_config(c);
 		if(ret < 0)
-		return ret;
+			return ret;
 	}
+#endif
+#if defined(CONFIG_USB_WEBCAM_DFU)
+	if(dfu_function_enable)
+	{
+		ret = dfu_bind_config(c);
+		if(ret < 0)
+			return ret;
+	}
+#endif
 #endif
 	return 0;
 }
@@ -1155,38 +1341,73 @@ static int __init webcam_bind(struct usb_composite_dev *cdev)
 		webcam_strings[USB_GADGET_PRODUCT_IDX].id;
 	webcam_config_driver.iConfiguration =
 		webcam_strings[STRING_DESCRIPTION_IDX].id;
+
 #if defined(CONFIG_SS_GADGET) || defined(CONFIG_SS_GADGET_MODULE)
+#if defined(CONFIG_USB_WEBCAM_RNDIS)
+	if(rndis_function_enable)
+	{
+		ret = rndis_bind(cdev);
+		if(ret < 0)
+		{
+			goto error;
+		}
+	}
+#endif
+
 	if(uvc_function_enable)
 #endif
 	{
 		ret = video_bind(cdev);
 		if(ret < 0)
-			goto error1;
+			goto error;
 	}
 
 #if defined(CONFIG_SS_GADGET) || defined(CONFIG_SS_GADGET_MODULE)
+#if defined(CONFIG_USB_WEBCAM_UAC)
 	if(uac_function_enable)
 	{
 		ret = audio_bind(cdev);
 		if(ret < 0)
-			goto error2;
+			goto error;
 	}
+#endif
+#if defined(CONFIG_USB_WEBCAM_DFU)
+	if(dfu_function_enable)
+	{
+		ret = dfu_bind(cdev);
+		if(ret < 0)
+			goto error;
+	}
+#endif
 #endif
 	/* Register our configuration. */
 	if ((ret = usb_add_config(cdev, &webcam_config_driver,
 					webcam_bind_config)) < 0)
-		goto error2;
+	{
+		goto error;
+	}
 
 	usb_composite_overwrite_options(cdev, &coverwrite);
 	INFO(cdev, "Webcam Video Gadget\n");
 	return 0;
 
-error2:
+error:
 #if defined(CONFIG_SS_GADGET) || defined(CONFIG_SS_GADGET_MODULE)
-	usb_put_function_instance(fi_uac1);
+#if defined(CONFIG_USB_WEBCAM_DFU)
+	if (fi_dfu)
+		usb_put_function_instance(fi_dfu);
 #endif
-error1:
+#if defined(CONFIG_USB_WEBCAM_UAC)
+	if (fi_uac1)
+		usb_put_function_instance(fi_uac1);
+#endif
+#endif
 	usb_put_function_instance(fi_uvc);
+
+#if defined(CONFIG_USB_WEBCAM_RNDIS)
+	if (fi_rndis)
+		usb_put_function_instance(fi_rndis);
+#endif
 	return ret;
 }
 static int
@@ -1194,12 +1415,22 @@ webcam_unbind(struct usb_composite_dev *cdev)
 {
 	int ret;
 #if defined(CONFIG_SS_GADGET) || defined(CONFIG_SS_GADGET_MODULE)
+#if defined(CONFIG_USB_WEBCAM_RNDIS)
+	if(rndis_function_enable)
+		ret = rndis_unbind(cdev);
+#endif
 	if(uvc_function_enable)
 #endif
 		ret = video_unbind(cdev);
 #if defined(CONFIG_SS_GADGET) || defined(CONFIG_SS_GADGET_MODULE)
+#if defined(CONFIG_USB_WEBCAM_UAC)
 	if(uac_function_enable)
 		ret = audio_unbind(cdev);
+#endif
+#if defined(CONFIG_USB_WEBCAM_DFU)
+	if(dfu_function_enable)
+		ret = dfu_unbind(cdev);
+#endif
 #endif
 	return ret;
 }

@@ -24,8 +24,13 @@
 #include "registers.h"
 #include "mdrv_types.h"
 
+#if 0
 #define MS_PWM_INFO(x, args...)    printk(x, ##args)
 #define MS_PWM_DBG(x, args...)     printk(x, ##args)
+#else
+#define MS_PWM_INFO(x, args...)    {}
+#define MS_PWM_DBG(x, args...)     {}
+#endif
 
 struct mstar_pwm_chip {
 	struct pwm_chip chip;
@@ -33,6 +38,7 @@ struct mstar_pwm_chip {
 	void __iomem *base;
     u32 *pad_ctrl;
     void* group_data;
+    int irq;
 };
 
 //------------------------------------------------------------------------------
@@ -62,8 +68,6 @@ struct mstar_pwm_chip {
 #define u16REG_PWM_SHIFT4       (0xC << 2)
 #define u16REG_PWM_DUTY4        (0xD << 2)
 
-#define u16REG_SW_RESET         (0x7F << 2)
-
 #define REG_GROUP_HOLD          (0x71 << 2)
     #define REG_GROUP_HOLD_SHFT     (0x0)
 
@@ -75,6 +79,23 @@ struct mstar_pwm_chip {
 
 #define REG_GROUP_JOIN          (0x74 << 2)
     #define REG_GROUP_JOIN_SHFT     (0x0)
+
+//+++[Only4I6e]
+#define REG_GROUP_INT           (0x75 << 2)
+    #define REG_GROUP_HOLD_INT_SHFT (0x0)
+    #define REG_GROUP_RUND_INT_SHFT (0x3)
+
+#define REG_PWM_DUTY_QE0        (0x76 << 2)
+    #define REG_PWM_DUTY_QE0_SHFT   (0x0)
+
+#define REG_GROUP_HOLD_MODE1    (0x77 << 2)
+    #define REG_GROUP_HALD_MD1_SHFT (0x0)
+
+#define REG_PWM_OUT             (0x7E << 2)
+    #define REG_PWM_OUT_SHFT        (0x0)
+//---[Only4I6e]
+
+#define u16REG_SW_RESET         (0x7F << 2)
 
 //------------------------------------------------------------------------------
 //  Export Functions
@@ -88,10 +109,15 @@ struct mstar_pwm_chip {
 //void DrvBacklightOn(void);
 //void DrvBacklightOff(void);
 //void DrvPWMSetEn(U8 u8Id, U8 u8Val);
+void DrvPWMInit(struct mstar_pwm_chip *ms_chip, U8 u8Id);
 void DrvPWMSetPeriod(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32 u32Val);
+void DrvPWMGetPeriod(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32* pu32Val);
 void DrvPWMSetDuty(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32 u32Val);
+void DrvPWMGetDuty(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32* pu32Val);
 void DrvPWMEnable(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8 u8Val);
+void DrvPWMEnableGet(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8* pu8Val);
 void DrvPWMSetPolarity(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8 u8Val);
+void DrvPWMGetPolarity(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8* pu8Val);
 void DrvPWMPadSet(U8 u8Id, U8 u8Val);
 void DrvPWMSetDben(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8 u8Val);
 
@@ -110,6 +136,14 @@ int DrvPWMGroupSetRound(struct mstar_pwm_chip* ms_chip, U8 u8GroupId, U16 u16Val
 int DrvPWMGroupStop(struct mstar_pwm_chip *ms_chip, U8 u8GroupId, U8 u8Val);
 int DrvPWMGroupHold(struct mstar_pwm_chip *ms_chip, U8 u8GroupId, U8 u8Val);
 int DrvPWMGroupInfo(struct mstar_pwm_chip *ms_chip, char* buf_start, char* buf_end);
+
+//+++[Only4I6e]
+int DrvPWMGroupGetRoundNum(struct mstar_pwm_chip* ms_chip, U8 u8GroupId, U16* u16Val);
+int DrvPWMGroupGetHoldM1(struct mstar_pwm_chip *ms_chip);
+int DrvPWMGroupHoldM1(struct mstar_pwm_chip *ms_chip, U8 u8Val);
+int DrvPWMDutyQE0(struct mstar_pwm_chip *ms_chip, U8 u8GroupId, U8 u8Val);
+int DrvPWMGetOutput(struct mstar_pwm_chip *ms_chip, U8* pu8Output);
+//---[Only4I6e]
 
 //-----------------------------------------------------------------------------
 

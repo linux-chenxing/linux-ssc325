@@ -297,7 +297,7 @@ typedef struct
     #define _DMA_CTL_TRIG               (__BIT0)
 #define REG_HWI2C_DMA_CTL_RETRIG        (HWI2C_REG_BASE+0x2F*2+1)
     #define _DMA_CTL_RETRIG             (__BIT0)
-
+#define REG_HWI2C_DMA_RESERVED0         (HWI2C_REG_BASE+0x30*2)
 
 /**************************&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&**********************************/
 

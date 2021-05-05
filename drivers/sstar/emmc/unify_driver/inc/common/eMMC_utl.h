@@ -15,6 +15,7 @@
 * GNU General Public License for more details.
 *
 */
+
 #ifndef __eMMC_UTL_H__
 #define __eMMC_UTL_H__
 
@@ -23,9 +24,9 @@
 
 typedef eMMC_PACK0 struct _eMMC_TEST_ALIGN_PACK {
 
-	U8	u8_0;
-	U16	u16_0;
-	U32	u32_0, u32_1;
+    U8  u8_0;
+    U16 u16_0;
+    U32 u32_0, u32_1;
 
 } eMMC_PACK1 eMMC_TEST_ALIGN_PACK_t;
 

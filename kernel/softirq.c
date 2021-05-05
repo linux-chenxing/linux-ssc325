@@ -30,6 +30,11 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/irq.h>
 
+#if defined(CONFIG_MP_IRQ_TRACE)
+#include "../../drivers/sstar/include/ms_msys.h"
+extern int sirq_head_initialized ;
+extern void ms_records_sirq(MSYS_IRQ_INFO *irq_info);
+#endif
 /*
    - No shared variables, all the data are CPU local.
    - If a softirq needs serialization, let it serialize itself
@@ -249,6 +254,9 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
 	__u32 pending;
 	int softirq_bit;
 
+#if defined(CONFIG_MP_IRQ_TRACE)
+	MSYS_IRQ_INFO irq_info;
+#endif
 	/*
 	 * Mask out PF_MEMALLOC s current task context is borrowed for the
 	 * softirq. A softirq handled such as network RX might set PF_MEMALLOC
@@ -281,9 +289,25 @@ restart:
 
 		kstat_incr_softirqs_this_cpu(vec_nr);
 
+#if defined(CONFIG_MP_IRQ_TRACE)
+	irq_info.IRQNumber = vec_nr;
+	irq_info.action = h->action;
+	irq_info.timeStart = sched_clock();
+#endif
 		trace_softirq_entry(vec_nr);
 		h->action(h);
 		trace_softirq_exit(vec_nr);
+
+#if defined(CONFIG_MP_IRQ_TRACE)
+        irq_info.timeEnd = sched_clock();
+        if (irq_info.timeEnd - irq_info.timeStart > 2500000)
+        {
+            if(sirq_head_initialized)
+            {
+                ms_records_sirq(&irq_info);
+            }
+        }
+#endif
 		if (unlikely(prev_count != preempt_count())) {
 			pr_err("huh, entered softirq %u %s %p with preempt_count %08x, exited with %08x?\n",
 			       vec_nr, softirq_to_name[vec_nr], h->action,

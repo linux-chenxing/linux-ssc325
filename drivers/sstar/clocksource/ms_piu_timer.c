@@ -98,7 +98,10 @@ struct ms_piu_timer_clocksource {
 
 
 static int timer_set_next_event(unsigned long next, struct clock_event_device *evt);
-static void timer_set_mode(enum clock_event_mode mode,	struct clock_event_device *evt);
+static int timer_set_state_periodic(struct clock_event_device *evt);
+static int timer_set_state_oneshot(struct clock_event_device *evt);
+static int timer_set_oneshot_stopped(struct clock_event_device *evt);
+static int timer_set_state_shutdown(struct clock_event_device *evt);
 
 static inline struct ms_piu_timer_clockevent *to_ms_clockevent(struct clock_event_device *evt)
 {
@@ -144,7 +147,7 @@ static u64 notrace timer_read_sched_clock(void)
 	return 0;
 }
 
-static void __init ms_piu_timer_clocksource_of_init(struct device_node *np)
+static int __init ms_piu_timer_clocksource_of_init(struct device_node *np)
 {
 
 	struct clk *clk;
@@ -188,42 +191,60 @@ static void __init ms_piu_timer_clocksource_of_init(struct device_node *np)
 	sched_clocksource=ms_cs;
 	sched_clock_register(timer_read_sched_clock, 32, ms_cs->timer.freq);
 
-	return;
+	return 0;
 
 
 }
 
 
-
-static void timer_set_mode(enum clock_event_mode mode,	struct clock_event_device *evt)
+static int timer_set_state_periodic(struct clock_event_device *evt)
 {
     unsigned short ctl=TIMER_INTERRUPT;
     unsigned long interval;
     struct ms_piu_timer_clockevent *ms_ce=to_ms_clockevent(evt);
 
-	switch (mode)
-	{
-	case CLOCK_EVT_MODE_PERIODIC:
-		interval = (ms_ce->timer.freq / HZ)  ;
-		OUTREG16(ms_ce->timer.base + ADDR_TIMER_MAX_LOW, (interval &0xffff));
-		OUTREG16(ms_ce->timer.base + ADDR_TIMER_MAX_HIGH, (interval >>16));
-        ctl|=TIMER_ENABLE;
-		SETREG16(ms_ce->timer.base, ctl);
-		break;
+    interval = (ms_ce->timer.freq / HZ)  ;
+    OUTREG16(ms_ce->timer.base + ADDR_TIMER_MAX_LOW, (interval &0xffff));
+    OUTREG16(ms_ce->timer.base + ADDR_TIMER_MAX_HIGH, (interval >>16));
+    ctl|=TIMER_ENABLE;
+    SETREG16(ms_ce->timer.base, ctl);
 
-	case CLOCK_EVT_MODE_ONESHOT:
-		/* period set, and timer enabled in 'next_event' hook */
-        ctl|=TIMER_TRIG;
-		SETREG16(ms_ce->timer.base, ctl);
-		break;
-    case CLOCK_EVT_MODE_SHUTDOWN:
-        ctl|=TIMER_ENABLE;
-        CLRREG16(ms_ce->timer.base, ctl);
-        break;
-	case CLOCK_EVT_MODE_UNUSED:
-	default:
-		break;
-	}
+    return 0;
+}
+
+static int timer_set_state_oneshot(struct clock_event_device *evt)
+{
+    unsigned short ctl=TIMER_INTERRUPT;
+    struct ms_piu_timer_clockevent *ms_ce=to_ms_clockevent(evt);
+
+    /* period set, and timer enabled in 'next_event' hook */
+    ctl|=TIMER_TRIG;
+    SETREG16(ms_ce->timer.base, ctl);
+
+    return 0;
+}
+
+static int timer_set_oneshot_stopped(struct clock_event_device *evt)
+{
+    unsigned short ctl=TIMER_INTERRUPT;
+    struct ms_piu_timer_clockevent *ms_ce=to_ms_clockevent(evt);
+
+    /* period set, and timer enabled in 'next_event' hook */
+    ctl&=~TIMER_TRIG;
+    SETREG16(ms_ce->timer.base, ctl);
+
+    return 0;
+}
+
+static int timer_set_state_shutdown(struct clock_event_device *evt)
+{
+    unsigned short ctl=TIMER_INTERRUPT;
+    struct ms_piu_timer_clockevent *ms_ce=to_ms_clockevent(evt);
+
+    ctl|=TIMER_ENABLE;
+    CLRREG16(ms_ce->timer.base, ctl);
+
+    return 0;
 }
 
 static int timer_set_next_event(unsigned long next, struct clock_event_device *evt)
@@ -340,7 +361,7 @@ static irqreturn_t ms_timer_interrupt(int irq, void *dev_id)
 
 
 
-static void __init ms_piu_timer_clockevent_of_init(struct device_node *np)
+static int __init ms_piu_timer_clockevent_of_init(struct device_node *np)
 {
 	struct ms_piu_timer_clockevent *ms_ce = kzalloc(sizeof(*ms_ce), GFP_KERNEL);
 
@@ -360,6 +381,7 @@ static void __init ms_piu_timer_clockevent_of_init(struct device_node *np)
 	clk_put(clk);
 
 	ms_ce->timer.irq =irq_of_parse_and_map(np, 0);
+    printk("%s: irq %d", __func__, ms_ce->timer.irq);
 	if (ms_ce->timer.irq == 0)
 	{
 		panic("No IRQ for clock event timer");
@@ -368,7 +390,14 @@ static void __init ms_piu_timer_clockevent_of_init(struct device_node *np)
 	ms_ce->event.name		= "timer_clkevt";
 	ms_ce->event.shift		= 32;
 	ms_ce->event.features   = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT;
+#if 1
+	ms_ce->event.set_state_periodic	= timer_set_state_periodic;
+	ms_ce->event.set_state_oneshot	= timer_set_state_oneshot;
+	ms_ce->event.set_state_oneshot_stopped	= timer_set_oneshot_stopped;
+	ms_ce->event.set_state_shutdown	= timer_set_state_shutdown;
+#else
 	ms_ce->event.set_mode	= timer_set_mode;
+#endif
 	ms_ce->event.set_next_event	= timer_set_next_event;
 	ms_ce->event.rating		= 200;
 	ms_ce->event.cpumask	= cpu_all_mask;
@@ -397,7 +426,7 @@ static void __init ms_piu_timer_clockevent_of_init(struct device_node *np)
 #endif
 
 
-
+    return 0;
 }
 
 

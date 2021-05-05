@@ -19,7 +19,7 @@
 #define _DRV_SPINAND_H_
 #include <linux/platform_device.h>
 #include "inc/mdrv_spinand_common.h"
-#include "../hal/reg_spinand.h"
+//#include "../hal/reg_spinand.h"
 #ifdef __cplusplus
 extern "C"
 {

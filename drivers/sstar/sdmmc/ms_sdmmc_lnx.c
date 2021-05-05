@@ -55,6 +55,12 @@
 #include "inc/hal_sdmmc_v5.h"
 #include "inc/hal_card_intr_v5.h"
 
+#include "mdrv_padmux.h"
+
+#ifdef CONFIG_CAM_CLK
+#include "drv_camclk_Api.h"
+#endif
+
 //###########################################################################################################
 #if (EN_MSYS_REQ_DMEM)
 //###########################################################################################################
@@ -63,7 +69,7 @@
 #endif
 
 
-#if (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+#if defined(CONFIG_OF)
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
@@ -76,13 +82,9 @@
 //***********************************************************************************************************
 #define EN_SDMMC_TRFUNC          (FALSE)
 #define EN_SDMMC_TRSDIO          (FALSE)
-#define EN_SDMMC_MIEINT_MODE     (TRUE)
 #define EN_SDMMC_BRO_DMA         (TRUE)
-#define EN_SDMMC_ADV_DMA         (TRUE)
 #define EN_SDMMC_DCACHE_FLUSH    (TRUE)
 
-#define EN_SDMMC_POLLING_CDZ     (FALSE)
-#define EN_SDMMC_CHG_PWR_PIN     (FALSE)
 #define EN_SDMMC_NOCDZ_NDERR     (FALSE)
 
 /****** For Allocation buffer *******/
@@ -101,83 +103,57 @@
 
 //***********************************************************************************************************
 
-// Const Variable for Dynanmic Setting
-//-----------------------------------------------------------------------------------------------------------
+// DTS related
+static U8_T     gu8_SlotNums                = 0;
+static BOOL_T   gb_ReverseCDZ               = FALSE;
+static IpOrder  ge_IPOrderSlot[3]           = {IP_ORDER_0, IP_ORDER_1, IP_ORDER_2};
+static PadOrder ge_PADOrderSlot[3]          = {PAD_ORDER_0, PAD_ORDER_1, PAD_ORDER_2};
+static U32_T    gu32_MaxClkSlot[3]          = {400000, 400000, 400000};
+static BOOL_T   gb_IntCDZSlot[3]            = {FALSE, FALSE, FALSE};
+static BOOL_T   gb_FakeCDZSlot[3]           = {FALSE, FALSE, FALSE};
+static U32_T    gu32_CdzNoSlot[3]           = {DEF_CDZ_PAD_SLOT0, DEF_CDZ_PAD_SLOT1, DEF_CDZ_PAD_SLOT2};
+static U32_T    gu32_PwrNoSlot[3]           = {DEF_PWR_PAD_SLOT0, DEF_PWR_PAD_SLOT1, DEF_PWR_PAD_SLOT2};
+static U32_T    gu32_PwrOffDelaySlot[3]     = {WT_POWEROFF, WT_POWEROFF, WT_POWEROFF};
+static U32_T    gu32_PwrOnDelaySlot[3]     = {WT_POWERON, WT_POWERON, WT_POWERON};
+static BOOL_T   gb_SdioUseSlot[3]           = {FALSE, FALSE, FALSE};
+static BOOL_T   gb_RemovableSlot[3]         = {FALSE, FALSE, FALSE};
+static U16_T    gu16_MieIntNoSlot[3]        = {0};
+static U16_T    gu16_CdzIntNoSlot[3]        = {0};
 
-static const IPEmType ge_IPSet[3]             = {D_IP1_IP, D_IP2_IP, D_IP3_IP};
-static const PortEmType ge_PORTSet[3]         = {D_IP1_PORT, D_IP2_PORT, D_IP3_PORT};
-static const U16_T gu16_MieIntNoSet[3]        = {V_IP1_MIEIRQ, V_IP2_MIEIRQ, V_IP3_MIEIRQ};
-
-static const PADEmType  ge_PADSet[3]          = {EV_PAD1, EV_PAD2, EV_PAD3};
-static const U16_T gu16_CdzIntNoSet[3]        = {V_PAD1_CDZIRQ, V_PAD2_CDZIRQ, V_PAD3_CDZIRQ};
-
-static const BOOL_T gb_ShareCDZIRQSet[3]      = {EN_PAD1_CDZIRQ_SHARD, EN_PAD2_CDZIRQ_SHARD, EN_PAD3_CDZIRQ_SHARD};
-static const BOOL_T gb_WakeupCDZIRQSet[3]     = {EN_PAD1_CDZIRQ_WAKEUP, EN_PAD2_CDZIRQ_WAKEUP, EN_PAD3_CDZIRQ_WAKEUP};
-static const U32_T  gu32_CDZIRQParaSet[3]     = {V_PAD1_CDZIRQ_PARA, V_PAD2_CDZIRQ_PARA, V_PAD3_CDZIRQ_PARA};
-
-// Global Variable for Each Slot
-//-----------------------------------------------------------------------------------------------------------
-static U8_T gu8_IPOrderSlot[3]                = {V_SLOT0_IP, V_SLOT1_IP, V_SLOT2_IP};
-static U8_T gu8_PADOrderSlot[3]               = {V_SLOT0_PAD, V_SLOT1_PAD, V_SLOT2_PAD};
-
-static IPEmType ge_IPSlot[3]                  = {D_IP1_IP, D_IP2_IP, D_IP3_IP};
-static PortEmType ge_PORTSlot[3]              = {D_IP1_PORT, D_IP2_PORT, D_IP3_PORT};
-static U16_T gu16_MieIntNoSlot[3]             = {V_IP1_MIEIRQ, V_IP2_MIEIRQ, V_IP3_MIEIRQ};
-
-static PADEmType  ge_PADSlot[3]               = {EV_PAD1, EV_PAD2, EV_PAD3};
-static U16_T gu16_CdzIntNoSlot[3]             = {V_PAD1_CDZIRQ, V_PAD2_CDZIRQ, V_PAD3_CDZIRQ};
-
-static BOOL_T gb_ShareCDZIRQSlot[3]           = {EN_PAD1_CDZIRQ_SHARD, EN_PAD2_CDZIRQ_SHARD, EN_PAD3_CDZIRQ_SHARD};
-static BOOL_T gb_WakeupCDZIRQSlot[3]          = {EN_PAD1_CDZIRQ_WAKEUP, EN_PAD2_CDZIRQ_WAKEUP, EN_PAD3_CDZIRQ_WAKEUP};
-static U32_T  gu32_CDZIRQParaSlot[3]          = {V_PAD1_CDZIRQ_PARA, V_PAD2_CDZIRQ_PARA, V_PAD3_CDZIRQ_PARA};
-
-static MutexEmType ge_MutexSlot[3]            = {D_SDMMC1_MUTEX, D_SDMMC2_MUTEX, D_SDMMC3_MUTEX};
-
-static U32_T  gu32_MaxDLVLSlot[3]             = {V_SDMMC1_MAX_DLVL, V_SDMMC2_MAX_DLVL, V_SDMMC3_MAX_DLVL};
-static U32_T  gu32_PassLVLSlot[3]             = {V_SDMMC1_PASS_LVL, V_SDMMC2_PASS_LVL, V_SDMMC3_PASS_LVL};
-
-static BOOL_T gb_DownLVLSlot[3]               = {EV_SDMMC1_DOWN_LVL, EV_SDMMC2_DOWN_LVL, EV_SDMMC3_DOWN_LVL};
-#if(EN_BIND_CARD_INT)
-static BOOL_T gb_SDIOIRQSlot[3]               = {EV_SDMMC1_SDIO_IRQ, EV_SDMMC2_SDIO_IRQ, EV_SDMMC3_SDIO_IRQ};
+#ifdef CONFIG_PM_SLEEP
+static U16_T    gu16_SlotIPClk[3]           = {0};
+static U16_T    gu16_SlotBlockClk[3]        = {0};
 #endif
-static BOOL_T gb_SDIOPRTSlot[3]               = {EV_SDMMC1_SDIO_PRT, EV_SDMMC2_SDIO_PRT, EV_SDMMC3_SDIO_PRT};
 
-//Dync DTS Setting
-static U32_T  gu32_MaxClkSlot[3]              = {V_SDMMC1_MAX_CLK, V_SDMMC2_MAX_CLK, V_SDMMC3_MAX_CLK};
-static BOOL_T gb_IntCDZSlot[3]                = {EN_SDMMC1_INTCDZ, EN_SDMMC2_INTCDZ, EN_SDMMC3_INTCDZ};
-static BOOL_T gb_FakeCDZSlot[3]               = {EN_SDMMC1_FAKECDZ, EN_SDMMC2_FAKECDZ, EN_SDMMC3_FAKECDZ};
-static U32_T  gu32_PwrNoSlot[3]               = {V_PAD1_PWRGPIO, V_PAD2_PWRGPIO, V_PAD3_PWRGPIO};
+static const char gu8_mie_irq_name[3][20] = {"mie0_irq", "mie1_irq", "mie2_irq"};
+static const char gu8_irq_name[3][20] = {"cdz_slot0_irq", "cdz_slot1_irq", "cdz_slot2_irq"};
 
-static const char gu8_mie_irq_name[3][20] = {"mie0_irq", "mie1_irq", "mie0_irq"};
-static const U8_T gu8_irq_name[3][20] = {"cdz_slot0_irq", "cdz_slot1_irq", "cdz_slot2_irq"};
+//
+static MutexEmType ge_MutexSlot[3]      = {EV_MUTEX1, EV_MUTEX2, EV_MUTEX3};
 
 static IntSourceStruct  gst_IntSourceSlot[3];
 static spinlock_t g_RegLockSlot[3];
 
+static volatile IpType geIpTypeIp[3] = {IP_0_TYPE, IP_1_TYPE, IP_2_TYPE};
 
-#if (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+#if defined(CONFIG_OF)
+
+#ifdef CONFIG_CAM_CLK
+void* gp_clkSlot[3] = {NULL};
+#else
 struct clk* gp_clkSlot[3];
-struct clk* gp_clkMCMSlot[3];
-struct clk* gp_clkSRAMSlot[3];
+#endif
+
 #endif
 
 
 // Global Variable for All Slot:
 //-----------------------------------------------------------------------------------------------------------
-static BOOL_T  gb_ReverseCDZ                  = EN_SDMMC_CDZREV;
-static U8_T   gu8_SlotNums                    = V_SDMMC_SLOTNUMS;
-
 static volatile BOOL_T   gb_RejectSuspend     = (FALSE);
-static volatile BOOL_T   gb_AlwaysSwitchPAD   = (FALSE);
 
-extern struct mutex FCIE3_mutex; // use fcie mutex in other driver
 DEFINE_MUTEX(sdmmc1_mutex);
 DEFINE_MUTEX(sdmmc2_mutex);
 DEFINE_MUTEX(sdmmc3_mutex);
-
-
-#define L3_FLUSH_PIPE()   Chip_Flush_MIU_Pipe()
-
 
 // String Name
 //-----------------------------------------------------------------------------------------------------------
@@ -192,8 +168,8 @@ DEFINE_MUTEX(sdmmc3_mutex);
     #define pr_sd_dbg(fmt, arg...)   //printk(fmt, ##arg)
 #else
     #define pr_sd_err(fmt, arg...)   printk(fmt, ##arg)
-    #define pr_sd_main(fmt, arg...)  //
-    #define pr_sd_dbg(fmt, arg...)   //
+    #define pr_sd_main(fmt, arg...)  //printk(fmt, ##arg)
+    #define pr_sd_dbg(fmt, arg...)   //printk(fmt, ##arg)
 #endif
 
 #if (EN_SDMMC_TRSDIO)
@@ -203,24 +179,43 @@ DEFINE_MUTEX(sdmmc3_mutex);
 #endif
 
 
+
+void Hal_CARD_SetGPIOIntAttr(GPIOOptEmType eGPIOOPT, unsigned int irq)
+{
+#if (D_OS == D_OS__LINUX)
+    if(eGPIOOPT==EV_GPIO_OPT1) //clear interrupt
+    {
+        struct irq_data *sd_irqdata = irq_get_irq_data(irq);
+        struct irq_chip *chip = irq_get_chip(irq);
+
+        chip->irq_ack(sd_irqdata);
+    }
+    else if((eGPIOOPT==EV_GPIO_OPT2))
+    {
+    }
+    else if((eGPIOOPT==EV_GPIO_OPT3))  //sd polarity _HI Trig for remove
+    {
+        irq_set_irq_type(irq, IRQ_TYPE_EDGE_RISING);
+    }
+    else if((eGPIOOPT==EV_GPIO_OPT4)) //sd polarity _LO Trig for insert
+    {
+        irq_set_irq_type(irq, IRQ_TYPE_EDGE_FALLING);
+    }
+#endif
+}
+
 // Section Process Begin
 //------------------------------------------------------------------------------------------------
 static void _CRIT_SECT_BEGIN(SlotEmType eSlot)
 {
     MutexEmType eMutex = ge_MutexSlot[eSlot];
-    IPEmType eIP      = ge_IPSlot[eSlot];
 
     if(eMutex == EV_MUTEX1)
         mutex_lock(&sdmmc1_mutex);
-    //else if(eMutex == EV_MUTEXS)
-        //mutex_lock(&FCIE3_mutex);
     else if(eMutex == EV_MUTEX2)
         mutex_lock(&sdmmc2_mutex);
     else if(eMutex == EV_MUTEX3)
         mutex_lock(&sdmmc3_mutex);
-
-    Hal_CARD_IPBeginSetting(eIP);
-
 }
 
 
@@ -229,14 +224,9 @@ static void _CRIT_SECT_BEGIN(SlotEmType eSlot)
 static void _CRIT_SECT_END(SlotEmType eSlot)
 {
     MutexEmType eMutex = ge_MutexSlot[eSlot];
-    IPEmType eIP      = ge_IPSlot[eSlot];
-
-    Hal_CARD_IPEndSetting(eIP);
 
     if(eMutex == EV_MUTEX1)
         mutex_unlock(&sdmmc1_mutex);
-    //else if(eMutex == EV_MUTEXS)
-        //mutex_unlock(&FCIE3_mutex);
     else if(eMutex == EV_MUTEX2)
         mutex_unlock(&sdmmc2_mutex);
     else if(eMutex == EV_MUTEX3)
@@ -245,130 +235,90 @@ static void _CRIT_SECT_END(SlotEmType eSlot)
 }
 
 
-//
-//-----------------------------------------------------------------------------------------------------------
-#define _CRIT_SetMIEIntEn_ForV4(Slot, TransType)   //Null for FCIE5...
-
-
-// Dynamic IP PAD Mapping
-//------------------------------------------------------------------------------------------------
-static void _Dyn_IP_PAD_Mappingg(SlotEmType eSlot)
-{
-
-    U8_T u8IP_idx   = gu8_IPOrderSlot[eSlot];
-    U8_T u8PAD_idx  = gu8_PADOrderSlot[eSlot];
-
-    ge_IPSlot[eSlot]                        = ge_IPSet[u8IP_idx];
-    ge_PORTSlot[eSlot]                      = ge_PORTSet[u8IP_idx];
-    gu16_MieIntNoSlot[eSlot]                = gu16_MieIntNoSet[u8IP_idx];
-
-    ge_PADSlot[eSlot]                       = ge_PADSet[u8PAD_idx];
-    gu16_CdzIntNoSlot[eSlot]                = gu16_CdzIntNoSet[u8PAD_idx];
-
-    gb_ShareCDZIRQSlot[eSlot]               = gb_ShareCDZIRQSet[u8PAD_idx];
-    gb_WakeupCDZIRQSlot[eSlot]              = gb_WakeupCDZIRQSet[u8PAD_idx];
-    gu32_CDZIRQParaSlot[eSlot]              = gu32_CDZIRQParaSet[u8PAD_idx];
-
-}
-
-
-
 // Switch PAD
 //------------------------------------------------------------------------------------------------
 static void _SwitchPAD(SlotEmType eSlot)
 {
-    IPEmType eIP      = ge_IPSlot[eSlot];
-    PortEmType ePort  = ge_PORTSlot[eSlot];
-    PADEmType ePAD    = ge_PADSlot[eSlot];
+    IpOrder eIP = ge_IPOrderSlot[eSlot];
+    PadOrder ePAD = ge_PADOrderSlot[eSlot];
+    U32_T nPwrPadNum = gu32_PwrNoSlot[eSlot];
+    U32_T nCdzPadNum = gu32_CdzNoSlot[eSlot];
+    BOOL_T bIsFakeCdz = gb_FakeCDZSlot[eSlot];
 
-    Hal_CARD_SetPADToPortPath(eIP, ePort, ePAD, FALSE);
-    Hal_CARD_InitPADPin(ePAD, FALSE);
-
+    Hal_CARD_ConfigSdPad(eIP, ePAD);
+    Hal_CARD_ConfigPowerPad(eIP, (U16_T)nPwrPadNum);
+    if (!bIsFakeCdz)
+    {
+        Hal_CARD_ConfigCdzPad(eIP, nCdzPadNum);
+    }
+    Hal_CARD_InitPADPin(eIP, ePAD);
 }
-
-
-// Set Bus Voltage
-//------------------------------------------------------------------------------------------------
-static void _SetBusVdd(SlotEmType eSlot, U8_T u8Vdd)
-{
-    PADEmType ePAD    = ge_PADSlot[eSlot];
-
-    /****** Simple Setting Here ******/
-    Hal_CARD_SetPADPower(ePAD, (PADVddEmType)u8Vdd);
-
-}
-
 
 // Set Power
 //------------------------------------------------------------------------------------------------
 static void _SetPower(SlotEmType eSlot, U8_T u8PowerMode)
 {
-    IPEmType eIP      = ge_IPSlot[eSlot];
-    PADEmType ePAD    = ge_PADSlot[eSlot];
+    IpOrder eIP     = ge_IPOrderSlot[eSlot];
+    PadOrder ePAD   = ge_PADOrderSlot[eSlot];
 
-    if(u8PowerMode == MMC_POWER_OFF) // Power Off
+    if(u8PowerMode == MMC_POWER_OFF)
     {
+        //
         Hal_SDMMC_ClkCtrl(eIP, FALSE, 0);
-        Hal_CARD_PullPADPin(ePAD, EV_PULLDOWN, FALSE);
 
-        if(EN_SDMMC_CHG_PWR_PIN)
-        {
-            if(gu32_PwrNoSlot[eSlot]>0)
-            {
-                gpio_direction_output(gu32_PwrNoSlot[eSlot], 1); // GPIO Power Off
-                msleep(WT_POWEROFF);
-            }
-        }
-        else
-        {
-            Hal_CARD_PowerOff(ePAD, WT_POWEROFF); //For SD PAD
-        }
+        //
+        Hal_CARD_PowerOff(eIP, 0);
 
+        //
+        Hal_CARD_PullPADPin(eIP, ePAD, EV_PULLDOWN);
+
+        //
+        Hal_Timer_mSleep(gu32_PwrOffDelaySlot[eSlot]);
     }
-    else if(u8PowerMode == MMC_POWER_UP)  // Power Up
+    else if(u8PowerMode == MMC_POWER_UP)
     {
-        Hal_CARD_PullPADPin(ePAD, EV_PULLUP, FALSE);
+        //
+        Hal_CARD_PowerOn(eIP, 0);
 
-        if(EN_SDMMC_CHG_PWR_PIN)
-        {
-            if(gu32_PwrNoSlot[eSlot]>0)
-            {
-                gpio_direction_output(gu32_PwrNoSlot[eSlot], 0); // GPIO Power Off
-                msleep(WT_POWERUP);
-            }
-        }
-        else
-        {
-            Hal_CARD_PowerOn(ePAD, WT_POWERUP);
-        }
+        Hal_Timer_uDelay(10); // For power-up waveform looks fine.
+        Hal_CARD_PullPADPin(eIP, ePAD, EV_PULLUP);
 
-
-
+        //
+        Hal_Timer_mSleep(WT_POWERUP);
     }
-    else if(u8PowerMode == MMC_POWER_ON) // Power On
+    else if(u8PowerMode == MMC_POWER_ON)
     {
-        Hal_SDMMC_ClkCtrl(eIP, TRUE, WT_POWERON);
+        //
+        Hal_SDMMC_ClkCtrl(eIP, TRUE, 0);
         Hal_SDMMC_Reset(eIP);
-    }
 
+        //
+        Hal_Timer_mSleep(gu32_PwrOnDelaySlot[eSlot]);
+    }
 }
 
 
 //------------------------------------------------------------------------------------------------
-static U32_T _SetClock(SlotEmType eSlot, unsigned int u32ReffClk, U8_T u8PassLevel, U8_T u8DownLevel)
+static U32_T _SetClock(SlotEmType eSlot, unsigned int u32ReffClk)
 {
     U32_T u32RealClk =0 ;
-    IPEmType eIP = ge_IPSlot[eSlot];
+    IpOrder eIP = ge_IPOrderSlot[eSlot];
 
     if(u32ReffClk)
     {
-        u32RealClk = Hal_CARD_FindClockSetting(eIP, (U32_T)u32ReffClk, u8PassLevel, u8DownLevel);
+        u32RealClk = Hal_CARD_FindClockSetting(eIP, (U32_T)u32ReffClk);
 
-    #if (!FORCE_HAL_CLK) && (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+        Hal_SDMMC_ClkCtrl(eIP, FALSE, 0);   // disable clock first to avoid unexpected clock rate output
+    #if (!FORCE_HAL_CLK) && (defined(CONFIG_OF))
+    #ifdef CONFIG_CAM_CLK
+        //
+    #else
         clk_set_rate(gp_clkSlot[eSlot], u32RealClk);
+    #endif
     #else
         Hal_CARD_SetClock(eIP, u32RealClk);
     #endif
+        Hal_SDMMC_ClkCtrl(eIP, TRUE, 0);    // enable clock
 
         Hal_SDMMC_SetNrcDelay(eIP, u32RealClk);
     }
@@ -380,7 +330,7 @@ static U32_T _SetClock(SlotEmType eSlot, unsigned int u32ReffClk, U8_T u8PassLev
 //------------------------------------------------------------------------------------------------
 static void _SetBusWidth(SlotEmType eSlot, U8_T u8BusWidth)
 {
-    IPEmType eIP = ge_IPSlot[eSlot];
+    IpOrder eIP = ge_IPOrderSlot[eSlot];
 
     switch(u8BusWidth)
     {
@@ -400,23 +350,17 @@ static void _SetBusWidth(SlotEmType eSlot, U8_T u8BusWidth)
 //------------------------------------------------------------------------------------------------
 static void _SetBusTiming(SlotEmType eSlot, U8_T u8BusTiming)
 {
-    IPEmType eIP = ge_IPSlot[eSlot];
+    IpOrder eIP = ge_IPOrderSlot[eSlot];
 
     switch(u8BusTiming)
     {
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
         case MMC_TIMING_UHS_SDR12:
-#endif
         case MMC_TIMING_LEGACY:
             /****** For Default Speed ******/
             Hal_SDMMC_SetBusTiming(eIP, EV_BUS_DEF);
-            Hal_CARD_SetBusTiming(eIP, EV_BUS_DEF);
             break;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
         case MMC_TIMING_UHS_SDR25:
-#endif
         case MMC_TIMING_SD_HS:
         case MMC_TIMING_MMC_HS:
         case MMC_TIMING_UHS_SDR50:
@@ -424,18 +368,15 @@ static void _SetBusTiming(SlotEmType eSlot, U8_T u8BusTiming)
         case MMC_TIMING_MMC_HS200:
             /****** For High Speed ******/
             Hal_SDMMC_SetBusTiming(eIP, EV_BUS_HS);
-            Hal_CARD_SetBusTiming(eIP, EV_BUS_HS);
             break;
 
         case MMC_TIMING_UHS_DDR50:
             Hal_SDMMC_SetBusTiming(eIP, EV_BUS_DDR50);
-            Hal_CARD_SetBusTiming(eIP, EV_BUS_DDR50);
             break;
 
         default:
             /****** For 300KHz IP Issue but not for Default Speed ******/
             Hal_SDMMC_SetBusTiming(eIP, EV_BUS_LOW);
-            Hal_CARD_SetBusTiming(eIP, EV_BUS_LOW);
             break;
     }
 }
@@ -443,45 +384,28 @@ static void _SetBusTiming(SlotEmType eSlot, U8_T u8BusTiming)
 //------------------------------------------------------------------------------------------------
 static BOOL_T _GetCardDetect(SlotEmType eSlot)
 {
-    PADEmType ePAD = ge_PADSlot[eSlot];
+    IpOrder eIP = ge_IPOrderSlot[eSlot];
 
-    if(gb_FakeCDZSlot[eSlot])
+    if (gb_FakeCDZSlot[eSlot])
     {
         return (TRUE);
     }
     else
     {
-
-        if(gb_ReverseCDZ)
-            return !Hal_CARD_GetGPIOState((GPIOEmType)eSlot, ePAD);
+        if (gb_ReverseCDZ)
+            return !Hal_CARD_GetCdzState(eIP);
         else
-            return Hal_CARD_GetGPIOState((GPIOEmType)eSlot, ePAD);
-
+            return Hal_CARD_GetCdzState(eIP);
     }
 
     return (FALSE);
 }
 
-//------------------------------------------------------------------------------------------------
 static BOOL_T _GetWriteProtect(SlotEmType eSlot)
 {
-
-#if(EN_SDMMC_TCARD)
-    return (FALSE);
-#else
-    IPEmType eIP = ge_IPSlot[eSlot];
-
-    #if(EN_SDMMC_WPREV)
-    return !Hal_SDMMC_WriteProtect(eIP);
-    #else
-    return  Hal_SDMMC_WriteProtect(eIP);
-    #endif
-
-#endif
-
+    return FALSE;
 }
 
-//------------------------------------------------------------------------------------------------
 static BOOL_T _CardDetect_PlugDebounce(SlotEmType eSlot, U32_T u32WaitMs, BOOL_T bPrePlugStatus)
 {
     BOOL_T bCurrPlugStatus = bPrePlugStatus;
@@ -520,7 +444,7 @@ static U16_T _PreDataBufferProcess(TransEmType eTransType, struct mmc_data *data
     U32_T u32TotalSize = data->blksz * data->blocks;
     unsigned *pDMAbuf = sdmmchost->dma_buffer;
 
-#elif (EN_SDMMC_BRO_DMA) && (EN_SDMMC_ADV_DMA)
+#else
     U16_T u16SubBCnt = 0;
     U32_T u32SubLen = 0;
     BOOL_T bEnd = (FALSE);
@@ -543,6 +467,8 @@ static U16_T _PreDataBufferProcess(TransEmType eTransType, struct mmc_data *data
 #endif
     {
         p_sg = &data->sg[u16sg_idx];
+
+        // dma_map_page will flush cache in DMA_TO_DEVICE or invalidate cache in DMA_FROM_DEVICE. (only L1,L2)
         p_sg->dma_address = dma_map_page(NULL, sg_page(p_sg), p_sg->offset, p_sg->length, u8Dir);
 
         if(dma_mapping_error(NULL, p_sg->dma_address)) //Add to avoid unmap warning!
@@ -554,30 +480,37 @@ static U16_T _PreDataBufferProcess(TransEmType eTransType, struct mmc_data *data
         pu32AddrArr[u16sg_idx] = (U32_T)p_sg->dma_address;
     }
 
-#if (EN_SDMMC_BRO_DMA) && (EN_SDMMC_ADV_DMA)
-
-    for(u16sg_idx=0 ; u16sg_idx< data->sg_len ; u16sg_idx++)
+#if (EN_SDMMC_BRO_DMA)
+    if (eTransType == EV_ADMA)
     {
-        if( u16sg_idx==((data->sg_len)-1) )
-            bEnd = (TRUE);
+        for(u16sg_idx=0 ; u16sg_idx< data->sg_len ; u16sg_idx++)
+        {
+            if( u16sg_idx==((data->sg_len)-1) )
+                bEnd = (TRUE);
 
-        u32SubLen = data->sg[u16sg_idx].length;
-        u16SubBCnt = (U16_T)(u32SubLen/data->blksz);
-        Hal_SDMMC_ADMASetting((volatile void *)pADMAbuf, u16sg_idx, u32SubLen, u16SubBCnt, Hal_CARD_TransMIUAddr((U32_T)pu32AddrArr[u16sg_idx], &u8MIUSel), u8MIUSel, bEnd);
+            u32SubLen = data->sg[u16sg_idx].length;
+            u16SubBCnt = (U16_T)(u32SubLen/data->blksz);
+            Hal_SDMMC_ADMASetting((volatile void *)pADMAbuf, u16sg_idx, u32SubLen, u16SubBCnt, Hal_CARD_TransMIUAddr((U32_T)pu32AddrArr[u16sg_idx], &u8MIUSel), u8MIUSel, bEnd);
+        }
+
+        // Flush L3
+        // 1. For sg_buffer DMA_TO_DEVICE.
+        // 2. For sg_buffer DMA_FROM_DEVICE(invalidate L1,L2 is not enough).
+        // 3. For ADMA descriptor(non-cache).
+        Chip_Flush_MIU_Pipe();
+
+        pu32AddrArr[0] = (U32_T) sdmmchost->adma_phy_addr;
+        return 1;
     }
+    else {
 
-    L3_FLUSH_PIPE();  //Avoid L3 issue
+        // Flush L3
+        // 1. For sg_buffer DMA_TO_DEVICE.
+        // 2. For sg_buffer DMA_FROM_DEVICE(invalidate L1,L2 is not enough).
+        Chip_Flush_MIU_Pipe();
 
-    pu32AddrArr[0] = (U32_T) sdmmchost->adma_phy_addr;
-    return 1;
-
-#elif (EN_SDMMC_BRO_DMA)
-
-    if(data->flags & MMC_DATA_WRITE)
-        L3_FLUSH_PIPE(); //Avoid L3 issue
-
-    return (U16_T)data->sg_len;
-
+        return (U16_T)data->sg_len;
+    }
 #else
     else
     {
@@ -596,13 +529,14 @@ static U16_T _PreDataBufferProcess(TransEmType eTransType, struct mmc_data *data
 
                 u16sg_idx++;
             }
-
-            L3_FLUSH_PIPE(); //Avoid L3 issue
-
         }
 
-        pu32AddrArr[0] = (U32_T) sdmmchost->dma_phy_addr;
+        // Flush L3
+        // 1. For sg_buffer DMA_TO_DEVICE.
+        // 2. For sg_buffer DMA_FROM_DEVICE(invalidate L1,L2 is not enough).
+        Chip_Flush_MIU_Pipe();
 
+        pu32AddrArr[0] = (U32_T) sdmmchost->dma_phy_addr;
     }
 
     return 1;
@@ -634,8 +568,6 @@ static void _PostDataBufferProcess(TransEmType eTransType, struct mmc_data *data
     {
         p_sg = &data->sg[u16sg_idx];
         dma_unmap_page(NULL, p_sg->dma_address, p_sg->length, u8Dir);
-        if ( (u8Dir==DMA_FROM_DEVICE) && EN_SDMMC_DCACHE_FLUSH && (sg_page(p_sg) != NULL) && !PageSlab(sg_page(p_sg)) )
-            flush_dcache_page(sg_page(p_sg));
     }
 
 #else
@@ -644,8 +576,6 @@ static void _PostDataBufferProcess(TransEmType eTransType, struct mmc_data *data
     {
         p_sg = &data->sg[0];
         dma_unmap_page(NULL, p_sg->dma_address, p_sg->length, u8Dir);
-        if ( (u8Dir==DMA_FROM_DEVICE) && EN_SDMMC_DCACHE_FLUSH && (sg_page(p_sg) != NULL) && !PageSlab(sg_page(p_sg)) )
-            flush_dcache_page(sg_page(p_sg));
     }
     else
     {
@@ -661,13 +591,8 @@ static void _PostDataBufferProcess(TransEmType eTransType, struct mmc_data *data
                 u32TotalSize -= u32TranBytes;
                 pDMAbuf += (u32TranBytes >> 2) ;
 
-                flush_dcache_page(sg_page(p_sg));
                 kunmap_atomic(pSGbuf, KM_BIO_SRC_IRQ);
             }
-
-            //Avoid L3 issue
-            L3_FLUSH_PIPE();
-
         }
     }
 
@@ -703,7 +628,6 @@ static SDMMCRspEmType _TransRspType(unsigned int u32Rsp)
         default:
             return EV_R1;
     }
-
 }
 //------------------------------------------------------------------------------------------------
 static BOOL_T _PassPrintCMD(SlotEmType eSlot, U8_T u32Cmd, U32_T u32Arg, BOOL_T bSDIODev)
@@ -713,7 +637,7 @@ static BOOL_T _PassPrintCMD(SlotEmType eSlot, U8_T u32Cmd, U32_T u32Arg, BOOL_T 
         return (FALSE);
 
 
-    if(gb_SDIOPRTSlot[eSlot]) //SDIO Use
+    if (gb_SdioUseSlot[eSlot])
     {
         if(u32Cmd == SD_SEND_IF_COND)
         {
@@ -744,20 +668,20 @@ static BOOL_T _PassPrintCMD(SlotEmType eSlot, U8_T u32Cmd, U32_T u32Arg, BOOL_T 
     return (FALSE);
 
 }
-
+//------------------------------------------------------------------------------------------------
+static BOOL_T _IsAdmaMode(SlotEmType eSlot)
+{
+    return (gb_SdioUseSlot[eSlot])? FALSE: TRUE;
+}
 //------------------------------------------------------------------------------------------------
 static int _RequestEndProcess(CmdEmType eCmdType, RspErrEmType eErrType, struct ms_sdmmc_slot *p_sdmmc_slot, struct mmc_data *data)
 {
     int nErr = 0;
-    BOOL_T bNeedDownLevel = FALSE;
     ErrGrpEmType eErrGrp;
-    SlotEmType eSlot = (SlotEmType)p_sdmmc_slot->slotNo;
-
-    IPEmType eIP = ge_IPSlot[eSlot];
 
     if( eErrType == EV_STS_OK )
     {
-        pr_sdio_main("_[%01X]", Hal_SDMMC_GetDATBusLevel(eIP));
+        pr_sdio_main("_[%01X]", Hal_SDMMC_GetDATBusLevel(ge_IPOrderSlot[p_sdmmc_slot->slotNo]));
         pr_sd_main("@\n");
     }
     else
@@ -767,7 +691,6 @@ static int _RequestEndProcess(CmdEmType eCmdType, RspErrEmType eErrType, struct 
 
         if(eCmdType != EV_CMDRSP)
         {
-
             eErrGrp = Hal_SDMMC_ErrGroup(eErrType);
 
             switch((U16_T)eErrGrp)
@@ -778,32 +701,7 @@ static int _RequestEndProcess(CmdEmType eCmdType, RspErrEmType eErrType, struct 
 
                 case EV_EGRP_COMM:
                     nErr = -EILSEQ;
-                    bNeedDownLevel = TRUE;
                     break;
-            }
-
-
-
-        }
-
-    }
-
-    /****** (1) SD Re-Detection after timeout******/
-    if(gb_IntCDZSlot[eSlot] || (!EN_SDMMC_POLLING_CDZ))
-    {
-        if(eCmdType != EV_CMDRSP)
-        {
-            if( eErrType == EV_STS_OK )
-                p_sdmmc_slot->currTimeoutCnt = 0;
-            else if(eErrType == EV_STS_MIE_TOUT)
-                p_sdmmc_slot->currTimeoutCnt++;
-
-            if(p_sdmmc_slot->currTimeoutCnt>=3)
-            {
-                Hal_SDMMC_StopProcessCtrl(eIP, TRUE);
-                mmc_detect_change(p_sdmmc_slot->mmc, msecs_to_jiffies(WT_DB_SW_UNPLUG));
-                p_sdmmc_slot->currTimeoutCnt =0;
-                printk("\n>> [sdmmc_%u] Auto Re-Dectection.........\n\n", eSlot);
             }
         }
     }
@@ -822,19 +720,7 @@ static int _RequestEndProcess(CmdEmType eCmdType, RspErrEmType eErrType, struct 
 
     pr_sd_main("\n");
 
-    /****** (3) Downgrad Clock Speed for Some Bus Errors ******/
-    if(bNeedDownLevel && gb_DownLVLSlot[eSlot])
-    {
-        if( (p_sdmmc_slot->currDownLevel+1) <= gu32_MaxDLVLSlot[eSlot])
-            p_sdmmc_slot->currDownLevel += 1;
-
-        p_sdmmc_slot->currRealClk = _SetClock(eSlot, p_sdmmc_slot->currClk, gu32_PassLVLSlot[eSlot], p_sdmmc_slot->currDownLevel);
-        printk(">> [sdmmc_%u] Downgrade Clk from (Clk=%u)=> (Real=%u)\n", eSlot, p_sdmmc_slot->currClk, p_sdmmc_slot->currRealClk);
-    }
-
-
     return nErr;
-
 }
 
 
@@ -853,18 +739,14 @@ static irqreturn_t ms_sdmmc_cdzint(int irq, void *p_dev_id)
 {
     irqreturn_t irq_t = IRQ_NONE;
     IntSourceStruct* pstIntSource = p_dev_id;
-    SlotEmType eSlot = (SlotEmType)pstIntSource->slotNo;
-    PADEmType ePAD   = ge_PADSlot[eSlot];
     struct ms_sdmmc_slot *p_sdmmc_slot = pstIntSource->p_data;
 
-    if(!gb_ShareCDZIRQSlot[eSlot])
-        disable_irq_nosync(irq);
+    //
+    disable_irq_nosync(irq);
 
-    if(Hal_CARD_GPIOIntFilter((GPIOEmType)eSlot, ePAD))
-    {
-        tasklet_schedule(&p_sdmmc_slot->hotplug_tasklet);
-        irq_t = IRQ_HANDLED;
-    }
+    //
+    tasklet_schedule(&p_sdmmc_slot->hotplug_tasklet);
+    irq_t = IRQ_HANDLED;
 
     return irq_t;
 }
@@ -881,8 +763,7 @@ static void ms_sdmmc_hotplug(unsigned long data)
 {
     struct ms_sdmmc_slot  *p_sdmmc_slot = (struct ms_sdmmc_slot  *) data;
     SlotEmType eSlot = (SlotEmType)p_sdmmc_slot->slotNo;
-    IPEmType eIP = ge_IPSlot[eSlot];
-    PADEmType ePAD   = ge_PADSlot[eSlot];
+    IpOrder eIP = ge_IPOrderSlot[eSlot];
     GPIOOptEmType eINSOPT = EV_GPIO_OPT3;
     GPIOOptEmType eEJTOPT = EV_GPIO_OPT4;
 
@@ -894,7 +775,7 @@ static void ms_sdmmc_hotplug(unsigned long data)
     }
 
 
-    printk("\n>> [sdmmc_%u] CDZ... ", eSlot);
+    pr_sd_dbg("\n>> [sdmmc_%u] CDZ... ", eSlot);
 
 LABEL_LOOP_HOTPLUG:
 
@@ -904,10 +785,10 @@ LABEL_LOOP_HOTPLUG:
             goto LABEL_LOOP_HOTPLUG;
 
         mmc_detect_change(p_sdmmc_slot->mmc, msecs_to_jiffies(WT_DB_SW_PLUG));
-        printk("(INS) OK!\n");
+        pr_sd_dbg("(INS) OK!\n");
 
-        Hal_CARD_SetGPIOIntAttr((GPIOEmType)eSlot, ePAD, EV_GPIO_OPT1, p_sdmmc_slot->cdzIRQNo);
-        Hal_CARD_SetGPIOIntAttr((GPIOEmType)eSlot, ePAD, eINSOPT, p_sdmmc_slot->cdzIRQNo);
+        Hal_CARD_SetGPIOIntAttr(EV_GPIO_OPT1, p_sdmmc_slot->cdzIRQNo);
+        Hal_CARD_SetGPIOIntAttr(eINSOPT, p_sdmmc_slot->cdzIRQNo);
 
 
     }
@@ -921,60 +802,15 @@ LABEL_LOOP_HOTPLUG:
 
         Hal_SDMMC_StopProcessCtrl(eIP, TRUE);
         mmc_detect_change(p_sdmmc_slot->mmc, msecs_to_jiffies(WT_DB_SW_UNPLUG));
-        printk("(EJT) OK!\n");
+        pr_sd_dbg("(EJT) OK!\n");
 
-        Hal_CARD_SetGPIOIntAttr((GPIOEmType)eSlot, ePAD, EV_GPIO_OPT1, p_sdmmc_slot->cdzIRQNo);
-        Hal_CARD_SetGPIOIntAttr((GPIOEmType)eSlot, ePAD, eEJTOPT, p_sdmmc_slot->cdzIRQNo);
+        Hal_CARD_SetGPIOIntAttr(EV_GPIO_OPT1, p_sdmmc_slot->cdzIRQNo);
+        Hal_CARD_SetGPIOIntAttr(eEJTOPT, p_sdmmc_slot->cdzIRQNo);
 
     }
 
-    if(!gb_ShareCDZIRQSlot[eSlot])
-        enable_irq(p_sdmmc_slot->cdzIRQNo);
-
+    enable_irq(p_sdmmc_slot->cdzIRQNo);
 }
-
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0))
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: ms_sdmmc_enable
- *     @author jeremy.wang (2012/3/21)
- * Desc: Something we want to do before Host Enable
- *
- * @param p_mmc_host :
- *
- * @return int  : 0 = Success, >0 = Error
- ----------------------------------------------------------------------------------------------------------*/
-static int ms_sdmmc_enable(struct mmc_host *p_mmc_host)
-{
-    gb_RejectSuspend = TRUE;
-    return 0;
-}
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: ms_sdmmc_disable
- *     @author jeremy.wang (2012/3/21)
- * Desc: Something we want to do before Host Disable
- *
- * @param p_mmc_host :
- * @param lazy : msec for delay work
- *
- * @return int  : 0 = No Delay, <0 = Error, >0 = Delay time
- ----------------------------------------------------------------------------------------------------------*/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 4, 0))
-static int ms_sdmmc_disable(struct mmc_host *p_mmc_host, int lazy)
-{
-    gb_RejectSuspend = FALSE;
-    return lazy;
-}
-#else
-static int ms_sdmmc_disable(struct mmc_host *p_mmc_host)
-{
-    gb_RejectSuspend = FALSE;
-    return 0;
-}
-#endif
-#endif
 
 /*----------------------------------------------------------------------------------------------------------
  *
@@ -995,9 +831,13 @@ static void ms_sdmmc_request(struct mmc_host *p_mmc_host, struct mmc_request *p_
     RspStruct * eRspSt;
     RspErrEmType eErr = EV_STS_OK;
     CmdEmType eCmdType = EV_CMDRSP;
-    TransEmType eTransType = ((EN_SDMMC_ADV_DMA) && (EN_SDMMC_BRO_DMA) ? EV_ADMA : EV_DMA );
     SlotEmType eSlot = (SlotEmType)p_sdmmc_slot->slotNo;
-    IPEmType eIP = ge_IPSlot[eSlot];
+    #if (EN_SDMMC_BRO_DMA)
+    TransEmType eTransType = (_IsAdmaMode(eSlot)) ? EV_ADMA : EV_DMA;
+    #else
+    TransEmType eTransType = EV_DMA;
+    #endif
+    IpOrder eIP = ge_IPOrderSlot[eSlot];
     volatile U32_T au32Addr[MAX_SEG_CNT];
 
     BOOL_T bCloseClock = FALSE;
@@ -1010,23 +850,23 @@ static void ms_sdmmc_request(struct mmc_host *p_mmc_host, struct mmc_request *p_
     u8CMD =(U8_T)cmd->opcode;
     u32Arg = (U32_T)cmd->arg;
 
-    if(Hal_SDMMC_OtherPreUse(eIP) || gb_AlwaysSwitchPAD)
-        _SwitchPAD(eSlot);
-
     if(!p_sdmmc_slot->mmc->card)
        Hal_SDMMC_StopProcessCtrl(eIP, FALSE);
 
-#if (!FORCE_HAL_CLK) && (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+#if (!FORCE_HAL_CLK) && (defined(CONFIG_OF))
+
+#ifdef CONFIG_CAM_CLK
+    //
+#else
     clk_set_rate(gp_clkSlot[eSlot], p_sdmmc_slot->currRealClk);
+#endif
+
 #else
     Hal_CARD_SetClock(eIP, p_sdmmc_slot->currRealClk);
 #endif
 
     pr_sdio_main("_[%01X]_", Hal_SDMMC_GetDATBusLevel(eIP));
     pr_sd_main(">> [sdmmc_%u] CMD_%u (0x%08X)", eSlot, u8CMD, u32Arg);
-
-    /***** Specail Case for FCIE4 SDIO ******/
-    _CRIT_SetMIEIntEn_ForV4(eSlot, (!data ? EV_EMP : EV_DMA));
 
     Hal_SDMMC_SetCmdToken(eIP, u8CMD, u32Arg);
     /****** Simple SD command *******/
@@ -1112,19 +952,23 @@ LABEL_SD_ERR:
     /****** Print Error Message******/
     if(!data && cmd->error && !_PassPrintCMD(eSlot, u8CMD, u32Arg, (BOOL_T)p_sdmmc_slot->sdioFlag)) //Cmd Err but Pass Print Some Cmds
     {
-        if(cmd->error == -EILSEQ)
+        if(cmd->error == -EILSEQ) {
             pr_sd_err(">> [sdmmc_%u] Warn: #Cmd_%u (0x%08X)=>(E: 0x%04X)(S: 0x%08X)__(L:%u)\n", eSlot, u8CMD, u32Arg, (U16_T)eErr, cmd->resp[0], eRspSt->u32ErrLine);
-        else
+        }
+        else {
             pr_sd_err(">> [sdmmc_%u] Err: #Cmd_%u (0x%08X)=>(E: 0x%04X)(S: 0x%08X)__(L:%u)\n", eSlot, u8CMD, u32Arg, (U16_T)eErr, cmd->resp[0], eRspSt->u32ErrLine);
+        }
     }
     else if(data && data->error) //Data Err
     {
-        if(data->error == -EILSEQ)
+        if(data->error == -EILSEQ) {
             pr_sd_err(">> [sdmmc_%u] Warn: #Cmd_%u (0x%08X)=>(E: 0x%04X)(S: 0x%08X)__(L:%u)(B:%u/%u)(I:%u/%u)\n", \
                   eSlot, u8CMD, u32Arg, (U16_T)eErr, cmd->resp[0], eRspSt->u32ErrLine, u16SubBlkCnt, u16BlkCnt, u16Idx, u16ProcCnt);
-        else
+        }
+        else {
             pr_sd_err(">> [sdmmc_%u] Err: #Cmd_%u (0x%08X)=>(E: 0x%04X)(S: 0x%08X)__(L:%u)(B:%u/%u)(I:%u/%u)\n", \
                   eSlot, u8CMD, u32Arg, (U16_T)eErr, cmd->resp[0], eRspSt->u32ErrLine, u16SubBlkCnt, u16BlkCnt, u16Idx, u16ProcCnt);
+        }
     }
 
     /****** Send Stop Cmd ******/
@@ -1133,9 +977,6 @@ LABEL_SD_ERR:
         u8CMD = (U8_T)stop->opcode;
         u32Arg = (U32_T)stop->arg;
         pr_sd_main(">> [sdmmc_%u]_CMD_%u (0x%08X)", eSlot, u8CMD, u32Arg);
-
-        /***** Specail Case for FCIE4 SDIO ******/
-        _CRIT_SetMIEIntEn_ForV4(eSlot, (!data ? EV_EMP : EV_DMA));
 
         Hal_SDMMC_SetCmdToken(eIP, u8CMD, u32Arg);
         Hal_SDMMC_SetSDIOIntBeginSetting(eIP, u8CMD, u32Arg, EV_CMDRSP, 0);
@@ -1176,29 +1017,32 @@ static void ms_sdmmc_set_ios(struct mmc_host *p_mmc_host, struct mmc_ios *p_mmc_
 
     _CRIT_SECT_BEGIN(eSlot);
 
-    _SwitchPAD(eSlot);
-
     /****** Clock Setting*******/
     if(p_sdmmc_slot->currClk != p_mmc_ios->clock)
     {
 /* Modified by Spade: enable clk in probe
-        #if (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+        #if defined(CONFIG_OF)
         if(p_mmc_ios->clock>0)
             clk_prepare_enable(gp_clkSlot[eSlot]);
         else
             clk_disable_unprepare(gp_clkSlot[eSlot]);
         #endif
 */
-        p_sdmmc_slot->currDownLevel = 0;
         p_sdmmc_slot->currClk = p_mmc_ios->clock;
-        p_sdmmc_slot->currRealClk = _SetClock(eSlot, p_sdmmc_slot->currClk, 0, p_sdmmc_slot->currDownLevel);
+        p_sdmmc_slot->currRealClk = _SetClock(eSlot, p_sdmmc_slot->currClk);
 
         if( (p_sdmmc_slot->currRealClk==0) && (p_sdmmc_slot->currClk!=0) )
-            printk(">> [sdmmc_%u] Set IOS => Clk=Error\n", eSlot);
+        {
+            pr_sd_err(">> [sdmmc_%u] Set IOS => Clk=Error\n", eSlot);
+        }
         else if(p_sdmmc_slot->currRealClk <= 400000)
+        {
             _SetBusTiming(eSlot, 0xFF);
+        }
         else
-            printk(">> [sdmmc_%u] Set IOS => Clk=%u (Real=%u)\n", eSlot, p_sdmmc_slot->currClk, p_sdmmc_slot->currRealClk);
+        {
+            pr_sd_dbg(">> [sdmmc_%u] Set IOS => Clk=%u (Real=%u)\n", eSlot, p_sdmmc_slot->currClk, p_sdmmc_slot->currRealClk);
+        }
     }
 
     /****** Power Switch Setting *******/
@@ -1231,16 +1075,14 @@ static void ms_sdmmc_set_ios(struct mmc_host *p_mmc_host, struct mmc_ios *p_mmc_
         pr_sd_main(">> [sdmmc_%u] Set IOS => BusTiming=%u\n", eSlot, p_sdmmc_slot->currTiming);
     }
 
+#if 0
     /****** Voltage Setting *******/
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 8))
     if( (p_sdmmc_slot->currVdd != p_mmc_ios->signal_voltage) || !p_sdmmc_slot->initFlag)
     {
         p_sdmmc_slot->currVdd = p_mmc_ios->signal_voltage;
-        pr_sd_main(">> [sdmmc_%u] Set IOS => Voltage=%u\n", eSlot, p_sdmmc_slot->currVdd);
-        _SetBusVdd(eSlot, p_sdmmc_slot->currVdd);
+
+        // set voltage function
     }
-#else
-    _SetBusVdd(eSlot, EV_NORVOL);
 #endif
 
     p_sdmmc_slot->initFlag = 1;
@@ -1266,8 +1108,6 @@ static int ms_sdmmc_get_ro(struct mmc_host *p_mmc_host)
     SlotEmType eSlot = (SlotEmType)p_sdmmc_slot->slotNo;
 
     _CRIT_SECT_BEGIN(eSlot);
-
-    _SwitchPAD(eSlot);
 
     if( _GetWriteProtect(eSlot) )    //For CB2 HW Circuit, WP=>NWP
         p_sdmmc_slot->read_only = 1;
@@ -1303,9 +1143,6 @@ static int ms_sdmmc_get_cd(struct mmc_host *p_mmc_host)
     else
         p_sdmmc_slot->card_det  = 0;
 
-    if(!EN_SDMMC_POLLING_CDZ)
-        printk(">> [sdmmc_%u] Get CD => (%d)\n", eSlot, p_sdmmc_slot->card_det);
-
     return p_sdmmc_slot->card_det;
 }
 
@@ -1323,12 +1160,12 @@ static void ms_sdmmc_init_card(struct mmc_host *p_mmc_host, struct mmc_card *p_m
 {
     struct ms_sdmmc_slot   *p_sdmmc_slot  = mmc_priv(p_mmc_host);
     SlotEmType eSlot = (SlotEmType)p_sdmmc_slot->slotNo;
-    IPEmType eIP     = ge_IPSlot[eSlot];
+    IpOrder eIP     = ge_IPOrderSlot[eSlot];
 
     Hal_SDMMC_SDIODeviceCtrl(eIP, TRUE);
     p_sdmmc_slot->sdioFlag = 1;
 
-    printk(">> [sdmmc_%u] Found SDIO Device!\n", eSlot);
+    pr_sd_dbg(">> [sdmmc_%u] Found SDIO Device!\n", eSlot);
 }
 
 /*----------------------------------------------------------------------------------------------------------
@@ -1344,7 +1181,7 @@ static void ms_sdmmc_enable_sdio_irq(struct mmc_host *p_mmc_host, int enable)
 {
     struct ms_sdmmc_slot   *p_sdmmc_slot  = mmc_priv(p_mmc_host);
     SlotEmType eSlot = (SlotEmType)p_sdmmc_slot->slotNo;
-    IPEmType eIP     = ge_IPSlot[eSlot];
+    IpOrder eIP     = ge_IPOrderSlot[eSlot];
 
     // Remove Original VER_04 spin lock
     // TODO: SMP consideration!!!
@@ -1356,7 +1193,6 @@ static void ms_sdmmc_enable_sdio_irq(struct mmc_host *p_mmc_host, int enable)
     {
         pr_sdio_main(">> [sdmmc_%u] =========> SDIO IRQ EN=> (%d)\n", eSlot, enable);
     }
-
 }
 
 /**********************************************************************************************************
@@ -1367,22 +1203,17 @@ static void ms_sdmmc_enable_sdio_irq(struct mmc_host *p_mmc_host, int enable)
  ----------------------------------------------------------------------------------------------------------*/
 static const struct mmc_host_ops st_mmc_ops =
 {
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0))
-    .enable          = ms_sdmmc_enable,
-    .disable         = ms_sdmmc_disable,
-#endif
     .request         = ms_sdmmc_request,
     .set_ios         = ms_sdmmc_set_ios,
     .get_ro          = ms_sdmmc_get_ro,
     .get_cd          = ms_sdmmc_get_cd,
     .init_card       = ms_sdmmc_init_card,
     .enable_sdio_irq = ms_sdmmc_enable_sdio_irq,
-
 };
 
 
 
-#if (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+#if defined(CONFIG_OF)
 
 /*----------------------------------------------------------------------------------------------------------
  *
@@ -1397,95 +1228,205 @@ static int ms_sdmmc_dts_init(struct platform_device *p_dev)
     U8_T  slotNo = 0 , ipidx = 0;
     SlotEmType eSlot;
 
-    U32_T u32_IPOrderSlot[3];
-    U32_T u32_PADOrderSlot[3];
-    U32_T u32_IntCDZSlot[3];
-    U32_T u32_FakeCDZSlot[3];
     U32_T u32_SlotNums = 0;
     U32_T u32_ReverseCDZ = 0;
+    U32_T u32_IPOrderSlot[3];
+    U32_T u32_PADOrderSlot[3];
+    U32_T u32_MaxClkSlot[3];
+    U32_T u32_IntCDZSlot[3];
+    U32_T u32_FakeCDZSlot[3];
+    U32_T u32_CdzNoSlot[3];
+    U32_T u32_PwrNoSlot[3];
+    U32_T u32_PwrOffDelaySlot[3];
+    U32_T u32_PwrOnDelaySlot[3];
+    U32_T u32_SdioUseSlot[3];
+    U32_T u32_RemovableSlot[3];
+#ifdef CONFIG_CAM_CLK
+    U32_T SdmmcClk = 0;
+#endif
 
-    if(of_property_read_u32(p_dev->dev.of_node, "slotnum" , &u32_SlotNums))
+    // Get u32_SlotNums first for getting other DTS entry !
+    if (of_property_read_u32(p_dev->dev.of_node, "slotnum" , &u32_SlotNums))
     {
         pr_err(">> [sdmmc] Err: Could not get dts [slotnum] option!\n");
         return 1;
     }
 
-    if(of_property_read_u32(p_dev->dev.of_node, "revcdz" , &u32_ReverseCDZ))
+    if (of_property_read_u32(p_dev->dev.of_node, "revcdz" , &u32_ReverseCDZ))
     {
         pr_err(">> [sdmmc] Err: Could not get dts [revcdz] option!\n");
         return 1;
     }
 
-    if(of_property_read_u32_array(p_dev->dev.of_node, "slot-ip-orders", (U32_T*)u32_IPOrderSlot, 3))
+    if (of_property_read_u32_array(p_dev->dev.of_node, "slot-ip-orders", (U32_T*)u32_IPOrderSlot, u32_SlotNums))
     {
         pr_err(">> [sdmmc] Err: Could not get dts [slot-ip-orders] option!\n");
         return 1;
     }
 
-    if(of_property_read_u32_array(p_dev->dev.of_node, "slot-pad-orders", (U32_T*)u32_PADOrderSlot, 3))
+    if (of_property_read_u32_array(p_dev->dev.of_node, "slot-pad-orders", (U32_T*)u32_PADOrderSlot, u32_SlotNums))
     {
         pr_err(">> [sdmmc] Err: Could not get dts [slot-pad-orders] option!\n");
         return 1;
     }
 
-    if(of_property_read_u32_array(p_dev->dev.of_node, "slot-fakecdzs", (U32_T*)u32_FakeCDZSlot, 3))
-    {
-        pr_err(">> [sdmmc] Err: Could not get dts [slot-fakecdzs] option!\n");
-        return 1;
-    }
-
-    if(of_property_read_u32_array(p_dev->dev.of_node, "slot-intcdzs", (U32_T*)u32_IntCDZSlot, 3))
-    {
-        pr_err(">> [sdmmc] Err: Could not get dts [slot-intcdzs] option!\n");
-        return 1;
-    }
-
-    if(of_property_read_u32_array(p_dev->dev.of_node, "slot-max-clks", (U32_T*)gu32_MaxClkSlot, 3))
+    if (of_property_read_u32_array(p_dev->dev.of_node, "slot-max-clks", (U32_T*)u32_MaxClkSlot, u32_SlotNums))
     {
         pr_err(">> [sdmmc] Err: Could not get dts [slot-max-clks] option!\n");
         return 1;
     }
 
-    if(of_property_read_u32_array(p_dev->dev.of_node, "slot-pwr-gpios", (U32_T *)gu32_PwrNoSlot, 3))
+    if (of_property_read_u32_array(p_dev->dev.of_node, "slot-intcdzs", (U32_T*)u32_IntCDZSlot, u32_SlotNums))
     {
-        pr_err(">> [sdmmc] Err: Could not get dts [slot-pwr-gpios] option!\n");
+        pr_err(">> [sdmmc] Err: Could not get dts [slot-intcdzs] option!\n");
         return 1;
     }
 
-
-    //Debug
-    if(0)
+    if (of_property_read_u32_array(p_dev->dev.of_node, "slot-fakecdzs", (U32_T*)u32_FakeCDZSlot, u32_SlotNums))
     {
-        pr_err(">> [sdmmc] SlotNums= %u\n", u32_SlotNums);
-        pr_err(">> [sdmmc] SlotIPs[0-2]= %u, %u, %u \n", u32_IPOrderSlot[0], u32_IPOrderSlot[1], u32_IPOrderSlot[2]);
-        pr_err(">> [sdmmc] SlotPADs[0-2]= %u, %u, %u \n", u32_PADOrderSlot[0], u32_PADOrderSlot[1], u32_PADOrderSlot[2]);
-        pr_err(">> [sdmmc] SlotMaxClk[0-2]= %u, %u, %u \n", gu32_MaxClkSlot[0], gu32_MaxClkSlot[1], gu32_MaxClkSlot[2]);
-        pr_err(">> [sdmmc] SlotFakeCDZ[0-2]= %u, %u, %u \n", u32_FakeCDZSlot[0], u32_FakeCDZSlot[1], u32_FakeCDZSlot[2]);
-        pr_err(">> [sdmmc] RevCDZ= %u\n", u32_ReverseCDZ);
+        pr_err(">> [sdmmc] Err: Could not get dts [slot-fakecdzs] option!\n");
+        return 1;
     }
 
+    if (mdrv_padmux_active() == 0)
+    {
+        if (of_property_read_u32_array(p_dev->dev.of_node, "slot-cdzs-gpios", (U32_T *)u32_CdzNoSlot, u32_SlotNums))
+        {
+            pr_err(">> [sdmmc] Err: Could not get dts [slot-cdzs-gpios] option!\n");
+            return 1;
+        }
+
+        if (of_property_read_u32_array(p_dev->dev.of_node, "slot-pwr-gpios", (U32_T *)u32_PwrNoSlot, u32_SlotNums))
+        {
+            pr_err(">> [sdmmc] Err: Could not get dts [slot-pwr-gpios] option!\n");
+            return 1;
+        }
+    }
+
+    if (of_property_read_u32_array(p_dev->dev.of_node, "slot-pwr-off-delay", (U32_T *)u32_PwrOffDelaySlot, u32_SlotNums))
+    {
+        pr_err(">> [sdmmc] Err: Could not get dts [slot-pwr-off-delay] option!\n");
+        return 1;
+    }
+
+    if (of_property_read_u32_array(p_dev->dev.of_node, "slot-pwr-on-delay", (U32_T *)u32_PwrOnDelaySlot, u32_SlotNums))
+    {
+        pr_err(">> [sdmmc] Err: Could not get dts [slot-pwr-on-delay] option!\n");
+        return 1;
+    }
+
+    if (of_property_read_u32_array(p_dev->dev.of_node, "slot-sdio-use", (U32_T *)u32_SdioUseSlot, u32_SlotNums))
+    {
+        pr_err(">> [sdmmc] Err: Could not get dts [slot-sdio-use] option!\n");
+        return 1;
+    }
+
+    if (of_property_read_u32_array(p_dev->dev.of_node, "slot-removable", (U32_T *)u32_RemovableSlot, u32_SlotNums))
+    {
+        pr_err(">> [sdmmc] Err: Could not get dts [slot-removable] option!\n");
+        return 1;
+    }
+
+    //
     gu8_SlotNums = (U8_T)u32_SlotNums;
     gb_ReverseCDZ = (BOOL_T)u32_ReverseCDZ;
 
-    for(slotNo =0; slotNo<3; slotNo++)
+    for (slotNo =0; slotNo<gu8_SlotNums; slotNo++)
     {
         eSlot = (SlotEmType)slotNo;
 
-        gu8_IPOrderSlot[eSlot] = (U8_T)u32_IPOrderSlot[eSlot];
-        gu8_PADOrderSlot[eSlot] = (U8_T)u32_PADOrderSlot[eSlot];
-        gb_FakeCDZSlot[eSlot] = (BOOL_T)u32_FakeCDZSlot[eSlot];
-        gb_IntCDZSlot[eSlot] = (BOOL_T)u32_IntCDZSlot[eSlot];
+        if (mdrv_padmux_active() != 0)
+        {
+            if (Hal_CARD_GetPadInfoCdzPad((IpOrder)u32_IPOrderSlot[eSlot], &u32_CdzNoSlot[eSlot]) == 0 )
+            {
+                pr_err(">> [sdmmc] Err: slotNo = %u, Could not get dts from Padmux dts [slot-cdzs-gpios] option!\n", slotNo);
+                return 1;
+            }
 
+            if (Hal_CARD_GetPadInfoPowerPad((IpOrder)u32_IPOrderSlot[eSlot], &u32_PwrNoSlot[eSlot]) == 0 )
+            {
+                pr_err(">> [sdmmc] Err: slotNo = %u, Could not get dts from Padmux dts [slot-pwr-gpios] option!\n", slotNo);
+                return 1;
+            }
+        }
+
+        // Check conflict
+        if (u32_SdioUseSlot[eSlot] == TRUE)
+        {
+            if (geIpTypeIp[u32_IPOrderSlot[eSlot]] != IP_TYPE_SDIO)
+            {
+                pr_err(">> [sdmmc] slotNo = %u, When SDIO is used, IpType need to be IP_TYPE_SDIO, current setting = %u\n", slotNo, (U8_T)geIpTypeIp[u32_IPOrderSlot[eSlot]]);
+                return 1;
+            }
+        }
+
+        // Transfer to Global variable
+        ge_IPOrderSlot[eSlot] = (IpOrder)u32_IPOrderSlot[eSlot];
+        ge_PADOrderSlot[eSlot] = (PadOrder)u32_PADOrderSlot[eSlot];
+        gu32_MaxClkSlot[eSlot] = (U32_T)u32_MaxClkSlot[eSlot];
+        gb_IntCDZSlot[eSlot] = (BOOL_T)u32_IntCDZSlot[eSlot];
+        gb_FakeCDZSlot[eSlot] = (BOOL_T)u32_FakeCDZSlot[eSlot];
+        gu32_CdzNoSlot[eSlot] = (U32_T)u32_CdzNoSlot[eSlot];
+        gu32_PwrNoSlot[eSlot] = (U32_T)u32_PwrNoSlot[eSlot];
+        gu32_PwrOffDelaySlot[eSlot] = (U32_T)u32_PwrOffDelaySlot[eSlot];
+        gu32_PwrOnDelaySlot[eSlot] = (U32_T)u32_PwrOnDelaySlot[eSlot];
+        gb_SdioUseSlot[eSlot] = (BOOL_T)u32_SdioUseSlot[eSlot];
+        gb_RemovableSlot[eSlot] = (BOOL_T)u32_RemovableSlot[eSlot];
+
+        // MIE irq depend on which IP
+        gu16_MieIntNoSlot[eSlot] = of_irq_get_byname(p_dev->dev.of_node, gu8_mie_irq_name[u32_IPOrderSlot[eSlot]]);
+
+        // CDZ irq
+        gu16_CdzIntNoSlot[eSlot] = of_irq_get_byname(p_dev->dev.of_node, gu8_irq_name[slotNo]);
     }
 
+    //Debug
+    pr_sd_dbg(">> [sdmmc] SlotNums= %u\n", gu8_SlotNums);
+    pr_sd_dbg(">> [sdmmc] RevCDZ= %u\n", gb_ReverseCDZ);
+    pr_sd_dbg(">> [sdmmc] SlotIPs[0-2]= %u, %u, %u \n", (U8_T)ge_IPOrderSlot[0], (U8_T)ge_IPOrderSlot[1], (U8_T)ge_IPOrderSlot[2]);
+    pr_sd_dbg(">> [sdmmc] SlotPADs[0-2]= %u, %u, %u \n", (U8_T)ge_PADOrderSlot[0], (U8_T)ge_PADOrderSlot[1], (U8_T)ge_PADOrderSlot[2]);
+    pr_sd_dbg(">> [sdmmc] SlotMaxClk[0-2]= %u, %u, %u \n", gu32_MaxClkSlot[0], gu32_MaxClkSlot[1], gu32_MaxClkSlot[2]);
+    pr_sd_dbg(">> [sdmmc] IntCDZSlot[0-2]= %u, %u, %u \n", gb_IntCDZSlot[0], gb_IntCDZSlot[1], gb_IntCDZSlot[2]);
+    pr_sd_dbg(">> [sdmmc] SlotFakeCDZ[0-2]= %u, %u, %u \n", gb_FakeCDZSlot[0], gb_FakeCDZSlot[1], gb_FakeCDZSlot[2]);
+    pr_sd_dbg(">> [sdmmc] gu32_CdzNoSlot[0-2]= %u, %u, %u \n", gu32_CdzNoSlot[0], gu32_CdzNoSlot[1], gu32_CdzNoSlot[2]);
+    pr_sd_dbg(">> [sdmmc] PwrNoSlot[0-2]= %u, %u, %u \n", gu32_PwrNoSlot[0], gu32_PwrNoSlot[1], gu32_PwrNoSlot[2]);
+    pr_sd_dbg(">> [sdmmc] PwrOffDelaySlot[0-2]= %u, %u, %u \n", gu32_PwrOffDelaySlot[0], gu32_PwrOffDelaySlot[1], gu32_PwrOffDelaySlot[2]);
+    pr_sd_dbg(">> [sdmmc] PwrOnDelaySlot[0-2]= %u, %u, %u \n", gu32_PwrOnDelaySlot[0], gu32_PwrOnDelaySlot[1], gu32_PwrOnDelaySlot[2]);
+    pr_sd_dbg(">> [sdmmc] gb_SdioUseSlot[0-2]= %u, %u, %u \n", gb_SdioUseSlot[0], gb_SdioUseSlot[1], gb_SdioUseSlot[2]);
+    pr_sd_dbg(">> [sdmmc] gb_RemovableSlot[0-2]= %u, %u, %u \n", gb_RemovableSlot[0], gb_RemovableSlot[1], gb_RemovableSlot[2]);
+    pr_sd_dbg(">> [sdmmc] MieIntNoSlot[0-2]= %u, %u, %u \n", gu16_MieIntNoSlot[0], gu16_MieIntNoSlot[1], gu16_MieIntNoSlot[2]);
+    pr_sd_dbg(">> [sdmmc] CdzIntNoSlot[0-2]= %u, %u, %u \n", gu16_CdzIntNoSlot[0], gu16_CdzIntNoSlot[1], gu16_CdzIntNoSlot[2]);
+
+#ifdef CONFIG_CAM_CLK
+    //
     for(slotNo =0; slotNo<gu8_SlotNums; slotNo++)
     {
         eSlot = (SlotEmType)slotNo;
-        ipidx   = gu8_IPOrderSlot[eSlot];
+        ipidx = (U8_T)ge_IPOrderSlot[eSlot];
 
-#if 1
-        /****** Get Device Tree Information******/
-        gp_clkSlot[eSlot] = of_clk_get(p_dev->dev.of_node, (ipidx*3));
+        /* Get Clock info from DTS */
+        SdmmcClk = 0;
+        of_property_read_u32_index(p_dev->dev.of_node,"camclk", ipidx, &(SdmmcClk));
+
+        if (!SdmmcClk)
+        {
+            //printk(KERN_DEBUG "[%s] Fail to get clk!\n", __func__);
+            pr_err(">> [sdmmc_%u] Err: Failed to get dts clock tree!\n", slotNo);
+            return 1;
+        }
+
+        CamClkRegister("Sdmmc",SdmmcClk,&(gp_clkSlot[slotNo]));
+        CamClkSetOnOff(gp_clkSlot[slotNo], 1);
+    }
+#else
+    //
+    for(slotNo =0; slotNo<gu8_SlotNums; slotNo++)
+    {
+        eSlot = (SlotEmType)slotNo;
+        ipidx = (U8_T)ge_IPOrderSlot[eSlot];
+
+        /* Get Clock info from DTS */
+        gp_clkSlot[eSlot] = of_clk_get(p_dev->dev.of_node, ipidx);
 
         if(IS_ERR(gp_clkSlot[slotNo]))
         {
@@ -1494,23 +1435,8 @@ static int ms_sdmmc_dts_init(struct platform_device *p_dev)
         }
 
         clk_prepare_enable(gp_clkSlot[slotNo]);
-#else
-        /****** Get Device Tree Information******/
-        gp_clkSlot[eSlot] = of_clk_get(p_dev->dev.of_node, (ipidx*3));
-        gp_clkMCMSlot[eSlot] = of_clk_get(p_dev->dev.of_node, (ipidx*3) + 1);
-        gp_clkSRAMSlot[eSlot] = of_clk_get(p_dev->dev.of_node, (ipidx*3) + 2);
-
-        if(IS_ERR(gp_clkSlot[slotNo]) || IS_ERR(gp_clkMCMSlot[eSlot]) || IS_ERR(gp_clkSRAMSlot[eSlot]) )
-        {
-            pr_err(">> [sdmmc_%u] Err: Failed to get dts clock tree!\n", slotNo);
-            return 1;
-        }
-
-        clk_prepare_enable(gp_clkMCMSlot[slotNo]);
-        clk_prepare_enable(gp_clkSRAMSlot[slotNo]);
-        clk_prepare_enable(gp_clkSlot[slotNo]);
-#endif
     }
+#endif
 
     return 0;
 }
@@ -1528,16 +1454,14 @@ static int ms_sdmmc_dts_init(struct platform_device *p_dev)
  *
  * @return int  : Error Status; Return 0 if no error
  ----------------------------------------------------------------------------------------------------------*/
-//static int ms_sdmmc_init_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sdmmc_host)
-static int ms_sdmmc_init_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sdmmc_host, int irqNo, int irqNoCDZ)
+static int ms_sdmmc_init_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sdmmc_host)
 {
     struct ms_sdmmc_slot    *p_sdmmc_slot;
     struct mmc_host         *p_mmc_host;
     SlotEmType eSlot = (SlotEmType)slotNo;
-    IPEmType eIP     = ge_IPSlot[eSlot];
-    PADEmType ePAD   = ge_PADSlot[eSlot];
-
+    IpOrder eIP     = ge_IPOrderSlot[eSlot];
     int nRet = 0;
+
 
 //###########################################################################################################
 #if (EN_MSYS_REQ_DMEM)
@@ -1562,8 +1486,8 @@ static int ms_sdmmc_init_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sdmmc
 
 #if (!EN_SDMMC_BRO_DMA)
 
-//###########################################################################################################
-#if !(EN_MSYS_REQ_DMEM)
+    //###########################################################################################################
+    #if !(EN_MSYS_REQ_DMEM)
     //###########################################################################################################
     p_sdmmc_slot->dma_buffer   = dma_alloc_coherent(NULL, MAX_BLK_COUNT * MAX_BLK_SIZE, &p_sdmmc_slot->dma_phy_addr, GFP_KERNEL);
     if (!p_sdmmc_slot->dma_buffer)
@@ -1571,9 +1495,9 @@ static int ms_sdmmc_init_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sdmmc
         pr_err(">> [sdmmc_%u] Err: Failed to Allocate sdmmc_host DMA buffer\n", slotNo);
         return -ENOMEM;
     }
-//###########################################################################################################
-#else
-//###########################################################################################################
+    //###########################################################################################################
+    #else
+    //###########################################################################################################
     mem_info.length = MAX_BLK_COUNT * MAX_BLK_SIZE;
     strcpy(mem_info.name, "SDMMC_SGBUF");
     if(msys_request_dmem(&mem_info))
@@ -1584,47 +1508,44 @@ static int ms_sdmmc_init_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sdmmc
 
     p_sdmmc_slot->dma_phy_addr = (dma_addr_t)mem_info.phys;
     p_sdmmc_slot->dma_buffer   = (U32_T*)((U32_T)mem_info.kvirt);
-//###########################################################################################################
-#endif
-
-#elif (EN_SDMMC_ADV_DMA)
-
-//###########################################################################################################
-#if !(EN_MSYS_REQ_DMEM)
     //###########################################################################################################
-    p_sdmmc_slot->adma_buffer   = dma_alloc_coherent(NULL, sizeof(AdmaDescStruct) * MAX_SEG_CNT, &p_sdmmc_slot->adma_phy_addr, GFP_KERNEL);
-    if (!p_sdmmc_slot->adma_buffer)
-    {
-        pr_err(">> [sdmmc_%u] Err: Failed to Allocate sdmmc_host ADMA buffer\n", slotNo);
-        return -ENOMEM;
-    }
-//###########################################################################################################
+    #endif
+
 #else
-//###########################################################################################################
-    mem_info.length = sizeof(AdmaDescStruct) * MAX_SEG_CNT;
-    sprintf(mem_info.name,"%s%01d","SDMMC_ADMABUF",slotNo);
-    if(msys_request_dmem(&mem_info))
-    {
-        pr_err(">> [sdmmc_%u] Err: Failed to Allocate sdmmc_host ADMA buffer\n", slotNo);
-        return -ENOMEM;
+    if (_IsAdmaMode(slotNo)) {
+        //###########################################################################################################
+        #if !(EN_MSYS_REQ_DMEM)
+        //###########################################################################################################
+        p_sdmmc_slot->adma_buffer   = dma_alloc_coherent(NULL, sizeof(AdmaDescStruct) * MAX_SEG_CNT, &p_sdmmc_slot->adma_phy_addr, GFP_KERNEL);
+        if (!p_sdmmc_slot->adma_buffer)
+        {
+            pr_err(">> [sdmmc_%u] Err: Failed to Allocate sdmmc_host ADMA buffer\n", slotNo);
+            return -ENOMEM;
+        }
+        //###########################################################################################################
+        #else
+        //###########################################################################################################
+        mem_info.length = sizeof(AdmaDescStruct) * MAX_SEG_CNT;
+        sprintf(mem_info.name,"%s%01d","SDMMC_ADMABUF",slotNo);
+        if(msys_request_dmem(&mem_info))
+        {
+            pr_err(">> [sdmmc_%u] Err: Failed to Allocate sdmmc_host ADMA buffer\n", slotNo);
+            return -ENOMEM;
+        }
+
+        p_sdmmc_slot->adma_phy_addr = (dma_addr_t)mem_info.phys;
+        p_sdmmc_slot->adma_buffer   = (U32_T*)((U32_T)mem_info.kvirt);
+
+        //###########################################################################################################
+        #endif
     }
-
-    p_sdmmc_slot->adma_phy_addr = (dma_addr_t)mem_info.phys;
-    p_sdmmc_slot->adma_buffer   = (U32_T*)((U32_T)mem_info.kvirt);
-
-//###########################################################################################################
-#endif
-
-
-
 #endif
 
     p_sdmmc_slot->mmc          = p_mmc_host;
     p_sdmmc_slot->slotNo       = slotNo;
-    p_sdmmc_slot->pmrsaveClk   = Hal_CARD_FindClockSetting(eIP, 400000, 0, 0);
-    p_sdmmc_slot->mieIRQNo     = irqNo; //gu16_MieIntNoSlot[eSlot];
-    p_sdmmc_slot->cdzIRQNo     = irqNoCDZ; //gu16_CdzIntNoSlot[eSlot];
-    p_sdmmc_slot->cdzGPIONo    = Hal_CARD_GetGPIONum((GPIOEmType)slotNo, ePAD);
+    p_sdmmc_slot->pmrsaveClk   = Hal_CARD_FindClockSetting(eIP, 400000);
+    p_sdmmc_slot->mieIRQNo     = gu16_MieIntNoSlot[eSlot];
+    p_sdmmc_slot->cdzIRQNo     = gu16_CdzIntNoSlot[eSlot];
     p_sdmmc_slot->pwrGPIONo    = gu32_PwrNoSlot[eSlot];
     p_sdmmc_slot->initFlag     = 0;
     p_sdmmc_slot->sdioFlag     = 0;
@@ -1632,7 +1553,7 @@ static int ms_sdmmc_init_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sdmmc
     p_sdmmc_slot->currClk      = 0;
     p_sdmmc_slot->currWidth    = 0;
     p_sdmmc_slot->currTiming   = 0;
-    p_sdmmc_slot->currPowrMode = 0;
+    p_sdmmc_slot->currPowrMode = MMC_POWER_OFF;
     p_sdmmc_slot->currVdd      = 0;
     p_sdmmc_slot->currDDR      = 0;
 
@@ -1640,21 +1561,24 @@ static int ms_sdmmc_init_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sdmmc
     /***** (3) MMC host setting ******/
     p_mmc_host->ops = &st_mmc_ops;
     p_mmc_host->f_min = p_sdmmc_slot->pmrsaveClk;
+
     p_mmc_host->f_max = gu32_MaxClkSlot[eSlot];
 
     p_mmc_host->ocr_avail = MMC_VDD_32_33|MMC_VDD_31_32|MMC_VDD_30_31|MMC_VDD_29_30|MMC_VDD_28_29|MMC_VDD_27_28|MMC_VDD_165_195;
     p_mmc_host->caps = MMC_CAP_4_BIT_DATA|MMC_CAP_MMC_HIGHSPEED|MMC_CAP_SD_HIGHSPEED;
 
-    if(!gb_IntCDZSlot[eSlot] && EN_SDMMC_POLLING_CDZ)
+
+    // SDIO Card is non-removable
+    if (!gb_RemovableSlot[eSlot])
     {
-        pr_err("%s(%d) set MMC_CAP_NEEDS_POLL\n", __FUNCTION__, __LINE__);
-        p_mmc_host->caps |= MMC_CAP_NEEDS_POLL;
+        p_mmc_host->caps |= MMC_CAP_NONREMOVABLE;
     }
 
-
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 4, 0))
-    p_mmc_host->caps |= MMC_CAP_DISABLE;
-#endif
+    // CDZ int is unavailable, then just use polling mode.
+    if (!gb_IntCDZSlot[eSlot])
+    {
+        p_mmc_host->caps |= MMC_CAP_NEEDS_POLL;
+    }
 
 #if (EN_SDMMC_BRO_DMA)
     p_mmc_host->max_blk_count  = MAX_BRO_BLK_COUNT;
@@ -1666,39 +1590,33 @@ static int ms_sdmmc_init_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sdmmc
     p_mmc_host->max_req_size   = p_mmc_host->max_blk_count  * p_mmc_host->max_blk_size;
     p_mmc_host->max_seg_size   = p_mmc_host->max_req_size;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
     p_mmc_host->max_segs       = MAX_SEG_CNT;
-#else
-    p_mmc_host->max_phys_segs  = MAX_SEG_CNT;
-    p_mmc_host->max_hw_segs    = MAX_SEG_CNT;
-#endif
 
     p_sdmmc_host->sdmmc_slot[slotNo] = p_sdmmc_slot;
 
     /****** (4) IP Once Setting for Different Platform ******/
     Hal_CARD_IPOnceSetting(eIP);
 
-    /****** (5) Init GPIO Setting ******/
-    Hal_CARD_InitGPIO((GPIOEmType)slotNo, ePAD, !gb_FakeCDZSlot[eSlot]);
 
-    if(EN_SDMMC_CHG_PWR_PIN)
+    /****** (5) Init GPIO Setting ******/
+    _SwitchPAD(eSlot);
+
+#if 0 // Not all platform's power come from sdmmc DTS, so mask it.
+    if (1)
     {
         nRet = gpio_request(p_sdmmc_slot->pwrGPIONo, "SD Power Pin");
 
-        if(nRet > 0 )
-            printk(">> [sdmmc_%u] PWR Ctrl use Dyn GPIO: (%u)\n", slotNo, p_sdmmc_slot->pwrGPIONo);
-        else
+        if (nRet)
         {
-            printk(">> [sdmmc_%u] Err: Faild to request PWR GPIO (%u)\n", slotNo, p_sdmmc_slot->pwrGPIONo);
-            gu32_PwrNoSlot[eSlot] = 0;
+            pr_sd_err(">> [sdmmc_%u] Err: Failed to request PWR GPIO (%u)\n", slotNo, p_sdmmc_slot->pwrGPIONo);
+            goto INIT_FAIL_2;
         }
     }
-
+#endif
 
     /****** (6) Interrupt Source Setting ******/
     gst_IntSourceSlot[eSlot].slotNo = slotNo;
     gst_IntSourceSlot[eSlot].eIP = eIP;
-    gst_IntSourceSlot[eSlot].eCardInt = EV_INT_SD;
     gst_IntSourceSlot[eSlot].p_data = p_sdmmc_slot;
 
     /*****  (7) Spinlock Init for Reg Protection ******/
@@ -1707,84 +1625,67 @@ static int ms_sdmmc_init_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sdmmc
     /****** (8) Register IP IRQ *******/
 #if(EN_BIND_CARD_INT)
     Hal_SDMMC_MIEIntCtrl(eIP, FALSE);
-    if(EN_SDMMC_MIEINT_MODE)
+
+#if 1 // MIE
+    nRet = request_irq(p_sdmmc_slot->mieIRQNo, Hal_CARD_INT_MIE, IRQF_TRIGGER_NONE, DRIVER_NAME "_mie", &gst_IntSourceSlot[eSlot]);
+    if (nRet)
     {
-        nRet = request_irq(p_sdmmc_slot->mieIRQNo, Hal_CARD_INT_MIE, IRQF_SHARED/*V_IP_MIEIRQ_PARA*/, DRIVER_NAME "_mie", &gst_IntSourceSlot[eSlot]);
-        if (nRet)
-        {
-            pr_err(">> [sdmmc_%u] Err: Failed to request MIE Interrupt (%u)!\n", slotNo, p_sdmmc_slot->mieIRQNo);
-            goto LABEL_OUT2;
-        }
-
-        Hal_SDMMC_MIEIntCtrl(eIP, TRUE);
-
-        if(gb_SDIOIRQSlot[eSlot])
-        {
-            p_mmc_host->caps |= MMC_CAP_SDIO_IRQ;
-            printk(">> [sdmmc_%u] Enable SDIO Interrupt Mode! \n", slotNo);
-
-        }
-        else
-        {
-             p_mmc_host->caps2 = MMC_CAP2_NO_SDIO;
-        }
-    }
-#endif
-
-    mmc_add_host(p_mmc_host);
-
-    if(!gb_IntCDZSlot[eSlot])
-    {
-        if(EN_SDMMC_POLLING_CDZ)
-            printk(">> [sdmmc_%u] Polling CDZ use Fake CDZ: (%u)\n", slotNo, gb_FakeCDZSlot[eSlot]);
-        else
-            printk(">> [sdmmc_%u] Normal CDZ use Fake CDZ: (%u)\n", slotNo, gb_FakeCDZSlot[eSlot]);
-
-        goto LABEL_OUT0;
+        pr_err(">> [sdmmc_%u] Err: Failed to request MIE Interrupt (%u)!\n", slotNo, p_sdmmc_slot->mieIRQNo);
+        goto INIT_FAIL_2;
     }
 
+    Hal_SDMMC_MIEIntCtrl(eIP, TRUE);
 
-    /****** (9) Register Ext CDZ IRQ  *******/
-    if(!p_sdmmc_slot->cdzIRQNo)
+    if (gb_SdioUseSlot[eSlot]) // When SDIO Card is used, we enable SDIO int.
     {
-        if(p_sdmmc_slot->cdzGPIONo && gpio_to_irq(p_sdmmc_slot->cdzGPIONo)> 0 )
-            p_sdmmc_slot->cdzIRQNo = gpio_to_irq(p_sdmmc_slot->cdzGPIONo);
-    }
+        p_mmc_host->caps |= MMC_CAP_SDIO_IRQ;
+        Hal_CARD_INT_SetMIEIntEn_ForSDIO(eIP, TRUE);
 
-
-    tasklet_init(&p_sdmmc_slot->hotplug_tasklet, ms_sdmmc_hotplug, (unsigned long)p_sdmmc_slot);
-
-    if(p_sdmmc_slot->cdzIRQNo)
-    {
-
-        Hal_CARD_SetGPIOIntAttr((GPIOEmType)slotNo, ePAD, (_GetCardDetect(eSlot)? EV_GPIO_OPT3 : EV_GPIO_OPT4), p_sdmmc_slot->cdzIRQNo);
-        Hal_CARD_SetGPIOIntAttr((GPIOEmType)slotNo, ePAD, EV_GPIO_OPT1, p_sdmmc_slot->cdzIRQNo);
-
-        nRet = request_irq(p_sdmmc_slot->cdzIRQNo, ms_sdmmc_cdzint, gu32_CDZIRQParaSlot[eSlot], DRIVER_NAME "_cdz", &gst_IntSourceSlot[eSlot]);
-        if(nRet)
-        {
-            pr_err(">> [sdmmc_%u] Err: Failed to request CDZ Interrupt (%u)!\n", slotNo, p_sdmmc_slot->cdzIRQNo);
-            goto LABEL_OUT1;
-        }
-
-        printk(">> [sdmmc_%u] Int CDZ use Ext GPIO IRQ: (%u)\n", slotNo, p_sdmmc_slot->cdzIRQNo);
-
-        Hal_CARD_SetGPIOIntAttr((GPIOEmType)slotNo, ePAD, EV_GPIO_OPT2, p_sdmmc_slot->cdzIRQNo);
-
-        if(gb_WakeupCDZIRQSlot[eSlot])
-            irq_set_irq_wake(p_sdmmc_slot->cdzIRQNo, TRUE);
-
+        pr_sd_dbg(">> [sdmmc_%u] Enable SDIO Interrupt Mode! \n", slotNo);
     }
     else
     {
-        printk(">> [sdmmc_%u] CDZ IRQ doesn't exist!\n", slotNo);
-        BUG_ON(1); //Coult not continue, it must be solved first (config issue)
+         p_mmc_host->caps2 = MMC_CAP2_NO_SDIO;
+    }
+#endif
+
+#endif
+
+    // Don't pre power up
+    p_mmc_host->caps2 |= MMC_CAP2_NO_PRESCAN_POWERUP;
+
+    //
+    mmc_add_host(p_mmc_host);
+
+    // CDZ IRQ
+    if (gb_IntCDZSlot[eSlot])
+    {
+        tasklet_init(&p_sdmmc_slot->hotplug_tasklet, ms_sdmmc_hotplug, (unsigned long)p_sdmmc_slot);
+
+        //
+        Hal_CARD_SetGPIOIntAttr((_GetCardDetect(eSlot)? EV_GPIO_OPT3 : EV_GPIO_OPT4), p_sdmmc_slot->cdzIRQNo);
+        Hal_CARD_SetGPIOIntAttr(EV_GPIO_OPT1, p_sdmmc_slot->cdzIRQNo);
+
+        nRet = request_irq(p_sdmmc_slot->cdzIRQNo, ms_sdmmc_cdzint, IRQF_TRIGGER_NONE, DRIVER_NAME "_cdz", &gst_IntSourceSlot[eSlot]);
+        if (nRet)
+        {
+            pr_err(">> [sdmmc_%u] Err: Failed to request CDZ Interrupt (%u)!\n", slotNo, p_sdmmc_slot->cdzIRQNo);
+            goto INIT_FAIL_1;
+        }
+
+        pr_sd_dbg(">> [sdmmc_%u] Int CDZ use Ext GPIO IRQ: (%u)\n", slotNo, p_sdmmc_slot->cdzIRQNo);
+
+        Hal_CARD_SetGPIOIntAttr( EV_GPIO_OPT2, p_sdmmc_slot->cdzIRQNo);
+
+#if 0 // Make irq wake up system from suspend.
+        irq_set_irq_wake(p_sdmmc_slot->cdzIRQNo, TRUE);
+#endif
     }
 
-LABEL_OUT0:
+    // Return Success
     return 0;
 
-LABEL_OUT1:
+INIT_FAIL_1:
     tasklet_kill(&p_sdmmc_slot->hotplug_tasklet);
     free_irq(p_sdmmc_slot->mieIRQNo, &gst_IntSourceSlot[eSlot]);
 
@@ -1792,7 +1693,7 @@ LABEL_OUT1:
     mmc_free_host(p_mmc_host);
 
 #if(EN_BIND_CARD_INT)
-LABEL_OUT2:
+INIT_FAIL_2:
 #endif
 #if (!EN_SDMMC_BRO_DMA)
 
@@ -1832,8 +1733,7 @@ static int ms_sdmmc_probe(struct platform_device *p_dev)
 {
     struct ms_sdmmc_host *p_sdmmc_host;
     unsigned int slotNo = 0;
-    int ret = 0, tret = 0;
-	int irq, irq_cdz;
+    int ret = 0;
 
     pr_info(">> [sdmmc] ms_sdmmc_probe \n");
 
@@ -1853,60 +1753,30 @@ static int ms_sdmmc_probe(struct platform_device *p_dev)
     /***** device PM wakeup setting ******/
     device_init_wakeup(&p_dev->dev, 1);
 
-
-#if (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
-
-    if(ms_sdmmc_dts_init(p_dev))
+#if defined(CONFIG_OF)
+    if (ms_sdmmc_dts_init(p_dev))
     {
-        pr_err(">> [sdmmc] Err: Failed to use DTS funciton!\n\n");
-        return 1;
+        pr_err(">> [sdmmc] Err: Failed to use DTS function!\n\n");
+        return -EINVAL;
     }
-
+#else
+    // CONFIG_OF is necessary
+    return 1;
 #endif
 
-    for (slotNo = 0; slotNo < gu8_SlotNums; slotNo++)
+    for (slotNo=0; slotNo<gu8_SlotNums; slotNo++)
     {
-        if ((gb_IntCDZSlot[slotNo] == 0) && (gb_FakeCDZSlot[slotNo] == 1))
+        ret = ms_sdmmc_init_slot(slotNo, p_sdmmc_host);
+        pr_info(">> [sdmmc_%u] Probe Platform Devices\n", slotNo);
+        if (ret!=0)
         {
-            // Not use delay for sleep function.
-            break;
-        }
-
-        if (slotNo == (gu8_SlotNums - 1)) // all slot don't use (polling + no_cdz).
-        {
-            // Use delay for sleep function.
-            Hal_Timer_SaveTimeSleep(TRUE);
+            pr_err(">> [sdmmc_%u] Err: Failed to init slot!\n",slotNo);
+            kfree(p_sdmmc_host);
+            return ret;
         }
     }
 
-    // FIXME: assume MIE IRQ is identical for all slot
-    //irq = of_irq_get_byname(p_dev->dev.of_node, "mie_irq");
-    //pr_info(">> [sdmmc_%u] MIE IRQ: %d\n", slotNo, irq);
-
-    for(slotNo =0; slotNo<gu8_SlotNums; slotNo++)
-    {
-        irq = of_irq_get_byname(p_dev->dev.of_node, gu8_mie_irq_name[slotNo]);
-        pr_info(">> [sdmmc_%u] MIE IRQ: %d\n", slotNo, irq);
-
-        _Dyn_IP_PAD_Mappingg((SlotEmType)slotNo);
-
-        irq_cdz = of_irq_get_byname(p_dev->dev.of_node, (const char *)&gu8_irq_name[slotNo]);
-        pr_info(">> [sdmmc_%u] CDZ IRQ: %d\n", slotNo, irq_cdz);
-
-        ret = ms_sdmmc_init_slot(slotNo, p_sdmmc_host, irq, irq_cdz);
-        pr_info(">> [sdmmc_%u] Probe Platform Devices...(Ret:%d) \n", slotNo, ret);
-
-        if(ret!=0)
-        {
-            tret = ret;
-        }
-
-    }
-
-    if(tret!=0)
-        kfree(p_sdmmc_host);
-
-    return tret;
+    return 0;
 }
 
 /*----------------------------------------------------------------------------------------------------------
@@ -1938,8 +1808,14 @@ static void ms_sdmmc_remove_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sd
 //###########################################################################################################
 #if !(EN_MSYS_REQ_DMEM)
 //###########################################################################################################
-    if (p_sdmmc_slot->dma_buffer)
-        dma_free_coherent(NULL, MAX_BLK_COUNT*MAX_BLK_SIZE, p_sdmmc_slot->dma_buffer, p_sdmmc_slot->dma_phy_addr);
+    if (!_IsAdmaMode(eSlot)) {
+        if (p_sdmmc_slot->dma_buffer)
+            dma_free_coherent(NULL, MAX_BLK_COUNT*MAX_BLK_SIZE, p_sdmmc_slot->dma_buffer, p_sdmmc_slot->dma_phy_addr);
+    }
+    else {
+        if (p_sdmmc_slot->adma_buffer)
+            dma_free_coherent(NULL, sizeof(AdmaDescStruct) * MAX_SEG_CNT, p_sdmmc_slot->adma_buffer, p_sdmmc_slot->adma_phy_addr);
+    }
 //###########################################################################################################
 #else
 //###########################################################################################################
@@ -1951,34 +1827,33 @@ static void ms_sdmmc_remove_slot(unsigned int slotNo, struct ms_sdmmc_host *p_sd
 #endif
 
 
-    if(EN_SDMMC_MIEINT_MODE)
-        free_irq(p_sdmmc_slot->mieIRQNo, &gst_IntSourceSlot[eSlot]);
+#if 1 // MIE
+    free_irq(p_sdmmc_slot->mieIRQNo, &gst_IntSourceSlot[eSlot]);
+#endif
 
     mmc_free_host(p_mmc_host);
 
-    if(gb_IntCDZSlot[eSlot])
+    if (gb_IntCDZSlot[eSlot])
     {
         tasklet_kill(&p_sdmmc_slot->hotplug_tasklet);
         if(p_sdmmc_slot->cdzIRQNo)
             free_irq(p_sdmmc_slot->cdzIRQNo, &gst_IntSourceSlot[eSlot]);
     }
 
-#if (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+#if defined(CONFIG_OF)
+#ifdef CONFIG_CAM_CLK
+    if(gp_clkSlot[eSlot])
+    {
+        CamClkUnregister(gp_clkSlot[slotNo]);
+        gp_clkSlot[eSlot] = NULL;
+    }
+#else
     if(gp_clkSlot[eSlot])
     {
         clk_put(gp_clkSlot[eSlot]);
         gp_clkSlot[eSlot] = NULL;
     }
-    if(gp_clkMCMSlot[eSlot])
-    {
-        clk_put(gp_clkMCMSlot[eSlot]);
-        gp_clkMCMSlot[eSlot] = NULL;
-    }
-    if(gp_clkSRAMSlot[eSlot])
-    {
-        clk_put(gp_clkSRAMSlot[eSlot]);
-        gp_clkSRAMSlot[eSlot] = NULL;
-    }
+#endif
 #endif
 
 }
@@ -2004,7 +1879,7 @@ static int ms_sdmmc_remove(struct platform_device *p_dev)
     for(slotNo=0; slotNo<gu8_SlotNums; slotNo++)
     {
         ms_sdmmc_remove_slot(slotNo, p_sdmmc_host);
-        printk(">> [sdmmc_%u] Remove devices...\n", slotNo);
+        pr_sd_dbg(">> [sdmmc_%u] Remove devices...\n", slotNo);
 
     }
 
@@ -2012,9 +1887,9 @@ static int ms_sdmmc_remove(struct platform_device *p_dev)
 }
 
 
-#if (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+#if defined(CONFIG_OF)
 
-    #ifdef CONFIG_PM
+    #ifdef CONFIG_PM_SLEEP
     static int ms_sdmmc_devpm_prepare(struct device *dev)
     {
         return 0;
@@ -2028,15 +1903,23 @@ static int ms_sdmmc_remove(struct platform_device *p_dev)
     static int ms_sdmmc_devpm_suspend(struct device *dev)
     {
         unsigned int slotNo = 0;
-        int ret = 0, tret = 0;
+        int tret = 0;
+        unsigned int TmpIPClk = 0;
+        unsigned int TmpBlockClk = 0;
 
         for(slotNo=0; slotNo<gu8_SlotNums; slotNo++)
         {
+#ifdef CONFIG_CAM_CLK
+            CamClkSetOnOff(gp_clkSlot[slotNo],0);
+#else
             clk_disable_unprepare(gp_clkSlot[slotNo]);
-            clk_disable_unprepare(gp_clkMCMSlot[slotNo]);
-            clk_disable_unprepare(gp_clkSRAMSlot[slotNo]);
+#endif
+            //backup current clk
+            Hal_CARD_devpm_GetClock(slotNo, &TmpIPClk, &TmpBlockClk);
+            gu16_SlotIPClk[slotNo] = TmpIPClk;
+            gu16_SlotBlockClk[slotNo] = TmpBlockClk;
 
-            printk(">> [sdmmc_%u] Suspend device pm...(Ret:%u) \n", slotNo, ret);
+            pr_sd_dbg(">> [sdmmc_%u] Suspend device pm...(Ret:%u) \n", slotNo);
         }
 
         return tret;
@@ -2045,26 +1928,29 @@ static int ms_sdmmc_remove(struct platform_device *p_dev)
     static int ms_sdmmc_devpm_resume(struct device *dev)
     {
         unsigned int slotNo = 0;
+#ifdef CONFIG_CAM_CLK
+        int tret = 0;
+#else
         int ret = 0, tret = 0;
+#endif
 
         for(slotNo=0; slotNo<gu8_SlotNums; slotNo++)
         {
-            ret = clk_prepare_enable(gp_clkMCMSlot[slotNo]);
-
-            if(ret!=0)
-                tret = ret;
-
-            ret = clk_prepare_enable(gp_clkSRAMSlot[slotNo]);
-
-            if(ret!=0)
-                tret = ret;
-
+#ifdef CONFIG_CAM_CLK
+            CamClkSetOnOff(gp_clkSlot[slotNo], 1);
+#else
             ret = clk_prepare_enable(gp_clkSlot[slotNo]);
 
             if(ret!=0)
                 tret = ret;
+#endif
+            //clock restore
+            Hal_CARD_devpm_setClock(slotNo, gu16_SlotIPClk[slotNo], gu16_SlotBlockClk[slotNo]);
 
-            printk(">> [sdmmc_%u] Resume device pm...(Ret:%u) \n", slotNo, ret);
+            //pad restore
+            _SwitchPAD(slotNo);
+
+            pr_sd_dbg(">> [sdmmc_%u] Resume device pm...(Ret:%u) \n", slotNo, ret);
         }
 
         return tret;
@@ -2081,13 +1967,13 @@ static int ms_sdmmc_remove(struct platform_device *p_dev)
 
     static int ms_sdmmc_devpm_runtime_suspend(struct device *dev)
     {
-        printk(">> [sdmmc] Runtime Suspend device pm...\n");
+        pr_sd_dbg(">> [sdmmc] Runtime Suspend device pm...\n");
         return 0;
     }
 
     static int ms_sdmmc_devpm_runtime_resume(struct device *dev)
     {
-        printk(">> [sdmmc] Runtime Resume device pm...\n");
+        pr_sd_dbg(">> [sdmmc] Runtime Resume device pm...\n");
         return 0;
     }
 
@@ -2097,9 +1983,9 @@ static int ms_sdmmc_remove(struct platform_device *p_dev)
 
 #else
 
-    #ifdef CONFIG_PM
+    #ifdef CONFIG_PM_SLEEP
 
-        #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3, 11, 0) ) // CONFIG_PM
+        #if 0 //( LINUX_VERSION_CODE < KERNEL_VERSION(3, 11, 0) ) // CONFIG_PM
 
         /*----------------------------------------------------------------------------------------------------------
          *
@@ -2135,7 +2021,7 @@ static int ms_sdmmc_remove(struct platform_device *p_dev)
                 #else
                     ret = mmc_suspend_host(p_mmc_host, state);
                 #endif
-                    printk(">> [sdmmc_%u] Suspend host...(Ret:%u) \n", slotNo, ret);
+                    pr_sd_dbg(">> [sdmmc_%u] Suspend host...(Ret:%u) \n", slotNo, ret);
 
                     if(ret!=0)
                         tret = ret;
@@ -2168,7 +2054,7 @@ static int ms_sdmmc_remove(struct platform_device *p_dev)
                 if (p_mmc_host)
                 {
                     ret = mmc_resume_host(p_mmc_host);
-                    printk(">> [sdmmc_%u] Resume host...(Ret:%u) \n", slotNo, ret);
+                    pr_sd_dbg(">> [sdmmc_%u] Resume host...(Ret:%u) \n", slotNo, ret);
                     if(ret!=0)
                         tret = ret;
                 }
@@ -2210,7 +2096,7 @@ static int ms_sdmmc_remove(struct platform_device *p_dev)
  * Define Static Global Structs
  **********************************************************************************************************/
 
-#if (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+#if defined(CONFIG_OF)
 /*----------------------------------------------------------------------------------------------------------
  *  ms_sdmmc_of_match_table
  ----------------------------------------------------------------------------------------------------------*/
@@ -2249,7 +2135,7 @@ static struct platform_device ms_sdmmc_pltdev =
     },
 };
 
-#endif //End of (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+#endif //End of (defined(CONFIG_OF))
 
 
 /*----------------------------------------------------------------------------------------------------------
@@ -2266,7 +2152,7 @@ static struct platform_driver ms_sdmmc_pltdrv =
         .name  = DRIVER_NAME,
         .owner = THIS_MODULE,
 
-#if (defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+#if defined(CONFIG_OF)
         .of_match_table = of_match_ptr(ms_sdmmc_of_match_table),
         .pm = &ms_sdmmc_dev_pm_ops,
 #endif
@@ -2289,9 +2175,9 @@ static struct platform_driver ms_sdmmc_pltdrv =
  ----------------------------------------------------------------------------------------------------------*/
 static s32 ms_sdmmc_init(void)
 {
-    printk(KERN_INFO ">> [sdmmc] %s Driver Initializing... \n", DRIVER_NAME);
+    pr_sd_dbg(KERN_INFO ">> [sdmmc] %s Driver Initializing... \n", DRIVER_NAME);
 
-#if !(defined(CONFIG_OF) && (EN_DEV_TREE_SUP))
+#if !(defined(CONFIG_OF))
     platform_device_register(&ms_sdmmc_pltdev);
 #endif
 
@@ -2308,24 +2194,6 @@ static void ms_sdmmc_exit(void)
 {
     platform_driver_unregister(&ms_sdmmc_pltdrv);
 }
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: ms_sdmmc_cdzgpio_swctrl
- *     @author jeremy.wang (2015/1/7)
- * Desc: Switch CDZ GPIO to output state and control its state
- *
- * @param slotNo : GPIO1/GPIO2/GPIO3...
- * @param bOutputState : SW control output state
- ----------------------------------------------------------------------------------------------------------*/
-void ms_sdmmc_cdzgpio_swctrl(unsigned int slotNo, bool bOutputState)
-{
-    PADEmType ePAD = ge_PADSlot[slotNo];
-
-    pr_sdio_main(">> [sdmmc_%u] cdzgpio sw ctrl output(%u) \n", slotNo, bOutputState);
-    Hal_CARD_SetGPIOState((GPIOEmType)slotNo, ePAD, bOutputState);
-}
-EXPORT_SYMBOL(ms_sdmmc_cdzgpio_swctrl);
 
 
 

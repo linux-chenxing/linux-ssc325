@@ -25,15 +25,19 @@
 #define FILE_PCM_CAPTURE	"/dev/snd/pcmC0D0c"
 #define FILE_CONTROL		"/dev/snd/controlC0"
 
-#define UAC1_OUT_EP_MAX_PACKET_SIZE  	512
-#define UAC1_OUT_REQ_COUNT           	8
-#define UAC1_AUDIO_PLAYBACK_BUF_SIZE  	2048
-
 #if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)
-#define UAC1_IN_EP_MAX_PACKET_SIZE  	1024
-#define UAC1_IN_REQ_COUNT           	8
-#define UAC1_AUDIO_CAPTURE_BUF_SIZE 	2048
+#define UAC1_CAPTURE_SAMPLE_RATE		16000
+#define UAC1_CAPTURE_CHANNEL_COUNT		1
+#define UAC1_IN_EP_MAX_PACKET_SIZE		32
+#define UAC1_IN_REQ_COUNT        		32
+#define UAC1_AUDIO_CAPTURE_BUF_SIZE		1024
+
+#define UAC1_PLAYBACK_SAMPLE_RATE		16000
+#define UAC1_PLAYBACK_CHANNEL_COUNT		1
 #endif
+#define UAC1_OUT_EP_MAX_PACKET_SIZE		512
+#define UAC1_OUT_REQ_COUNT        		8
+#define UAC1_AUDIO_PLAYBACK_BUF_SIZE 	2048
 
 /*
  * This represents the USB side of an audio card device, managed by a USB
@@ -76,12 +80,17 @@ typedef enum audio_mode {
 struct f_uac1_opts {
 	struct usb_function_instance	func_inst;
 	int				out_req_buf_size;
-	int				in_req_buf_size;
 	int				out_req_count;
-	int				in_req_count;
 	int				audio_playback_buf_size;
-	int				audio_capture_buf_size;
 #if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)
+	int				playback_channel_count;
+	int				playback_sample_rate;
+
+	int				capture_channel_count;
+	int				capture_sample_rate;
+	int				in_req_buf_size;
+	int				in_req_count;
+	int				audio_capture_buf_size;
 	audio_mode_e			audio_play_mode;
 #endif
 	char				*fn_play;

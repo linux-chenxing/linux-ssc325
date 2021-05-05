@@ -74,7 +74,7 @@ CamDrvQueue_t* CamDrvQueueInit(u32 nMaxConsumer)
 
     if(!pQueue)
     {
-        CamOsPrintf("[%s:%d] can't alloc memory...\n", __FUNCTION__,__LINE__);
+        CamOsPrintf("%s alloc mem fail\n", __FUNCTION__,__LINE__);
     }
 
     do
@@ -143,8 +143,8 @@ CamDrvQueueNode_t* CamDrvQueuePop(CamDrvQueue_t* ptQueue)
 #elif defined(CAM_OS_LINUX_USER)
 
 #elif defined(CAM_OS_LINUX_KERNEL)
-    CamDrvQueueNode_t* p;
-    CamDrvQueueNode_t* pn;
+    CamDrvQueueNode_t* p = NULL;
+    CamDrvQueueNode_t* pn = NULL;
 
     if(!CamOsAtomicRead(&ptQueue->count))
         return NULL;
@@ -215,7 +215,7 @@ QueueOps_t* CamDrvBuffInit(u32  nBufferSize, u32 nMaxConsumer)
             if(pOps->pInvalidHandle)
             {
                 if(CamDrvQueueDeinit(pOps->pInvalidHandle))
-                    CamOsPrintf("%s can't free memory...\n\r", __FUNCTION__);
+                    CamOsPrintf("%s:%d free mem fail\n\r", __FUNCTION__,__LINE__);
                 else
                     pOps->pInvalidHandle = NULL;
             }
@@ -223,7 +223,7 @@ QueueOps_t* CamDrvBuffInit(u32  nBufferSize, u32 nMaxConsumer)
             if(pOps->pValidHandle)
             {
                 if(CamDrvQueueDeinit(pOps->pValidHandle))
-                    CamOsPrintf("%s can't free memory...\n\r", __FUNCTION__);
+                    CamOsPrintf("%s:%d free mem fail\n\r", __FUNCTION__,__LINE__);
                 else
                     pOps->pValidHandle = NULL;
             }
@@ -231,7 +231,7 @@ QueueOps_t* CamDrvBuffInit(u32  nBufferSize, u32 nMaxConsumer)
             if(pOps->pFillHandle)
             {
                 if(CamDrvQueueDeinit(pOps->pFillHandle))
-                    CamOsPrintf("%s can't free memory...\n\r", __FUNCTION__);
+                    CamOsPrintf("%s:%d free mem fail\n\r", __FUNCTION__,__LINE__);
                 else
                     pOps->pFillHandle = NULL;
             }
@@ -239,7 +239,7 @@ QueueOps_t* CamDrvBuffInit(u32  nBufferSize, u32 nMaxConsumer)
             if(pOps->pReadyHandle)
             {
                 if(CamDrvQueueDeinit(pOps->pReadyHandle))
-                    CamOsPrintf("%s can't free memory...\n\r", __FUNCTION__);
+                    CamOsPrintf("%s:%d free mem fail\n\r", __FUNCTION__,__LINE__);
                 else
                     pOps->pReadyHandle = NULL;
             }
@@ -284,7 +284,7 @@ CamDrvRet_e CamDrvBuffDeinit(QueueOps_t* ptBuff)
     if(ptBuff->pInvalidHandle)
     {
         if(CamDrvQueueDeinit(ptBuff->pInvalidHandle))
-            CamOsPrintf("%s:%d can't free memory...\n\r", __FUNCTION__,__LINE__);
+            CamOsPrintf("%s:%d free mem fail\n\r", __FUNCTION__,__LINE__);
         else
             ptBuff->pInvalidHandle = NULL;
     }
@@ -292,7 +292,7 @@ CamDrvRet_e CamDrvBuffDeinit(QueueOps_t* ptBuff)
     if(ptBuff->pValidHandle)
     {
         if(CamDrvQueueDeinit(ptBuff->pValidHandle))
-            CamOsPrintf("%s:%d can't free memory...\n\r", __FUNCTION__,__LINE__);
+            CamOsPrintf("%s:%d free mem fail\n\r", __FUNCTION__,__LINE__);
         else
             ptBuff->pValidHandle = NULL;
     }
@@ -300,7 +300,7 @@ CamDrvRet_e CamDrvBuffDeinit(QueueOps_t* ptBuff)
     if(ptBuff->pFillHandle)
     {
         if(CamDrvQueueDeinit(ptBuff->pFillHandle))
-            CamOsPrintf("%s:%d can't free memory...\n\r", __FUNCTION__,__LINE__);
+            CamOsPrintf("%s:%d free mem fail\n\r", __FUNCTION__,__LINE__);
         else
             ptBuff->pFillHandle = NULL;
     }
@@ -308,7 +308,7 @@ CamDrvRet_e CamDrvBuffDeinit(QueueOps_t* ptBuff)
     if(ptBuff->pReadyHandle)
     {
         if(CamDrvQueueDeinit(ptBuff->pReadyHandle))
-            CamOsPrintf("%s:%d can't free memory...\n\r", __FUNCTION__,__LINE__);
+            CamOsPrintf("%s:%d free mem fail\n\r", __FUNCTION__,__LINE__);
         else
             ptBuff->pReadyHandle = NULL;
     }

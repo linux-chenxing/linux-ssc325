@@ -63,7 +63,9 @@ typedef enum
     IVE_IOC_OP_TYPE_NCC                             = 0x16,
     IVE_IOC_OP_TYPE_LBP                             = 0x18,
     IVE_IOC_OP_TYPE_BAT                             = 0x19,
-    IVE_IOC_OP_TYPE_ADP_THRESH                      = 0x1A
+    IVE_IOC_OP_TYPE_ADP_THRESH                      = 0x1A,
+    IVE_IOC_OP_TYPE_MATRIX_TRANSFORM                = 0x1F,
+    IVE_IOC_OP_TYPE_IMAGE_DOT                       = 0x20
 } IVE_IOC_OP_TYPE;
 
 typedef enum
@@ -80,15 +82,15 @@ typedef enum
 
 typedef enum
 {
-    IVE_IOC_MODE_SOBEL_BOTH                        = 0x00,
-    IVE_IOC_MODE_SOBEL_HORIZONTAL                  = 0x01,
-    IVE_IOC_MODE_SOBEL_VERTICAL                    = 0x02,
+    IVE_IOC_MODE_SOBEL_BOTH                         = 0x00,
+    IVE_IOC_MODE_SOBEL_HORIZONTAL                   = 0x01,
+    IVE_IOC_MODE_SOBEL_VERTICAL                     = 0x02,
 } IVE_IOC_MODE_SOBEL;
 
 typedef enum
 {
-    IVE_IOC_MODE_MAG_AND_ANG_ONLY_MAG              = 0x00,
-    IVE_IOC_MODE_MAG_AND_ANG_BOTH                  = 0x01
+    IVE_IOC_MODE_MAG_AND_ANG_ONLY_MAG               = 0x00,
+    IVE_IOC_MODE_MAG_AND_ANG_BOTH                   = 0x01
 } IVE_IOC_MODE_MAG_AND_ANG;
 
 typedef enum
@@ -137,6 +139,12 @@ typedef enum
 
 typedef enum
 {
+    IVE_IOC_MODE_ADD_ROUNDING                       = 0x00,
+    IVE_IOC_MODE_ADD_CLIPPING                       = 0x01,
+} IVE_IOC_MODE_ADD;
+
+typedef enum
+{
     IVE_IOC_MODE_SUB_ABS                            = 0x00,
     IVE_IOC_MODE_SUB_SHIFT                          = 0x01,
 } IVE_IOC_MODE_SUB;
@@ -152,9 +160,9 @@ typedef enum
 
 typedef enum
 {
-    IVE_IOC_MODE_INTEGRAL_BOTH                     = 0x00,
-    IVE_IOC_MODE_INTEGRAL_SUM                      = 0x01,
-    IVE_IOC_MODE_INTEGRAL_SQUARE_SUM               = 0x02
+    IVE_IOC_MODE_INTEGRAL_BOTH                      = 0x00,
+    IVE_IOC_MODE_INTEGRAL_SUM                       = 0x01,
+    IVE_IOC_MODE_INTEGRAL_SQUARE_SUM                = 0x02
 } IVE_IOC_MODE_INTEGRAL;
 
 typedef enum
@@ -178,8 +186,38 @@ typedef enum
 {
     IVE_IOC_MODE_LBP_COMP_NORMAL                    = 0x00,
     IVE_IOC_MODE_LBP_COMP_ABS                       = 0x01,
+    IVE_IOC_MODE_LBP_COMP_ABS_MUL                   = 0x02,
 
 } IVE_IOC_MODE_LBP;
+
+typedef enum
+{
+    IVE_IOC_CHANNEL_MODE_LBP_C1                     = 0x00,
+    IVE_IOC_CHANNEL_MODE_LBP_C2                     = 0x01,
+
+}IVE_IOC_CHANNEL_MODE_LBP;
+
+typedef enum
+{
+    IVE_IOC_MODE_MATRIX_TRANSFORM_C1                = 0x00,
+    IVE_IOC_MODE_MATRIX_TRANSFORM_C2                = 0x01,
+    IVE_IOC_MODE_MATRIX_TRANSFORM_C3                = 0x02
+
+} IVE_IOC_CHANNEL_MODE_MATRIX_TRANSFORM;
+
+typedef enum
+{
+    IVE_IOC_MODE_MATRIX_TRANSFORM_ROUNDING          = 0x00,
+    IVE_IOC_MODE_MATRIX_TRANSFORM_CLIPPING          = 0x01
+
+} IVE_IOC_CONTROL_MODE_MATRIX_TRANSFORM;
+
+typedef enum
+{
+    IVE_IOC_MODE_IMAGE_DOT_ROUNDING                 = 0x00,
+    IVE_IOC_MODE_IMAGE_DOT_CLIPPING                 = 0x01,
+
+} IVE_IOC_MODE_IMAGE_DOT;
 
 typedef struct
 {
@@ -199,15 +237,15 @@ typedef struct
 
 typedef struct
 {
-	__u8 clamp_low;
-	__u8 clamp_high;
+    __u8 clamp_low;
+    __u8 clamp_high;
 }  ive_ioc_coeff_csc_clamp;
 
 typedef struct
 {
-	__u16 coeff[9];
-	__u16 offset[3];
-	ive_ioc_coeff_csc_clamp clamp[3];
+    __u16 coeff[9];
+    __u16 offset[3];
+    ive_ioc_coeff_csc_clamp clamp[3];
 } ive_ioc_coeff_csc;
 
 typedef struct
@@ -283,6 +321,7 @@ typedef struct
 
 typedef struct
 {
+    IVE_IOC_MODE_ADD mode;
     __u16 weight_x;
     __u16 weight_y;
 } ive_ioc_coeff_add;
@@ -329,6 +368,7 @@ typedef struct
 typedef struct
 {
     IVE_IOC_MODE_LBP mode;
+    IVE_IOC_CHANNEL_MODE_LBP chlmode;
     __u16 thresh;
 } ive_ioc_coeff_lbp;
 
@@ -346,6 +386,18 @@ typedef struct
     __s8 s8Offset;
     __u8 u8ValueThr;
 } ive_ioc_coeff_adp_thresh;
+
+typedef struct
+{
+    IVE_IOC_CHANNEL_MODE_MATRIX_TRANSFORM chl_mode;
+    IVE_IOC_CONTROL_MODE_MATRIX_TRANSFORM ctrl_mode;
+    __u16 s16MatrixArray[9];
+}ive_ioc_coeff_matrix_transform;
+
+typedef struct
+{
+    IVE_IOC_MODE_IMAGE_DOT mode;
+}ive_ioc_coeff_image_dot;
 
 typedef struct
 {
@@ -378,6 +430,8 @@ typedef struct
         ive_ioc_coeff_lbp coeff_lbp;
         ive_ioc_coeff_bat coeff_bat;
         ive_ioc_coeff_adp_thresh coeff_adp_thresh;
+        ive_ioc_coeff_matrix_transform coeff_matrix_transform;
+        ive_ioc_coeff_image_dot coeff_image_dot;
     };
 } ive_ioc_config;
 

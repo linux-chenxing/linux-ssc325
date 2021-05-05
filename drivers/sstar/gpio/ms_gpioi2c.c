@@ -210,14 +210,14 @@ static int ms_gpioi2c_probe(struct platform_device *pdev)
     device_create_file(gpioi2c_dev, &dev_attr_gpioi2c_delay);
     device_create_file(gpioi2c_dev, &dev_attr_access_retry);
 
-    printk("[ms_gpioi2c] sda-gpio=%d, scl-gpio=%d\n", sda, scl);
+    printk("[gpioi2c] sda-gpio=%d, scl-gpio=%d\n", sda, scl);
 
     return err;
 }
 
 static int ms_gpioi2c_remove(struct platform_device *pdev)
 {
-    printk("[ms_gpioi2c] removed\n");
+    printk("[gpioi2c] removed\n");
 
     cdev_del(&ms_gpioi2c_cdev);
     unregister_chrdev_region(MKDEV(ms_gpioi2c_major, ms_gpioi2c_minor_start), ms_gpioi2c_dev_count);

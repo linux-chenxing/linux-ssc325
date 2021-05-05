@@ -415,6 +415,8 @@
             slot-max-clks = <48000000>,<48000000>,<48000000>;
 	           slot-intcdzs = <1>,<1>,<1>;
 	           slot-fakecdzs = <0>,<0>,<0>;
+            slot-pwr-off-delay = <30>,<30>,<30>;
+            slot-pwr-on-delay = <1>,<1>,<1>;
             slot-pwr-gpios = <19>,<0>,<0>;
 
             clocks = <&CLK_sdio>,<&GATE_MCM_sdio>,<&GATE_SRAM_sdio>,<&CLK_fcie>,<&GATE_MCM_fcie>,<&GATE_SRAM_fcie>;

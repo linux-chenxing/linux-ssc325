@@ -31,8 +31,5 @@
 U32_T Hal_Timer_mDelay(U32_T u32_msec);
 U32_T Hal_Timer_uDelay(U32_T u32_usec);
 U32_T Hal_Timer_mSleep(U32_T u32_msec);
-void Hal_Timer_SaveTimeSleep(BOOL_T bEnable);
-
-
 
 #endif //End of __HAL_CARD_TIMER_H

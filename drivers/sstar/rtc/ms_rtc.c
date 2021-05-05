@@ -204,7 +204,10 @@ static irqreturn_t ms_rtc_interrupt(s32 irq, void *dev_id)
 
     return IRQ_HANDLED;
 }
-
+#ifdef CONFIG_CAM_CLK
+    #include "drv_camclk_Api.h"
+    void *pvRtcClk = NULL;
+#endif
 
 #ifdef CONFIG_PM
 static s32 ms_rtc_suspend(struct platform_device *pdev, pm_message_t state)
@@ -231,8 +234,16 @@ static s32 ms_rtc_resume(struct platform_device *pdev)
 }
 #endif
 
+
 static int ms_rtc_remove(struct platform_device *pdev)
 {
+#ifdef CONFIG_CAM_CLK
+    if(pvRtcClk)
+    {
+        CamClkSetOnOff(pvRtcClk,0);
+        CamClkUnregister(pvRtcClk);
+    }
+#else
     struct clk *clk = of_clk_get(pdev->dev.of_node, 0);
     int ret = 0;
 
@@ -244,7 +255,7 @@ static int ms_rtc_remove(struct platform_device *pdev)
     }
     clk_disable_unprepare(clk);
     clk_put(clk);
-
+#endif
     return 0;
 }
 
@@ -252,7 +263,12 @@ static int ms_rtc_probe(struct platform_device *pdev)
 {
     struct ms_rtc_info *info;
     struct resource *res;
+#ifdef CONFIG_CAM_CLK
+    u32 RtcClk = 0;
+    CAMCLK_Set_Attribute stSetCfg;
+#else
     struct clk *clk;
+#endif
     dev_t dev;
     int ret = 0;
     u16 reg;
@@ -311,6 +327,29 @@ static int ms_rtc_probe(struct platform_device *pdev)
         writew(reg, info->rtc_base + REG_RTC_CTRL);
     }
     //2. set frequency
+#ifdef CONFIG_CAM_CLK
+    of_property_read_u32_index(pdev->dev.of_node,"camclk", 0,&(RtcClk));
+    if (!RtcClk)
+    {
+        printk(KERN_DEBUG "[%s] Fail to get clk!\n", __func__);
+    }
+    else
+    {
+        if(CamClkRegister("Rtc",RtcClk,&(pvRtcClk))==CAMCLK_RET_OK)
+        {
+            if (of_property_read_u32(pdev->dev.of_node, "clock-frequency", &rate))
+            {
+                rate = CamClkRateGet(RtcClk);
+            }
+            else
+            {
+                CAMCLK_SETRATE_ROUNDUP(stSetCfg,rate);
+                CamClkAttrSet(pvRtcClk,&stSetCfg);
+            }
+            CamClkSetOnOff(pvRtcClk,1);
+        }
+    }
+#else
     clk = of_clk_get(pdev->dev.of_node, 0);
     if(IS_ERR(clk))
     {
@@ -331,6 +370,8 @@ static int ms_rtc_probe(struct platform_device *pdev)
 
     clk_prepare_enable(clk);
     RTC_ERR("[%s]: rtc setup, frequency=%lu\n", __func__, clk_get_rate(clk));
+    clk_put(clk);
+#endif
     writew(rate & 0xFFFF, info->rtc_base + REG_RTC_FREQ_CW_L);
     writew((rate >>16)  & 0xFFFF, info->rtc_base + REG_RTC_FREQ_CW_H);
 
@@ -343,8 +384,6 @@ static int ms_rtc_probe(struct platform_device *pdev)
 
     info->rtc_devnode = device_create(msys_get_sysfs_class(), NULL, dev, NULL, "ms_rtc");
     device_create_file(info->rtc_devnode, &dev_attr_auto_wakeup_timer);
-
-    clk_put(clk);
 
     return ret;
 }

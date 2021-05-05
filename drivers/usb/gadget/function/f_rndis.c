@@ -479,6 +479,12 @@ rndis_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 	 */
 	switch ((ctrl->bRequestType << 8) | ctrl->bRequest) {
 
+#ifdef CONFIG_USB_WEBCAM_RNDIS // ss patch
+	case ((USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE) << 8)
+			| USB_CDC_SET_ETHERNET_PACKET_FILTER:
+		value = 0;
+		break;
+#endif
 	/* RNDIS uses the CDC command encapsulation mechanism to implement
 	 * an RPC scheme, with much getting/setting of attributes by OID.
 	 */

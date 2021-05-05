@@ -17,6 +17,7 @@
 */
 #include "mhal_pwm.h"
 #include "gpio.h"
+#include <linux/of_irq.h>
 
 //------------------------------------------------------------------------------
 //  Variables
@@ -35,6 +36,31 @@ static U32 _pwmPeriod[PWM_NUM] = { 0 };
 //------------------------------------------------------------------------------
 //  Global Functions
 //------------------------------------------------------------------------------
+//+++[Only4I6e]
+void MDEV_PWM_AllGrpEnable(struct mstar_pwm_chip *ms_chip)
+{
+    //Dummy func
+}
+//---[Only4I6e]
+
+void DrvPWMInit(struct mstar_pwm_chip *ms_chip, U8 u8Id)
+{
+    U32 reset, u32Period;
+
+    if (PWM_NUM <= u8Id)
+        return;
+
+    reset = INREG16(ms_chip->base + u16REG_SW_RESET) & (BIT0<<u8Id);
+    DrvPWMGetPeriod(ms_chip, u8Id, &u32Period);
+    if ((0 == reset) && (u32Period))
+    {
+        _pwmEnSatus[u8Id] = 1;
+    }
+    else
+    {
+        DrvPWMEnable(ms_chip, u8Id, 0);
+    }
+}
 
 //------------------------------------------------------------------------------
 //
@@ -52,9 +78,9 @@ static U32 _pwmPeriod[PWM_NUM] = { 0 };
 //
 void DrvPWMSetDuty(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32 u32Val)
 {
-    U32 u32Period;
-    U32 u32Duty;
-    U8  u8ClK86MHz = 0;
+    U32 u32Period = 0x00000000;
+    U32 u32Duty = 0x00000000;
+    U8  u8ClK86MHz = 0x00;
 
     if (PWM_NUM <= u8Id)
         return;
@@ -81,6 +107,25 @@ void DrvPWMSetDuty(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32 u32Val)
     }
 }
 
+void DrvPWMGetDuty(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32* pu32Val)
+{
+    U32 u32Duty;
+
+    *pu32Val = 0;
+    if (PWM_NUM <= u8Id)
+        return;
+    u32Duty = INREG16(ms_chip->base + (u8Id*0x80) + u16REG_PWM_DUTY_L) | ((INREG16(ms_chip->base + (u8Id*0x80) + u16REG_PWM_DUTY_H) & 0x3) << 16);
+    if (u32Duty)
+    {
+        U32 u32Period = _pwmPeriod[u8Id];
+        // DrvPWMGetPeriod(ms_chip, u8Id, &u32Period);
+        if (u32Period)
+        {
+            *pu32Val = (u32Duty * 100)/u32Period;
+        }
+    }
+}
+
 //------------------------------------------------------------------------------
 //
 //  Function:   DrvPWMSetPeriod
@@ -97,7 +142,7 @@ void DrvPWMSetDuty(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32 u32Val)
 //
 void DrvPWMSetPeriod(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32 u32Val)
 {
-    U32 u32Period;
+    U32 u32Period = 0x00000000;
     // Original clock source(12MHz) is unable to generate the frequency higher than 6MHz(12MHz/2). So use 86MHz as source.
     if(u32Val > (U32)(clk_get_rate(ms_chip->clk)) / 2) {
         u32Period = CLOCK_SRC_86MHZ / u32Val;
@@ -110,10 +155,12 @@ void DrvPWMSetPeriod(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32 u32Val)
         OUTREGMSK16( BASE_REG_CLKGEN_PA + REG_ID_6D, 0x1 << DIGPM_86MHz_POS, 0x1 << DIGPM_86MHz_POS);
     }
     //[APN] range 2<=Period<=262144
-    if(u32Period < 2)
+    if(u32Period < 2) {
         u32Period = 2;
-    if(u32Period > 262144)
+    }
+    else if(u32Period > 262144) {
         u32Period = 262144;
+    }
     //[APN] PWM _PERIOD= (REG_PERIOD+1)
     u32Period--;
 
@@ -123,6 +170,22 @@ void DrvPWMSetPeriod(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32 u32Val)
     OUTREG16(ms_chip->base + (u8Id*0x80) + u16REG_PWM_PERIOD_H, ((u32Period>>16)&0x3));
 
     _pwmPeriod[u8Id] = u32Period;
+}
+
+void DrvPWMGetPeriod(struct mstar_pwm_chip *ms_chip, U8 u8Id, U32* pu32Val)
+{
+    U32 u32Period;
+
+    u32Period = INREG16(ms_chip->base + (u8Id*0x80) + u16REG_PWM_PERIOD_L) | ((INREG16(ms_chip->base + (u8Id*0x80) + u16REG_PWM_PERIOD_H) & 0x3) << 16);
+    if ((0 == _pwmPeriod[u8Id]) && (u32Period))
+    {
+        _pwmPeriod[u8Id] = u32Period;
+    }
+    *pu32Val = 0;
+    if (u32Period)
+    {
+        *pu32Val = (U32)(clk_get_rate(ms_chip->clk))/(u32Period+1);
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -144,32 +207,34 @@ void DrvPWMSetPolarity(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8 u8Val)
     OUTREGMSK16(ms_chip->base + (u8Id*0x80) + u16REG_PWM_CTRL, (u8Val<<POLARITY_BIT), (0x1<<POLARITY_BIT));
 }
 
-#if 0
-void DrvPWMSetFreqDiv( U8 u8Id, U8 u8Val )
+void DrvPWMGetPolarity(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8* pu8Val)
 {
-    if( PWM0 == u8Id )
-    {
-        OUTREGMSK16( BASE_REG_PMSLEEP_PA + u16REG_PWM0_DIV, u8Val, PWM_CTRL_DIV_MSAK );
-    }
-    else if( PWM1 == u8Id )
-    {
-        OUTREGMSK16( BASE_REG_PMSLEEP_PA + u16REG_PWM1_DIV, u8Val, PWM_CTRL_DIV_MSAK );
-    }
-    else if( PWM2 == u8Id )
-    {
-        OUTREGMSK16( BASE_REG_PMSLEEP_PA + u16REG_PWM2_DIV, u8Val, PWM_CTRL_DIV_MSAK );
-    }
-    else if( PWM3 == u8Id )
-    {
-        OUTREGMSK16( BASE_REG_PMSLEEP_PA + u16REG_PWM3_DIV, u8Val, PWM_CTRL_DIV_MSAK );
-    }
-    else
-    {
-        printk(KERN_ERR "void DrvPWMSetDiv error!!!! (%x, %x)\r\n", u8Id, u8Val);
-    }
-
+    *pu8Val = (INREG16(ms_chip->base + (u8Id*0x80) + u16REG_PWM_CTRL) & (0x1<<POLARITY_BIT)) ? 1 : 0;
 }
-#endif
+
+//void DrvPWMSetFreqDiv( U8 u8Id, U8 u8Val )
+//{
+//    if( PWM0 == u8Id )
+//    {
+//        OUTREGMSK16( BASE_REG_PMSLEEP_PA + u16REG_PWM0_DIV, u8Val, PWM_CTRL_DIV_MSAK );
+//    }
+//    else if( PWM1 == u8Id )
+//    {
+//        OUTREGMSK16( BASE_REG_PMSLEEP_PA + u16REG_PWM1_DIV, u8Val, PWM_CTRL_DIV_MSAK );
+//    }
+//    else if( PWM2 == u8Id )
+//    {
+//        OUTREGMSK16( BASE_REG_PMSLEEP_PA + u16REG_PWM2_DIV, u8Val, PWM_CTRL_DIV_MSAK );
+//    }
+//    else if( PWM3 == u8Id )
+//    {
+//        OUTREGMSK16( BASE_REG_PMSLEEP_PA + u16REG_PWM3_DIV, u8Val, PWM_CTRL_DIV_MSAK );
+//    }
+//    else
+//    {
+//        printk(KERN_ERR "void DrvPWMSetDiv error!!!! (%x, %x)\r\n", u8Id, u8Val);
+//    }
+//}
 
 //------------------------------------------------------------------------------
 //
@@ -216,6 +281,14 @@ void DrvPWMEnable(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8 u8Val)
         SETREG16(ms_chip->base + u16REG_SW_RESET, 1<<u8Id);
     }
     _pwmEnSatus[u8Id] = u8Val;
+}
+
+void DrvPWMEnableGet(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8* pu8Val)
+{
+    *pu8Val = 0;
+    if (PWM_NUM <= u8Id)
+        return;
+    *pu8Val = _pwmEnSatus[u8Id];
 }
 
 void DrvPWMPadSet(U8 u8Id, U8 u8Val)
@@ -416,6 +489,68 @@ int DrvPWMGroupHold(struct mstar_pwm_chip *ms_chip, U8 u8GroupId, U8 u8Val)
     return 0;
 }
 
+//+++[Only4I6e]
+int DrvPWMGroupGetRoundNum(struct mstar_pwm_chip* ms_chip, U8 u8GroupId, U16* u16Val)
+{
+    return 0;
+}
+
+int DrvPWMGroupGetHoldM1(struct mstar_pwm_chip *ms_chip)
+{
+#if 0
+    return INREG16(ms_chip->base + REG_GROUP_HOLD_MODE1);
+#else
+    //printk("\n[WARN][%s L%d] Only4i6e\n", __FUNCTION__, __LINE__);
+    return 1;
+#endif
+}
+
+int DrvPWMGroupHoldM1(struct mstar_pwm_chip *ms_chip, U8 u8Val)
+{
+#if 0
+    if (u8Val) {
+        SETREG16(ms_chip->base + REG_GROUP_HOLD_MODE1, 1);
+        printk("[%s L%d] hold mode1 en!(keep low)\n", __FUNCTION__, __LINE__);
+    }
+    else {
+        CLRREG16(ms_chip->base + REG_GROUP_HOLD_MODE1, 0);
+        printk("[%s L%d] hold mode1 dis!\n", __FUNCTION__, __LINE__);
+    }
+#else
+    //printk("\n[WARN][%s L%d] Only4i6e\n", __FUNCTION__, __LINE__);
+#endif
+    return 1;
+}
+
+int DrvPWMDutyQE0(struct mstar_pwm_chip *ms_chip, U8 u8GroupId, U8 u8Val)
+{
+#if 0
+    if (PWM_GROUP_NUM <= u8GroupId)
+        return 0;
+
+    printk("[%s L%d] grp:%d x%x(%d)\n", __FUNCTION__, __LINE__, u8GroupId, u8Val, u8Val);
+    if (u8Val)
+        SETREG16(ms_chip->base + REG_PWM_DUTY_QE0, (1 << (u8GroupId + REG_PWM_DUTY_QE0_SHFT)));
+    else
+        CLRREG16(ms_chip->base + REG_PWM_DUTY_QE0, (1 << (u8GroupId + REG_PWM_DUTY_QE0_SHFT)));
+#else
+    //printk("\n[WARN][%s L%d] Only4i6e id:%d\n", __FUNCTION__, __LINE__, u8GroupId);
+#endif
+    return 1;
+}
+
+int DrvPWMGetOutput(struct mstar_pwm_chip *ms_chip, U8* pu8Output)
+{
+#if 0
+    *pu8Output = INREG16(ms_chip->base + REG_PWM_OUT);
+    printk("[%s L%d] output:x%x\n", __FUNCTION__, __LINE__, *pu8Output);
+#else
+    //printk("\n[WARN][%s L%d] Only4i6e\n", __FUNCTION__, __LINE__);
+#endif
+    return 1;
+}
+//---[Only4I6e]
+
 int DrvPWMSetEnd(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8 u8DutyId, U32 u32Val)
 {
     return 0;
@@ -451,4 +586,10 @@ int DrvPWMDiv(struct mstar_pwm_chip *ms_chip, U8 u8Id, U8 u8Val)
 int DrvPWMGroupInfo(struct mstar_pwm_chip *ms_chip, char* buf_start, char* buf_end)
 {
     return 0;
+}
+
+irqreturn_t PWM_IRQ(int irq, void *data)
+{
+    //Only4i6e
+    return IRQ_NONE;
 }

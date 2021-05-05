@@ -32,12 +32,11 @@
 
 #include "power.h"
 
-#include <mstar/mpatch_macro.h>
 
 const char *pm_labels[] = { "mem", "standby", "freeze", NULL };
 const char *pm_states[PM_SUSPEND_MAX];
 
-#if (MP_USB_STR_PATCH==1)
+#ifdef CONFIG_MP_USB_STR_PATCH
 typedef enum
 {
     E_STR_NONE,
@@ -401,6 +400,9 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 		} else if (*wakeup) {
 			error = -EBUSY;
 		}
+#ifdef CONFIG_MP_USB_STR_PATCH
+                enStrStatus=E_STR_IN_RESUME;
+#endif
 		syscore_resume();
 	}
 
@@ -511,6 +513,9 @@ static int enter_state(suspend_state_t state)
 	}
 	if (!mutex_trylock(&pm_mutex))
 		return -EBUSY;
+#ifdef CONFIG_MP_USB_STR_PATCH
+        enStrStatus=E_STR_IN_SUSPEND;
+#endif
 
 	if (state == PM_SUSPEND_FREEZE)
 		freeze_begin();
@@ -542,6 +547,9 @@ static int enter_state(suspend_state_t state)
 	pr_debug("PM: Finishing wakeup.\n");
 	suspend_finish();
  Unlock:
+#ifdef CONFIG_MP_USB_STR_PATCH
+        enStrStatus=E_STR_NONE;
+#endif
 	mutex_unlock(&pm_mutex);
 	return error;
 }

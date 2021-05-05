@@ -22,11 +22,10 @@
 struct ms_chip
 {
 	void (*chip_flush_miu_pipe)(void);
-	void (*chip_flush_memory)(void);
-	void (*chip_read_memory)(void);
+    	void (*chip_flush_miu_pipe_nodsb)(void);
 	int  (*cache_outer_is_enabled)(void);
+       void (*cache_flush_dcache_page)(struct page *page);
 	void (*cache_flush_all)(void);
-	void (*cache_clean_range_va_pa)(unsigned long, unsigned long,unsigned long);
 	void (*cache_flush_range_va_pa)(unsigned long, unsigned long,unsigned long);
 	void (*cache_clean_range)(unsigned long, unsigned long);
 	void (*cache_flush_range)(unsigned long, unsigned long);

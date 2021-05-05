@@ -29,7 +29,7 @@
 
 
 //
-//  Sprcial Block Table (List)
+//  Special Block Table (List)
 //
 
 ST_SPECIAL_BLOCKS _stSpecialBlocks_EN25F10 =
@@ -981,6 +981,39 @@ static ST_WRITE_PROTECT _pstWriteProtectTable_ZB25Q128[] =
     {   BITS(5:2, 0),   0xFFFFFFFF,     0xFFFFFFFF  },
 };
 
+static ST_WRITE_PROTECT _pstWriteProtectTable_ZB25VQ128[] =
+{
+    //   BPX,           Lower Bound     Upper Bound
+    {   BITS(5:2, 1),   0x00FC0000,     0x00FFFFFF  },
+    {   BITS(5:2, 2),   0x00F80000,     0x00FFFFFF  },
+    {   BITS(5:2, 3),   0x00F00000,     0x00FFFFFF  },
+    {   BITS(5:2, 4),   0x00E00000,     0x00FFFFFF  },
+    {   BITS(5:2, 5),   0x00C00000,     0x00FFFFFF  },
+    {   BITS(5:2, 6),   0x00800000,     0x00FFFFFF  },
+// 0~127
+    {   BITS(5:2, 9),   0x00000000,     0x0003FFFF  },
+    {   BITS(5:2, 10),  0x00000000,     0x0007FFFF  },
+    {   BITS(5:2, 11),  0x00000000,     0x000FFFFF  },
+    {   BITS(5:2, 12),  0x00000000,     0x001FFFFF  },
+    {   BITS(5:2, 13),  0x00000000,     0x003FFFFF  },
+    {   BITS(5:2, 14),  0x00000000,     0x007FFFFF  },
+// 255
+    {   BITS(5:2, 17),   0x00FFF000,     0x00FFFFFF  },
+    {   BITS(5:2, 18),   0x00FFE000,     0x00FFFFFF  },
+    {   BITS(5:2, 19),   0x00FFC000,     0x00FFFFFF  },
+    {   BITS(5:2, 20),   0x00FF8000,     0x00FFFFFF  },
+    {   BITS(5:2, 21),   0x00FF8000,     0x00FFFFFF  },
+// 0
+    {   BITS(5:2, 25),   0x00000000,     0x00000FFF  },
+    {   BITS(5:2, 26),   0x00000000,     0x00001FFF  },
+    {   BITS(5:2, 27),   0x00000000,     0x00003FFF  },
+    {   BITS(5:2, 28),   0x00000000,     0x00007FFF  },
+    {   BITS(5:2, 29),   0x00000000,     0x00007FFF  },
+// NONE
+    {   BITS(5:2, 0),   0xFFFFFFFF,     0xFFFFFFFF  },
+};
+
+
 ST_WRITE_PROTECT _pstWriteProtectTable_PM25LQ032C[] =
 {
     //  BPX,            Lower Bound                 Upper Bound
@@ -1154,6 +1187,7 @@ hal_SERFLASH_t _hal_SERFLASH_table[] =   // Need to Add more sample for robust
     { FLASH_IC_W25X80,      MID_WB,     0x30,   0x14,   _pstWriteProtectTable_W25X80,         NULL,                       0x100000,   16,     SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_DUAL_D_MODE }, TRUE,  TRUE },
     { FLASH_IC_W25Q64,      MID_WB,     0x40,   0x17,   _pstWriteProtectTable_W25X64,         NULL,                       0x800000,   128,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_DUAL_AD_MODE}, TRUE,  TRUE },
     { FLASH_IC_W25Q128,     MID_WB,     0x40,   0x18,   _pstWriteProtectTable_W25Q128,        NULL,                       0x1000000,  256,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_DUAL_AD_MODE}, TRUE,  TRUE },
+    { FLASH_IC_W25Q256JV,   MID_WB,     0x40,   0x19, /*_pstWriteProtectTable_W25Q256*/NULL,  NULL,                       0x2000000,  512,    SIZE_64KB,  256,    50,    BITS(5:2, 0x0F),    ISP_DEV_PMC,        ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_DUAL_AD_MODE}, TRUE,   TRUE},
     { FLASH_IC_AT25DF321A,  MID_ATMEL,  0x47,   0x01,   _pstWriteProtectTable_AT25DF321,      NULL,                       0x400000,   64,     SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_DUAL_D_MODE }, TRUE,  TRUE },
     { FLASH_IC_AT26DF321,   MID_ATMEL,  0x47,   0x00,   _pstWriteProtectTable_AT26DF321,      NULL,                       0x400000,   64,     SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_FAST_MODE   }, FALSE,  TRUE},
     { FLASH_IC_STM25P32,    MID_ST,     0x20,   0x16,   NULL,                                 NULL,                       0x400000,   64,     SIZE_64KB,  256,    50,     BITS(4:2, 0x07),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_FAST_MODE   }, FALSE,  TRUE},
@@ -1162,8 +1196,6 @@ hal_SERFLASH_t _hal_SERFLASH_table[] =   // Need to Add more sample for robust
     { FLASH_IC_EN25Q32A,    MID_EON,    0x30,   0x16,   _pstWriteProtectTable_EN25Q32A,       NULL,                       0x400000,   64,     SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_DUAL_AD_MODE}, TRUE, TRUE },
     { FLASH_IC_EN25Q64,     MID_EON,    0x30,   0x17,   _pstWriteProtectTable_EN25Q64,        NULL,                       0x800000,   128,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_FAST_MODE   }, FALSE,  TRUE},
     { FLASH_IC_EN25Q128,    MID_EON,    0x30,   0x18,   _pstWriteProtectTable_EN25Q128,       NULL,                       0x1000000,  256,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_DUAL_AD_MODE}, TRUE,  TRUE },
-    { FLASH_IC_S25FL128P,   MID_SPAN,   0x20,   0x18,   _pstWriteProtectTable_S25FL128P,      NULL,                       0x1000000,  256,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_FAST_MODE   }, FALSE,  TRUE},
-    { FLASH_IC_S25FL008A,   MID_SPAN,   0x20,   0x13,   _pstWriteProtectTable_S25FL008A,      NULL,                       0x100000,   16,     SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_XTALI, E_FAST_MODE   }, FALSE,  TRUE},
     { FLASH_IC_EN25F10,     MID_EON,    0x31,   0x11,   NULL,                                 &_stSpecialBlocks_EN25F10,  0x20000,    4,      SIZE_32KB,  256,    384,    BITS(4:2, 0x07),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_FAST_MODE   }, FALSE,  TRUE},
     { FLASH_IC_EN25F16,     MID_EON,    0x31,   0x15,   _pstWriteProtectTable_EN25F16,        NULL,                       0x200000,   32,     SIZE_64KB,  256,    384,    BITS(4:2, 0x07),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_FAST_MODE   }, FALSE,  TRUE},
     { FLASH_IC_EN25F32,     MID_EON,    0x31,   0x16,   _pstWriteProtectTable_EN25F32,        NULL,                       0x400000,   64,     SIZE_64KB,  256,    384,    BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_FAST_MODE   }, FALSE,  TRUE},
@@ -1174,6 +1206,8 @@ hal_SERFLASH_t _hal_SERFLASH_table[] =   // Need to Add more sample for robust
     { FLASH_IC_S25FL032P,   MID_SPAN,   0x02,   0x15,   _pstWriteProtectTable_S25FL032,       NULL,                       0x400000,   64,     SIZE_64KB,  256,    50,     BITS(4:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_DUAL_AD_MODE}, TRUE , TRUE},
     { FLASH_IC_S25FL064P,   MID_SPAN,   0x02,   0x16,   _pstWriteProtectTable_S25FL064,       NULL,                       0x800000,   128,    SIZE_64KB,  256,    50,     BITS(4:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_DUAL_AD_MODE}, TRUE,  TRUE },
     { FLASH_IC_S25FL032K,   MID_SPAN,   0x40,   0x16,   _pstWriteProtectTable_S25FL032K_CMP0, NULL,                       0x400000,   64,     SIZE_64KB,  256,    50,     BITS(6:2, 0x1F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_DUAL_AD_MODE}, TRUE,  TRUE },
+    { FLASH_IC_S25FL128P,   MID_SPAN,   0x20,   0x18,   _pstWriteProtectTable_S25FL128P,      NULL,                       0x1000000,  256,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_FAST_MODE   }, FALSE,  TRUE},
+    { FLASH_IC_S25FL008A,   MID_SPAN,   0x20,   0x13,   _pstWriteProtectTable_S25FL008A,      NULL,                       0x100000,   16,     SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_XTALI, E_FAST_MODE   }, FALSE,  TRUE},
     { FLASH_IC_PM25LQ032C,  MID_PMC,    0x46,   0x15,   _pstWriteProtectTable_PM25LQ032C,     NULL,                       0x400000,   64,     SIZE_64KB,  256,    50,     BITS(5:2, 0x1F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_DUAL_AD_MODE}, TRUE ,  TRUE},
     { FLASH_IC_GD25Q32,     MID_GD,     0x40,   0x16,   _pstWriteProtectTable_GD25Q32_CMP0,   NULL,                       0x400000,   64,     SIZE_64KB,  256,    50,     BITS(6:2, 0x1F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_DUAL_AD_MODE}, TRUE,  TRUE },
     { FLASH_IC_GD25Q16,     MID_GD,     0x40,   0x15,   _pstWriteProtectTable_GD25Q16_CMP0,   NULL,                       0x200000,   32,     SIZE_64KB,  256,    50,     BITS(6:2, 0x1F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_DUAL_AD_MODE}, TRUE,  TRUE },
@@ -1187,7 +1221,9 @@ hal_SERFLASH_t _hal_SERFLASH_table[] =   // Need to Add more sample for robust
     { FLASH_IC_MICRON_N25Q128,  MID_MICRON, 0xBA,   0x18,   _pstWriteProtectTable_N25Q128,    NULL,                       0x1000000,  256,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_DUAL_D_MODE}, TRUE, TRUE },
     { FLASH_IC_NUMONYX_M25PX16, MID_NUMONYX,0x73,   0x15,   _pstWriteProtectTable_M25PX16,    NULL,                       0x200000,    32,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_ST,     ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_DUAL_D_MODE }, TRUE, TRUE},
     { FLASH_IC_A25LM032,    MID_AM,     0x30,   0x16,    NULL,                                NULL,                       0x400000,    64,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_FAST_MODE   }, FALSE, TRUE},
-    { FLASH_IC_ZB25Q128,    MID_ST,     0x70,   0x18,     _pstWriteProtectTable_ZB25Q128,     NULL,                       0x1000000,  256,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_ST,     ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_DUAL_AD_MODE}, TRUE,  TRUE},
+    { FLASH_IC_ST25Q128,    MID_ZB,     0x40,   0x18,     _pstWriteProtectTable_ZB25Q128,     NULL,                       0x1000000,  256,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_ST,     ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_DUAL_AD_MODE}, TRUE,  TRUE},
     { FLASH_IC_ZB25Q64 ,    MID_EON,    0x70,   0x17,     _pstWriteProtectTable_ZB25Q64 ,     NULL,                       0x800000,  128,     SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_DUAL_AD_MODE}, TRUE,  TRUE},
+    { FLASH_IC_ZB25VQ128,    MID_ZB,     0x40,   0x18,     _pstWriteProtectTable_ZB25VQ128,     NULL,                       0x1000000,  256,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_ST,     ISP_SPI_ENDIAN_LITTLE, {E_SPI_86M  , E_QUAD_MODE}, TRUE,  TRUE},
+    { FLASH_IC_25Q128AS,    MID_25Q,    0X40,   0X18,   NULL,                                 NULL,                       0x1000000,  256,    SIZE_64KB,  256,    50,     BITS(5:2, 0x0F),    ISP_DEV_PMC,    ISP_SPI_ENDIAN_LITTLE, {E_SPI_54M  , E_SINGLE_MODE},  TRUE,   TRUE}
 };
 

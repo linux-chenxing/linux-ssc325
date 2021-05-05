@@ -138,6 +138,10 @@ typedef struct {
     ive_drv_handle          drv_handle;     // device handle
     struct work_struct      work_queue;     // work queue for post process after ISR
     struct mutex            mutex;          // for critical section
+#ifdef CONFIG_CAM_CLK
+    void **pvclk;
+    int IveParentCnt;
+#endif
 } ive_dev_data;
 
 // File private data

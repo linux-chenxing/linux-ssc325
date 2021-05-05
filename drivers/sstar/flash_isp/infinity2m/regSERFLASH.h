@@ -210,6 +210,9 @@
     #define SF_SR_SRWD                      BITS(7:7, 1)
     #define SF_SR_QUAD                      BITS(6:6, 1)
 
+#define SF_SR2_SRWD_MASK                BMASK(7:7)
+    #define SF_SR2_QUAD                     BITS(1:1, 1)
+
 // PM_SLEEP CMD.
 #define REG_PM_CKG_SPI              0x20 // Ref spec. before using these setting.
     #define PM_SPI_CLK_SEL_MASK         BMASK(13:10)

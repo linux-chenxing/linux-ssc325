@@ -484,6 +484,8 @@ void MHal_EMAC_PhyMode(void*, u32 phy_mode);
 
 int MHal_EMAC_FlowControl_TX(void*);
 
+void MHal_EMAC_MIU_Protect_RX(void* hal, u32 start, u32 end);
+
 // for fpga
 void MHal_EMAC_mdio_path(void* hal, int mdio_path);
 

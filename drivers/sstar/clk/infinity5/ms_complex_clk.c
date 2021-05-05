@@ -32,7 +32,7 @@
 #if defined (CONFIG_MS_CPU_FREQ) && defined (CONFIG_MS_GPIO)
 extern u8 enable_scaling_voltage;
 #include "infinity5/gpio.h"
-#include "../../gpio/mdrv_gpio.h"
+#include "mdrv_gpio.h"
 int vid_0 = -1;
 int vid_1 = -1;
 #else
@@ -53,6 +53,7 @@ int vid_1 = -1;
 #endif
 #define CLK_ERR(fmt, arg...) printk(KERN_ERR fmt, ##arg)
 
+#ifndef CONFIG_CAM_CLK
 static unsigned int ms_get_ddr_scl(void)
 {
     unsigned int factor = INREG16(BASE_REG_RIU_PA + (0x1032A0 << 1)) | (((INREG16(BASE_REG_RIU_PA + (0x1032A2 << 1)) & 0xFF) <<16));
@@ -88,7 +89,11 @@ static long ms_cpuclk_round_rate(struct clk_hw *clk_hw, unsigned long rate, unsi
     {
         return 1000000000;
     }
-    else                        //request 1000M-1200M=1200M
+    else if(rate <= 1100000000) //request 1000M-1100M=1100M
+    {
+        return 1100000000;
+    }
+    else                        //request 1100M-1200M=1200M
     {
         return 1200000000;
     }
@@ -143,7 +148,7 @@ void cpu_dvfs(U32 u32TargetLpf, U32 u32TargetPostDiv)
         }
     }
 }
-
+#endif
 
 
 #define VOLTAGE_CORE_850   850
@@ -154,7 +159,7 @@ int g_sCurrentTemp = 35;
 int g_sCurrentTempThreshLo=40;  // T < 40C : VDD = 1.0V
 int g_sCurrentTempThreshHi=60;  // T > 60C : VDD= 0.9V
 int g_sCurrentVoltageCore=VOLTAGE_CORE_1000;
-void set_core_voltage (int vcore)
+void set_core_voltage(int vcore)
 {
     if(enable_scaling_voltage)
     {
@@ -224,6 +229,35 @@ void set_core_voltage (int vcore)
         CLK_DBG("CurrentVoltageCore = %d\n", g_sCurrentVoltageCore);
     }
 }
+
+void ms_core_voltage_init(void)
+{
+    struct device_node *np;
+    u32 val;
+
+    if((np=of_find_node_by_name(NULL, "cpufreq")))
+    {
+        if(!of_property_read_u32(np, "vid0-gpio", &val))
+            vid_0 = val;
+        else
+            vid_0 = -1;
+
+        if(!of_property_read_u32(np, "vid1-gpio", &val))
+            vid_1 = val;
+        else
+            vid_1 = -1;
+        if(vid_0!=-1 || vid_1!=-1)
+            CLK_ERR("[%s] get dvfs gpio %s %s\n", __func__, (vid_0 != -1)?"vid_0":"", (vid_1 != -1)?"vid_1":"");
+    }
+    else
+    {
+        vid_0 = -1;
+        vid_1 = -1;
+        CLK_ERR("[%s] can't get cpufreq node for dvfs\n", __func__);
+    }
+}
+
+#ifndef CONFIG_CAM_CLK
 static int ms_cpuclk_set_rate(struct clk_hw *clk_hw, unsigned long rate, unsigned long parent_rate)
 {
     int ret = 0;
@@ -252,73 +286,15 @@ static int ms_cpuclk_set_rate(struct clk_hw *clk_hw, unsigned long rate, unsigne
 
     lpf_value = (U32)(div64_u64(432000000llu * 524288, (rate*2/32) * post_div / 2));
 
-    if(rate >= 1000000000)
-    {
-        set_core_voltage(VOLTAGE_CORE_1000);
-        udelay(10);    //delay 10us to wait voltage stable (from low to high).
-        cpu_dvfs(lpf_value, post_div);
-    }
-    else
-    {
-        CLK_DBG("cur_temp = %d\n", g_sCurrentTemp);
-        cpu_dvfs(lpf_value, post_div);
-        // voltage scaling adjust after CPU clock changed
-        #if 1
-        if((g_sCurrentVoltageCore==VOLTAGE_CORE_1000) && (g_sCurrentTemp>g_sCurrentTempThreshHi))
-            set_core_voltage(VOLTAGE_CORE_950);
-        if((g_sCurrentVoltageCore==VOLTAGE_CORE_950) && (g_sCurrentTemp<g_sCurrentTempThreshLo))
-            set_core_voltage(VOLTAGE_CORE_1000);
-        #else
-        if(g_sCurrentVoltageCore==VOLTAGE_CORE_1000)
-            set_core_voltage(VOLTAGE_CORE_950);
-        #endif
-    }
+    cpu_dvfs(lpf_value, post_div);
 
     return ret;
 }
 
 void ms_cpuclk_init(struct clk_hw *clk_hw)
 {
-    struct device_node *np;
-    u32 val;
-
-    if((np=of_find_node_by_name(NULL, "cpufreq")))
-    {
-        if(!of_property_read_u32(np, "vid0-gpio", &val))
-            vid_0 = val;
-        else
-            vid_0 = -1;
-
-        if(!of_property_read_u32(np, "vid1-gpio", &val))
-            vid_1 = val;
-        else
-            vid_1 = -1;
-        if(vid_0!=-1 || vid_1!=-1)
-            CLK_ERR("[%s] get dvfs gpio %s %s\n", __func__, (vid_0 != -1)?"vid_0":"", (vid_1 != -1)?"vid_1":"");
-    }
-    else
-    {
-        vid_0 = -1;
-        vid_1 = -1;
-        CLK_ERR("[%s] can't get cpufreq node for dvfs\n", __func__);
-    }
+    ms_core_voltage_init();
 }
-
-
-void ms_cpuclk_dvfs_disable(void)
-{
-    if(vid_0 != -1)
-    {
-        MDrv_GPIO_Pad_Set(vid_0);
-        MDrv_GPIO_Set_High(vid_0);
-    }
-    if(vid_1 != -1)
-    {
-        MDrv_GPIO_Pad_Set(vid_1);
-        MDrv_GPIO_Set_High(vid_1);
-    }
-}
-EXPORT_SYMBOL(ms_cpuclk_dvfs_disable);
 
 struct clk_ops ms_cpuclk_ops = {
     .round_rate = ms_cpuclk_round_rate,
@@ -326,6 +302,7 @@ struct clk_ops ms_cpuclk_ops = {
     .set_rate = ms_cpuclk_set_rate,
     .init = ms_cpuclk_init,
 };
+#endif
 
 static int ms_upll_utmi_enable(struct clk_hw *hw)
 {
@@ -504,8 +481,10 @@ static void __init ms_clk_complex_init(struct device_node *node)
     //hook callback ops for cpuclk
     if(!strcmp(node->name, "CLK_cpupll_clk"))
     {
+#ifndef CONFIG_CAM_CLK
         CLK_ERR("Find %s, hook ms_cpuclk_ops\n", node->name);
         init->ops = &ms_cpuclk_ops;
+#endif
     }
     else if(!strcmp(node->name, "CLK_utmi"))
     {
@@ -530,7 +509,7 @@ static void __init ms_clk_complex_init(struct device_node *node)
     init->num_parents = of_clk_get_parent_count(node);
     if (init->num_parents < 1)
     {
-        CLK_ERR("[%s] %s must have at least one parent\n", __func__, node->name);
+        CLK_ERR("[%s] %s have no parent\n", __func__, node->name);
         goto fail;
     }
 
@@ -550,7 +529,7 @@ static void __init ms_clk_complex_init(struct device_node *node)
     }
     else
     {
-        CLK_DBG("[%s] %s register successfully\n", __func__, node->name);
+        CLK_DBG("[%s] %s register success\n", __func__, node->name);
     }
     of_clk_add_provider(node, of_clk_src_simple_get, clk);
     clk_register_clkdev(clk, node->name, NULL);

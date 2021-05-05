@@ -5,6 +5,7 @@
 CONFIG_SSTAR_CHIP_NAME := $(subst ",,$(CONFIG_SSTAR_CHIP_NAME))
 # general options
 EXTRA_CFLAGS      +=  -Idrivers/sstar/include
+EXTRA_CFLAGS      +=  -Idrivers/sstar/include/$(CONFIG_SSTAR_CHIP_NAME)
 EXTRA_CFLAGS      +=  -Idrivers/sstar/cam_os_wrapper
 EXTRA_CFLAGS      +=  -Idrivers/sstar/cam_os_wrapper/pub
 EXTRA_CFLAGS      +=  -Wno-sync-nand
