@@ -33,7 +33,12 @@ static void __exit crypto_wq_exit(void)
 	destroy_workqueue(kcrypto_wq);
 }
 
+#ifdef CONFIG_DEFERRED_CRYPTIO_WQ_INIT
+deferred_module_init(crypto_wq_init);
+//subsys_initcall(crypto_wq_init);
+#else
 subsys_initcall(crypto_wq_init);
+#endif
 module_exit(crypto_wq_exit);
 
 MODULE_LICENSE("GPL");

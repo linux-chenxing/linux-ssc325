@@ -1,9 +1,8 @@
 /*
 * mdrv_msys_io.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _MDRV_MSYS_IO_H_
@@ -46,10 +45,6 @@
 #define IOCTL_MSYS_RELEASE_PROC_DEVICE      _IO(MSYS_IOCTL_MAGIC, 0x87)
 #define IOCTL_MSYS_REQUEST_PROC_ATTRIBUTE   _IO(MSYS_IOCTL_MAGIC, 0x88)
 #define IOCTL_MSYS_RELEASE_PROC_ATTRIBUTE   _IO(MSYS_IOCTL_MAGIC, 0x89)
-#define IOCTL_MSYS_FLUSH_MEMORY             _IO(MSYS_IOCTL_MAGIC, 0x90)
-//#define IOCTL_MSYS_ADMA			            _IO(MSYS_IOCTL_MAGIC, 0x91)
-//#define IOCTL_MSYS_BDMA			            _IO(MSYS_IOCTL_MAGIC, 0x92)
-
 #define IOCTL_MSYS_REQUEST_FREQUENCY        _IO(MSYS_IOCTL_MAGIC, 0x93)
 #define IOCTL_MSYS_GET_CHIPVERSION          _IO(MSYS_IOCTL_MAGIC, 0x94)
 

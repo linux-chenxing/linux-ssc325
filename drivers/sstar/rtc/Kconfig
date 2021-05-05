@@ -17,6 +17,13 @@ config RTCPWC_INNER
         default y
         help
 
+config RTCPWC_SW_RST_OFF
+    select RTC_CLASS
+        bool "Mstar RTCPWC driver no SW-reset on Set-Base-Time"
+        depends on RTCPWC_INNER
+        default n
+        help
+
 config RTCPWC_INNER_EHHE
     select RTC_CLASS
         bool "Mstar RTCPWC driver Error Handle on Hw Exception"

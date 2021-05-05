@@ -248,7 +248,7 @@ static inline cycle_t timekeeping_get_delta(struct tk_read_base *tkr)
  * Unless you're the timekeeping code, you should not be using this!
  */
 #ifdef CONFIG_LH_RTOS
-#include "../../drivers/sstar/ipc/lh_syscall.h"
+#include "drv_dualos.h"
 #endif
 static void tk_setup_internals(struct timekeeper *tk, struct clocksource *clock)
 {

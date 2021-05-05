@@ -1,9 +1,8 @@
 /*
-* cam_os_util_bitmap.h - Sigmastar
+* cam_os_util_bitmap.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -57,7 +56,7 @@ static inline unsigned long _CAM_OS_FFS(unsigned long x)
 static inline void CAM_OS_SET_BIT(s32 nr, volatile unsigned long *addr)
 {
 	unsigned long mask = CAM_OS_BIT_MASK(nr);
-	unsigned long *p = ((unsigned long *)addr) + CAM_OS_BIT_WORD(nr);
+	volatile unsigned long *p = (addr) + CAM_OS_BIT_WORD(nr);
 
 	*p  |= mask;
 }
@@ -65,7 +64,7 @@ static inline void CAM_OS_SET_BIT(s32 nr, volatile unsigned long *addr)
 static inline void CAM_OS_CLEAR_BIT(s32 nr, volatile unsigned long *addr)
 {
 	unsigned long mask = CAM_OS_BIT_MASK(nr);
-	unsigned long *p = ((unsigned long *)addr) + CAM_OS_BIT_WORD(nr);
+	volatile unsigned long *p = (addr) + CAM_OS_BIT_WORD(nr);
 
 	*p &= ~mask;
 }
@@ -73,7 +72,7 @@ static inline void CAM_OS_CLEAR_BIT(s32 nr, volatile unsigned long *addr)
 static inline void CAM_OS_CHANGE_BIT(s32 nr, volatile unsigned long *addr)
 {
 	unsigned long mask = CAM_OS_BIT_MASK(nr);
-	unsigned long *p = ((unsigned long *)addr) + CAM_OS_BIT_WORD(nr);
+	volatile unsigned long *p = (addr) + CAM_OS_BIT_WORD(nr);
 
 	*p ^= mask;
 }
@@ -81,8 +80,8 @@ static inline void CAM_OS_CHANGE_BIT(s32 nr, volatile unsigned long *addr)
 static inline s32 CAM_OS_TEST_AND_SET_BIT(s32 nr, volatile unsigned long *addr)
 {
 	unsigned long mask = CAM_OS_BIT_MASK(nr);
-	unsigned long *p = ((unsigned long *)addr) + CAM_OS_BIT_WORD(nr);
-	unsigned long old = *p;
+	volatile unsigned long *p = (addr) + CAM_OS_BIT_WORD(nr);
+	volatile unsigned long old = *p;
 
 	*p = old | mask;
 	return (old & mask) != 0;
@@ -91,8 +90,8 @@ static inline s32 CAM_OS_TEST_AND_SET_BIT(s32 nr, volatile unsigned long *addr)
 static inline s32 CAM_OS_TEST_AND_CLEAR_BIT(s32 nr, volatile unsigned long *addr)
 {
 	unsigned long mask = CAM_OS_BIT_MASK(nr);
-	unsigned long *p = ((unsigned long *)addr) + CAM_OS_BIT_WORD(nr);
-	unsigned long old = *p;
+	volatile unsigned long *p = (addr) + CAM_OS_BIT_WORD(nr);
+	volatile unsigned long old = *p;
 
 	*p = old & ~mask;
 	return (old & mask) != 0;
@@ -102,8 +101,8 @@ static inline s32 CAM_OS_TEST_AND_CHANGE_BIT(s32 nr,
 					    volatile unsigned long *addr)
 {
 	unsigned long mask = CAM_OS_BIT_MASK(nr);
-	unsigned long *p = ((unsigned long *)addr) + CAM_OS_BIT_WORD(nr);
-	unsigned long old = *p;
+	volatile unsigned long *p = (addr) + CAM_OS_BIT_WORD(nr);
+	volatile unsigned long old = *p;
 
 	*p = old ^ mask;
 	return (old & mask) != 0;

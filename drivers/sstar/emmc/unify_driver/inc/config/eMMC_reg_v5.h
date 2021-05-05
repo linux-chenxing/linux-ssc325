@@ -1,9 +1,8 @@
 /*
 * eMMC_reg_v5.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: joe.su <joe.su@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,9 +11,10 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
+
 #ifndef __EMMC_REG_V5_H__
 #define __EMMC_REG_V5_H__
 
@@ -163,15 +163,13 @@
 //#define NC_WIDTH                      GET_REG_ADDR(FCIE_REG_BASE_ADDR, 0x41)
 #define FCIE_NC_FUN_CTL                 GET_REG_ADDR(FCIE_REG_BASE_ADDR, 0x63)
 
-
 #define FCIE_CMDFIFO_ADDR(u16_pos)      GET_REG_ADDR(FCIE_CMDFIFO_BASE_ADDR, u16_pos)
 #define FCIE_CMDFIFO_BYTE_CNT           0x12// 9 x 16 bits
 
 #define FCIE_CIFD_ADDR(u16_pos)         GET_REG_ADDR(FCIE_CIFD_BASE_ADDR, u16_pos)
 
-
 #define NC_WBUF_CIFD_ADDR(u16_pos)      GET_REG_ADDR(FCIE_NC_WBUF_CIFD_BASE, u16_pos) // 32 x 16 bits SW Read only
-#define NC_RBUF_CIFD_ADDR(u16_pos)      GET_REG_ADDR(FCIE_NC_RBUF_CIFD_BASE, u16_pos) // 32 x 16 bits	SW write/read
+#define NC_RBUF_CIFD_ADDR(u16_pos)      GET_REG_ADDR(FCIE_NC_RBUF_CIFD_BASE, u16_pos) // 32 x 16 bits   SW write/read
 
 #define NC_CIFD_ADDR(u16_pos)           NC_RBUF_CIFD_ADDR(u16_pos)
 
@@ -184,7 +182,7 @@
 /* FCIE_MIE_EVENT  0x00 */
 /* FCIE_MIE_INT_EN 0x01 */
 #define BIT_DMA_END                     BIT0
-#define BIT_CMD_END						BIT1
+#define BIT_SD_CMD_END                  BIT1
 #define BIT_ERR_STS                     BIT2
 //#define BIT_SD_DATA_END               BIT2
 #define BIT_SDIO_INT                    BIT3
@@ -194,8 +192,8 @@
 #define BIT_CARD2_CHANGE                BIT7
 //#define BIT_PWR_SAVE_INT              BIT14
 //#define BIT_BOOT_DONE_INT             BIT15
-//#define BIT_ALL_CARD_INT_EVENTS         (BIT_DMA_END|BIT_CMD_END|BIT_BUSY_END_INT)
-#define BIT_ALL_CARD_INT_EVENTS         (BIT_DMA_END|BIT_CMD_END|BIT_ERR_STS|BIT_BUSY_END_INT|BIT_R2N_RDY_INT)
+//#define BIT_ALL_CARD_INT_EVENTS         (BIT_DMA_END|BIT_SD_CMD_END|BIT_BUSY_END_INT)
+#define BIT_ALL_CARD_INT_EVENTS         (BIT_DMA_END|BIT_SD_CMD_END|BIT_ERR_STS|BIT_BUSY_END_INT|BIT_R2N_RDY_INT)
 
 /* FCIE_MMA_PRI_REG 0x02 */
 #define BIT_MIU_R_PRI                   BIT0
@@ -206,20 +204,20 @@
 #define BIT_MIU3_SELECT                 (BIT3|BIT2)
 //#define BIT_DATA_SCRAMBLE             BIT3
 #define BIT_MIU_BUS_TYPE_MASK           (BIT4|BIT5)
-#define BIT_MIU_BURST1				    (~BIT_MIU_BUS_TYPE_MASK)
-#define BIT_MIU_BURST2				    (BIT4)
-#define BIT_MIU_BURST4				    (BIT5)
-#define BIT_MIU_BURST8				    (BIT4|BIT5)
+#define BIT_MIU_BURST1                  (~BIT_MIU_BUS_TYPE_MASK)
+#define BIT_MIU_BURST2                  (BIT4)
+#define BIT_MIU_BURST4                  (BIT5)
+#define BIT_MIU_BURST8                  (BIT4|BIT5)
 
 /* FCIE_MIE_FUNC_CTL 0x07 */
 #define BIT_EMMC_EN                     BIT0
 #define BIT_SD_EN                       BIT1
 #define BIT_SDIO_MOD                    BIT2
-#define BIT_EMMC_ACTIVE					BIT12
-#define BIT_KERN_NAND					(BIT_KERN_CHK_NAND_EMMC|BIT13)
-#define BIT_KERN_EMMC					(BIT_KERN_CHK_NAND_EMMC|BIT14)
-#define BIT_KERN_CHK_NAND_EMMC			BIT15
-#define BIT_KERN_CHK_NAND_EMMC_MSK		(BIT13|BIT14|BIT15)
+#define BIT_EMMC_ACTIVE                 BIT12
+#define BIT_KERN_NAND                   (BIT_KERN_CHK_NAND_EMMC|BIT13)
+#define BIT_KERN_EMMC                   (BIT_KERN_CHK_NAND_EMMC|BIT14)
+#define BIT_KERN_CHK_NAND_EMMC          BIT15
+#define BIT_KERN_CHK_NAND_EMMC_MSK      (BIT13|BIT14|BIT15)
 
 /* FCIE_BLK_CNT 0x08 */
 #define BIT_SD_JOB_BLK_CNT_MASK         (BIT13-1)
@@ -236,11 +234,11 @@
 #define BIT_SD_DATA_WIDTH_1             0
 #define BIT_SD_DATA_WIDTH_4             BIT1
 #define BIT_SD_DATA_WIDTH_8             BIT2
-#define BIT_DATA_DEST					BIT4 // 0: DMA mode, 1: R2N mode
+#define BIT_DATA_DEST                   BIT4 // 0: DMA mode, 1: R2N mode
 #define BIT_SD_DATA_CIFD                BIT_DATA_DEST
-#define BIT_DATA_SYNC				    BIT5
+#define BIT_DATA_SYNC                   BIT5
 #define BIT_SD_DMA_R_CLK_STOP           BIT7
-#define BIT_DIS_WR_BUSY_CHK				BIT8
+#define BIT_DIS_WR_BUSY_CHK             BIT8
 
 #define BIT_SD_DEFAULT_MODE_REG         (BIT_CLK_EN)
 
@@ -248,7 +246,7 @@
 #define BIT_SD_RSPR2_EN                 BIT0
 #define BIT_SD_RSP_EN                   BIT1
 #define BIT_SD_CMD_EN                   BIT2
-#define BIT_SD_DTRX_EN					BIT3
+#define BIT_SD_DTRX_EN                  BIT3
 #define BIT_SD_DAT_EN                   BIT_SD_DTRX_EN
 #define BIT_SD_DAT_DIR_W                BIT4
 #define BIT_ADMA_EN                     BIT5
@@ -272,7 +270,7 @@
 //#define BIT_SD_CARD_WP                BIT5
 #define BIT_SD_CARD_BUSY                BIT6
 
-#define BITS_ERROR						(BIT_SD_R_CRC_ERR|BIT_DAT_WR_CERR|BIT_DAT_WR_TOUT|BIT_CMD_NO_RSP|BIT_CMD_RSP_CERR|BIT_DAT_RD_TOUT)
+#define BITS_ERROR                      (BIT_SD_R_CRC_ERR|BIT_DAT_WR_CERR|BIT_DAT_WR_TOUT|BIT_CMD_NO_RSP|BIT_CMD_RSP_CERR|BIT_DAT_RD_TOUT)
 
 #define BIT_SD_D0                       BIT8 // not correct D0 in 32 bits macron
 //#define BIT_SD_DBUS_MASK              (BIT8|BIT9|BIT10|BIT11|BIT12|BIT13|BIT14|BIT15)
@@ -321,7 +319,7 @@
 
 /* FCIE_RSP_SHIFT_CNT 0x12 */
 #define BIT_RSP_SHIFT_TUNE_MASK         (BIT4 - 1)
-#define BIT_RSP_SHIFT_SEL               BIT4			/*SW or HW by default  0*/
+#define BIT_RSP_SHIFT_SEL               BIT4            /*SW or HW by default  0*/
 
 /* FCIE_RX_SHIFT_CNT 0x13 */
 #define BIT_RSTOP_SHIFT_TUNE_MASK       (BIT4 - 1)
@@ -387,8 +385,8 @@
 #define BIT_BOOTSRAM_ACCESS_SEL         BIT1
 
 /* FCIE_BOOT 0x39 */
-#define BIT_DEBUG_MODE_MSK				(BIT11|BIT10|BIT9|BIT8)
-#define BIT_DEBUG_MODE_SET				(BIT10|BIT8)
+#define BIT_DEBUG_MODE_MSK              (BIT11|BIT10|BIT9|BIT8)
+#define BIT_DEBUG_MODE_SET              (BIT10|BIT8)
 
 /* FCIE_RESET 0x3F */
 

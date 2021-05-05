@@ -1,9 +1,8 @@
 /*
-* cam_os_wrapper_linux_kernel_test.c - Sigmastar
+* cam_os_wrapper_linux_kernel_test.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -967,6 +966,7 @@ static int __init KernelTestInit(void)
 #endif
 #ifdef TEST_MEM_SIZE
     CamOsMemSize_e eMemSize;
+    CamOsDramInfo_t Info = {0};
 #endif
 
 #ifdef TEST_ATOMIC_OPERATION
@@ -1316,13 +1316,15 @@ static int __init KernelTestInit(void)
     CamOsPrintf("=================================\n");
     eMemSize = CamOsPhysMemSize();
     CamOsPrintf("System has %dMB physical memory\n", 1<<(uint32_t)eMemSize);
+    CamOsDramInfo(&Info);
+    CamOsPrintf("DRAM Info:  Size %d    Type %d    Bus %d\n", Info.nBytes, Info.nType, Info.nBusWidth);
 #endif
 
 #ifdef TEST_CHIP_ID
     CamOsPrintf("=================================\n");
     CamOsPrintf("Test chip ID\n");
     CamOsPrintf("=================================\n");
-    CamOsPrintf("Chip ID: 0x%X\n", CamOsChipId());
+    CamOsPrintf("Chip ID: 0x%X    Revision: 0x%X\n", CamOsChipId(), CamOsChipRevision());
 #endif
 
 #ifdef TEST_ATOMIC_OPERATION

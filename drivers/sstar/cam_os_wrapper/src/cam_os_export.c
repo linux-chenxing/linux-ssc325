@@ -1,9 +1,8 @@
 /*
-* cam_os_export.c - Sigmastar
+* cam_os_export.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -41,6 +40,11 @@ EXPORT_SYMBOL(CamOsGetTimeOfDay);
 EXPORT_SYMBOL(CamOsSetTimeOfDay);
 EXPORT_SYMBOL(CamOsGetMonotonicTime);
 EXPORT_SYMBOL(CamOsTimeDiff);
+EXPORT_SYMBOL(CamOsGetJiffies);
+EXPORT_SYMBOL(CamOsGetHz);
+EXPORT_SYMBOL(CamOsJiffiesToMs);
+EXPORT_SYMBOL(CamOsMsToJiffies);
+EXPORT_SYMBOL(CamOsJiffiesDiff);
 EXPORT_SYMBOL(CamOsThreadCreate);
 EXPORT_SYMBOL(CamOsThreadChangePriority);
 EXPORT_SYMBOL(CamOsThreadSchedule);
@@ -85,15 +89,20 @@ EXPORT_SYMBOL(CamOsSpinLock);
 EXPORT_SYMBOL(CamOsSpinUnlock);
 EXPORT_SYMBOL(CamOsSpinLockIrqSave);
 EXPORT_SYMBOL(CamOsSpinUnlockIrqRestore);
+EXPORT_SYMBOL(CamOsWorkQueueCreate);
+EXPORT_SYMBOL(CamOsWorkQueueDestroy);
+EXPORT_SYMBOL(CamOsWorkQueueAdd);
+EXPORT_SYMBOL(CamOsWorkQueueCancel);
 EXPORT_SYMBOL(CamOsMemAlloc);
 EXPORT_SYMBOL(CamOsMemCalloc);
 EXPORT_SYMBOL(CamOsMemRealloc);
 EXPORT_SYMBOL(CamOsMemFlush);
+EXPORT_SYMBOL(CamOsMemFlushExt);
 EXPORT_SYMBOL(CamOsMemInvalidate);
 EXPORT_SYMBOL(CamOsMemRelease);
+EXPORT_SYMBOL(CamOsMiuPipeFlush);
 EXPORT_SYMBOL(CamOsDirectMemAlloc);
 EXPORT_SYMBOL(CamOsDirectMemRelease);
-EXPORT_SYMBOL(CamOsDirectMemFlush);
 EXPORT_SYMBOL(CamOsDirectMemStat);
 EXPORT_SYMBOL(CamOsDirectMemPhysToMiu);
 EXPORT_SYMBOL(CamOsDirectMemMiuToPhys);
@@ -101,11 +110,14 @@ EXPORT_SYMBOL(CamOsDirectMemPhysToVirt);
 EXPORT_SYMBOL(CamOsDirectMemVirtToPhys);
 EXPORT_SYMBOL(CamOsPhyMemMap);
 EXPORT_SYMBOL(CamOsPhyMemUnMap);
+EXPORT_SYMBOL(CamOsMemMap);
+EXPORT_SYMBOL(CamOsMemUnmap);
+EXPORT_SYMBOL(CamOsMemFromUserModeMap);
+EXPORT_SYMBOL(CamOsMemFromUserModeUnmap);
 EXPORT_SYMBOL(CamOsMemCacheCreate);
 EXPORT_SYMBOL(CamOsMemCacheDestroy);
 EXPORT_SYMBOL(CamOsMemCacheAlloc);
 EXPORT_SYMBOL(CamOsMemCacheFree);
-EXPORT_SYMBOL(CamOsMiuPipeFlush);
 EXPORT_SYMBOL(CamOsPropertySet);
 EXPORT_SYMBOL(CamOsPropertyGet);
 EXPORT_SYMBOL(CamOsMathDivU64);
@@ -114,6 +126,7 @@ EXPORT_SYMBOL(CamOsCopyFromUpperLayer);
 EXPORT_SYMBOL(CamOsCopyToUpperLayer);
 EXPORT_SYMBOL(CamOsTimerInit);
 EXPORT_SYMBOL(CamOsTimerDelete);
+EXPORT_SYMBOL(CamOsTimerDeleteSync);
 EXPORT_SYMBOL(CamOsTimerAdd);
 EXPORT_SYMBOL(CamOsTimerModify);
 EXPORT_SYMBOL(CamOsAtomicRead);
@@ -136,20 +149,25 @@ EXPORT_SYMBOL(CamOsAtomicFetchOr);
 EXPORT_SYMBOL(CamOsAtomicXorFetch);
 EXPORT_SYMBOL(CamOsAtomicFetchXor);
 EXPORT_SYMBOL(CamOsIdrInit);
+EXPORT_SYMBOL(CamOsIdrInitEx);
 EXPORT_SYMBOL(CamOsIdrDestroy);
 EXPORT_SYMBOL(CamOsIdrAlloc);
 EXPORT_SYMBOL(CamOsIdrRemove);
 EXPORT_SYMBOL(CamOsIdrFind);
 EXPORT_SYMBOL(CamOsPhysMemSize);
+EXPORT_SYMBOL(CamOsDramInfo);
 EXPORT_SYMBOL(CamOsChipId);
+EXPORT_SYMBOL(CamOsChipRevision);
 EXPORT_SYMBOL(CamOsIrqRequest);
 EXPORT_SYMBOL(CamOsIrqFree);
 EXPORT_SYMBOL(CamOsIrqEnable);
 EXPORT_SYMBOL(CamOsIrqDisable);
 EXPORT_SYMBOL(CamOsInInterrupt);
+EXPORT_SYMBOL(CamOsMemoryBarrier);
 EXPORT_SYMBOL(CamOsSmpMemoryBarrier);
 EXPORT_SYMBOL(CamOsStrError);
 EXPORT_SYMBOL(CamOsPanic);
+EXPORT_SYMBOL(CamOsCallStack);
 EXPORT_SYMBOL(CamOsStrtol);
 EXPORT_SYMBOL(CamOsStrtoul);
 EXPORT_SYMBOL(CamOsStrtoull);

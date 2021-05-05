@@ -1,9 +1,8 @@
 /*
 * mhal_spinand.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _HAL_SPINAND_H_
@@ -22,6 +21,21 @@
 #if defined(CONFIG_NAND_QUAL_READ)
 #define SUPPORT_SPINAND_QUAD 1
 #endif
+
+//-------------------------------------------------------------------------------------------------
+//  Structures definition
+//-------------------------------------------------------------------------------------------------
+
+typedef struct
+{
+    U32  u32FspBaseAddr;     // REG_ISP_BASE
+    U32  u32QspiBaseAddr;    // REG_QSPI_BASE
+    U32  u32PMBaseAddr;      // REG_PM_BASE
+    U32  u32CLK0BaseAddr;    // REG_PM_BASE
+    U32  u32CHIPBaseAddr;    // REG_CHIP_BASE
+    U32  u32RiuBaseAddr;     // REG_PM_BASE
+    U32  u32BDMABaseAddr;    // REG_BDMA_BASE
+} hal_fsp_t;
 
 //-------------------------------------------------------------------------------------------------
 //  Macro definition
@@ -57,7 +71,7 @@
 //-------------------------------------------------------------------------------------------------
 extern SPINAND_FLASH_INFO_t _gtSpinandInfo;
 extern U8 _u8SPINANDDbgLevel;
-
+void HAL_SPINAND_DieSelect(U8 u8Die);
 U8 HAL_SPINAND_ReadStatusRegister(U8 *u8Status, U8 u8Addr);
 U8 HAL_SPINAND_WriteStatusRegister(U8 *u8Status, U8 u8Addr);
 U32  HAL_SPINAND_Read (U32 u32Addr, U32 u32DataSize, U8 *pu8Data);
@@ -76,6 +90,7 @@ void HAL_SPINAND_CSCONFIG(void);
 BOOL HAL_SPINAND_IsActive(void);
 U32 HAL_SPINAND_RIU_READ(U16 u16Addr, U32 u32DataSize, U8 *u8pData);
 U8 HAL_QSPI_FOR_DEBUG(void);
+void HAL_SPINAND_Chip_Config(void);
 
 
 //-------------------------------------------------------------------------------------------------

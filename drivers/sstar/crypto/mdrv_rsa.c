@@ -1,9 +1,8 @@
 /*
 * mdrv_rsa.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/init.h>
@@ -62,6 +61,7 @@ struct rsaConfig{
 int rsa_crypto(struct rsa_config *op)
 {
     int out_size = 32, i = 0;
+    unsigned long timeout;
 
     HAL_RSA_Reset();
     msleep(1);
@@ -84,7 +84,17 @@ int rsa_crypto(struct rsa_config *op)
     RSA_DBG("\n\n");
 #endif
 
-    while((HAL_RSA_GetStatus() & RSA_STATUS_RSA_DONE) != RSA_STATUS_RSA_DONE);
+    timeout = jiffies + msecs_to_jiffies(5000);
+    while((HAL_RSA_GetStatus() & RSA_STATUS_RSA_DONE) != RSA_STATUS_RSA_DONE)
+    {
+        if (time_after_eq(jiffies, timeout))
+        {
+            printk("rsa timeout!!!\n");
+            goto err;
+        }
+
+    }
+
     if(op->u32RSA_KeyNLen == 0x40)
     {
         out_size = 64;
@@ -108,6 +118,7 @@ int rsa_crypto(struct rsa_config *op)
 #endif
 
     HAL_RSA_FileOutEnd();
+err:
     HAL_RSA_ClearInt();
     HAL_RSA_Reset();
 
@@ -122,6 +133,7 @@ static long rsa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
     int nOutSize = 0;
 	int i = 0;
 	bool bRSAHwKey = FALSE;
+    unsigned long timeout;
 
 //	unsigned char* val;
     memset(&data, 0, sizeof(data));
@@ -232,7 +244,15 @@ static long rsa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
             HAL_RSA_ExponetialStart();
 
-            while((HAL_RSA_GetStatus() & RSA_STATUS_RSA_DONE) != RSA_STATUS_RSA_DONE);
+            timeout = jiffies + msecs_to_jiffies(1000);
+            while((HAL_RSA_GetStatus() & RSA_STATUS_RSA_DONE) != RSA_STATUS_RSA_DONE)
+            {
+                if (time_after_eq(jiffies, timeout))
+                {
+                    printk("rsa timeout!!!\n");
+                    break;
+                }
+            }
 
             if((bRSAHwKey) || (ioctl_data->u8RSA_KeyNLen == 64))
             {

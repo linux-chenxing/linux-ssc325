@@ -50,15 +50,11 @@
 
 #include "usb.h"
 
-#ifndef MP_USB_MSTAR
-#include <usb_patch_mstar.h>
-#endif
-#if (MP_USB_MSTAR==1)
-#include "../host/ehci-mstar.h"
+#ifdef CONFIG_MP_USB_MSTAR
+#include "ms_platform.h"
+#include "usb_common_sstar.h"
 extern u8 hcd_readb(struct usb_hcd *, size_t);
-extern void Chip_Flush_Memory(void);
 #endif
-
 /*-------------------------------------------------------------------------*/
 
 /*
@@ -1668,7 +1664,7 @@ int usb_hcd_map_urb_for_dma(struct usb_hcd *hcd, struct urb *urb,
 	else if (urb->transfer_buffer_length != 0
 		&& (urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP))
 	{
-		Chip_Flush_Memory();
+		Chip_Flush_MIU_Pipe();
 		urb->transfer_dma = BUS2PA(urb->transfer_dma);
 	}
 #endif

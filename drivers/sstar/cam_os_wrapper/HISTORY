@@ -2,6 +2,68 @@
 =                        cam_os_wrapper change log                            =
 ===============================================================================
 
+v1.0.34 - 2020-06-01
+  Add
+    - Support immediately workqueue and delay workqueue.
+
+v1.0.33 - 2020-05-25
+  Add
+    - Add CamOsCallStack to print call stack information.
+
+v1.0.32 - 2020-05-22
+  Add
+    - Add CamOsMemFromUserModeMap / CamOsMemFromUserModeUnmap for map the 
+      physical address passed by user space in kernel space.
+    - Add CamOsMemMap / CamOsMemUnmap for normal memory map.
+
+v1.0.31 - 2020-05-22
+  Add
+    - Support CamOsJiffiesDiff
+  Changed
+    - Considering performance and compatibility, CamOsGetJiffies, CamOsJiffiesToMs 
+      and CamOsMsToJiffies were changed to 32-bit implementation.
+
+v1.0.30 - 2020-05-18
+  Add
+    - Support CamOsGetJiffies / CamOsGetHz / CamOsJiffiesToMs / CamOsMsToJiffies.
+
+v1.0.29 - 2020-05-14
+  Enhanced
+    - CamOsThreadCreate support deadline scheduling policy attributes for Linux
+      kernel space.
+
+v1.0.28 - 2020-04-09
+  Removed
+    - Remove CamOsDirectMemFlush and replace it with CamOsMemFlush.
+
+v1.0.27 - 2020-03-23
+  Add
+    - Support CamOsTimerDeleteSync for SMP Linux.
+
+v1.0.26 - 2020-03-12
+  Add
+    - Support CamOsMemFlushExt for inner and outer cache flush.
+  Changed
+    - Refine CamOsMemFlush.
+
+v1.0.25 - 2020-01-10
+  Changed
+    - Change CamOsMsSleep/CamOsUsSleep implement.
+      In Linux, CamOsMsSleep for larger msecs sleep(10ms+),
+      adn CamOsUsSleep for ~usecs or small msecs sleep(10us~20ms).
+
+v1.0.24 - 2019-12-27
+  Added
+    - Support CamOsDramInfo and CamOsChipRevision.
+
+v1.0.23 - 2019-12-11
+  Added
+    - Support CamOsMemoryBarrier.
+
+v1.0.22 - 2019-12-09
+  Added
+    - Support CamOsIdrInitEx for create IDR with maximum entry number.
+
 v1.0.21 - 2019-08-09
   Added
     - Support CamOsThreadChangePriority.

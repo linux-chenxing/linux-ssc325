@@ -478,7 +478,6 @@ endif
 config USB_G_WEBCAM
 	tristate "USB Webcam Gadget"
 	select USB_LIBCOMPOSITE
-	select USB_WEBCAM_UVC
 	help
 	  The Webcam Gadget acts as a composite USB Audio and Video Class
 	  device. It provides a userspace API to process UVC control requests
@@ -488,17 +487,51 @@ config USB_G_WEBCAM
 	  dynamically linked module called "g_webcam".
 
 config USB_WEBCAM_UVC
-    bool "Include configuration with UVC (Video)"
-    depends on USB_G_WEBCAM && VIDEO_DEV
+	bool "Include configuration with UVC (Video)"
+	depends on USB_G_WEBCAM && VIDEO_DEV
 	select VIDEOBUF2_VMALLOC
 	select USB_F_UVC
-    help
-      external uvc function for webcam
+	default y
+	help
+	  external uvc function for webcam
+
+config MULTI_STREAM_FUNC_NUM
+	int "Multi Stream Under One Function"
+	depends on USB_G_WEBCAM && VIDEO_DEV
+	depends on USB_WEBCAM_UVC
+	default 1
+	help
+	  Support Multi Stream Under One Function
+
+config USB_WEBCAM_UVC_SUPPORT_SG_TABLE
+	bool "Support Sgtable for webcam uvc"
+	depends on USB_G_WEBCAM && VIDEO_DEV
+	depends on USB_WEBCAM_UVC
+	select VIDEOBUF2_DMA_SG
+	default 0
+	help
+	  Support Sgtable for webcam uvc
 
 config USB_WEBCAM_UAC
-    bool "Include configuration with UAC (Audio)"
-    depends on USB_G_WEBCAM && SND
-    select SND_PCM
-    select USB_F_UAC1
-    help
-      external uac1 function for webcam
+	bool "Include configuration with UAC (Audio)"
+	depends on USB_G_WEBCAM && SND
+	select SND_PCM
+	select USB_F_UAC1
+	help
+	  external uac1 function for webcam
+
+config USB_WEBCAM_RNDIS
+	bool "Include configuration with RNDIS"
+	depends on USB_G_WEBCAM && NET
+	select USB_U_ETHER
+	select USB_F_RNDIS
+	select CRC32
+	help
+	  external rndis function for webcam
+
+config USB_WEBCAM_DFU
+	bool "Include configuration with (DFU)"
+	depends on USB_G_WEBCAM
+	select USB_F_DFU
+	help
+		external dfu function for webcam

@@ -1,9 +1,8 @@
 /*
 * mdrv_ive.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: chris.luo <chris.luo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/kernel.h>
@@ -138,6 +137,10 @@ typedef struct {
     ive_drv_handle          drv_handle;     // device handle
     struct work_struct      work_queue;     // work queue for post process after ISR
     struct mutex            mutex;          // for critical section
+#ifdef CONFIG_CAM_CLK
+    void **pvclk;
+    int IveParentCnt;
+#endif
 } ive_dev_data;
 
 // File private data

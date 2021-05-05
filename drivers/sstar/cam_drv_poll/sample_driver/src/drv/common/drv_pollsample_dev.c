@@ -1,9 +1,8 @@
 /*
 * drv_pollsample_dev.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,9 +11,10 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
+
 #include <cam_os_wrapper.h>
 #include <cam_drv_poll.h>
 #include <mdrv_pollsample_io.h>
@@ -183,12 +183,12 @@ unsigned int pollsamp_poll(struct file *filp, poll_table *tpoll)
     if((eventBits & EVENT_TIMER1) != 0)
     {
         CamOsPrintf("pollsamp_poll: got event bits=0x%x\n", eventBits);
-        mask |= CAM_DEV_POLLIN;
+        mask |= POLLIN;
     }
     if((eventBits & EVENT_TIMER2) != 0)
     {
         CamOsPrintf("pollsamp_poll: got event bits=0x%x\n", eventBits);
-        mask |= CAM_DEV_POLLPRI;
+        mask |= POLLPRI;
     }
 #else
     if (dpd)

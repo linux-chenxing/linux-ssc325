@@ -22,8 +22,7 @@
 #endif
 
 #if (MP_USB_MSTAR==1) && (_USB_T3_WBTIMEOUT_PATCH)
-extern void Chip_Flush_Memory(void);
-extern void Chip_Read_Memory( void ) ;
+#include "ms_platform.h"
 #endif
 
 /*-------------------------------------------------------------------------*/
@@ -1195,7 +1194,7 @@ submit_async (
 		qh_link_async(ehci, qh);
 
 #if (MP_USB_MSTAR==1) && (_USB_T3_WBTIMEOUT_PATCH)
-	Chip_Flush_Memory();
+	Chip_Flush_MIU_Pipe();
 #endif
  done:
 	spin_unlock_irqrestore (&ehci->lock, flags);
@@ -1331,7 +1330,7 @@ static void single_unlink_async(struct ehci_hcd *ehci, struct ehci_qh *qh)
 	/* must make sure the qh is unlinked before send IAAD to HC.
 	 * wifi driver uses urb with 32KB buffer for iperf test would makes bulk-in timeout.
 	 */
-	Chip_Flush_Memory();
+	Chip_Flush_MIU_Pipe();
 #endif
 }
 
@@ -1463,7 +1462,7 @@ static void end_unlink_async(struct ehci_hcd *ehci)
 
 	/* Process the idle QHs */
 #if (MP_USB_MSTAR==1) && (_USB_T3_WBTIMEOUT_PATCH)
-	Chip_Read_Memory();	//Flush Read buffer when H/W finished
+	Chip_Flush_MIU_Pipe();	//Flush Read buffer when H/W finished
 #endif
 	ehci->async_unlinking = true;
 	while (!list_empty(&ehci->async_idle)) {

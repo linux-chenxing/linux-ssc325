@@ -1,9 +1,8 @@
 /*
 * drv_eMMC.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: joe.su <joe.su@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,9 +11,10 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
+
 #ifndef __DRV_eMMC_H__
 #define __DRV_eMMC_H__
 
@@ -29,31 +29,31 @@
 /*=============================================================*/
 typedef struct _eMMC_INFO
 {
-	U8	au8_Tag[16];
-	U8	u8_IDByteCnt;
-	U8	au8_ID[15];
-	U32	u32_ChkSum;
-	U16	u16_SpareByteCnt;
-	U16	u16_PageByteCnt;
-	U16	u16_BlkPageCnt;
-	U16	u16_BlkCnt;
-	U32	u32_Config;
-	U16	u16_ECCType;
-	U16	u16_SeqAccessTime;
-	U8	padding[12];
-	U8	au8_Vendor[16];
-	U8	au8_PartNumber[16];
+    U8  au8_Tag[16];
+    U8  u8_IDByteCnt;
+    U8  au8_ID[15];
+    U32 u32_ChkSum;
+    U16 u16_SpareByteCnt;
+    U16 u16_PageByteCnt;
+    U16 u16_BlkPageCnt;
+    U16 u16_BlkCnt;
+    U32 u32_Config;
+    U16 u16_ECCType;
+    U16 u16_SeqAccessTime;
+    U8  padding[12];
+    U8  au8_Vendor[16];
+    U8  au8_PartNumber[16];
 
-	U16 u16_ECCCodeByteCnt;
-	U16 u16_PageSectorCnt;
-	U8  u8_WordMode;
+    U16 u16_ECCCodeByteCnt;
+    U16 u16_PageSectorCnt;
+    U8  u8_WordMode;
 
 } eMMC_INFO_t;
 
 typedef struct _eMMC_CIS {
 
-	U8	au8_eMMC_nni[512];
-	U8	au8_eMMC_pni[512];
+    U8  au8_eMMC_nni[512];
+    U8  au8_eMMC_pni[512];
 
 } eMMC_CIS_t;
 

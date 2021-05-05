@@ -1,9 +1,8 @@
 /*
-* cam_os_util_hash.h - Sigmastar
+* cam_os_util_hash.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -27,19 +26,19 @@ extern "C" {
 static inline __attribute__((const))
 s32 _CAM_OS_ILOG2_U32(u32 n)
 {
-	return CAM_OS_FLS(n) - 1;
+    return CAM_OS_FLS(n) - 1;
 }
 
 static inline __attribute__((const))
 s32 _CAM_OS_ILOG2_U64(u64 n)
 {
-	return CAM_OS_FLS64(n) - 1;
+    return CAM_OS_FLS64(n) - 1;
 }
 
-#define CAM_OS_ILOG2(n)				\
-(						\
-	__builtin_constant_p(n) ? (		\
-		(n) < 1 ? 0 :	\
+#define CAM_OS_ILOG2(n)                \
+(                        \
+    __builtin_constant_p(n) ? (        \
+        (n) < 1 ? 0 :    \
         (n) & (1ULL << 63) ? 63 : (n) & (1ULL << 62) ? 62 : (n) & (1ULL << 61) ? 61 : (n) & (1ULL << 60) ? 60 : \
         (n) & (1ULL << 59) ? 59 : (n) & (1ULL << 58) ? 58 : (n) & (1ULL << 57) ? 57 : (n) & (1ULL << 56) ? 56 : \
         (n) & (1ULL << 55) ? 55 : (n) & (1ULL << 54) ? 54 : (n) & (1ULL << 53) ? 53 : (n) & (1ULL << 52) ? 52 : \
@@ -57,38 +56,38 @@ s32 _CAM_OS_ILOG2_U64(u64 n)
         (n) & (1ULL <<  7) ?  7 : (n) & (1ULL <<  6) ?  6 : (n) & (1ULL <<  5) ?  5 : (n) & (1ULL <<  4) ?  4 : \
         (n) & (1ULL <<  3) ?  3 : (n) & (1ULL <<  2) ?  2 : (n) & (1ULL <<  1) ?  1 : (n) & (1ULL <<  0) ?  0 : \
         0) :    \
-	(sizeof(n) <= 4) ?			\
-	_CAM_OS_ILOG2_U32(n) :			\
-	_CAM_OS_ILOG2_U64(n)				\
+    (sizeof(n) <= 4) ?      \
+    _CAM_OS_ILOG2_U32(n) :  \
+    _CAM_OS_ILOG2_U64(n)    \
  )
 
 #define CAM_OS_HASH_SIZE(name) (CAM_OS_ARRAY_SIZE(name))
 
 #define CAM_OS_HASH_BITS(name) CAM_OS_ILOG2(CAM_OS_HASH_SIZE(name))
 
-#define CAM_OS_DEFINE_HASHTABLE(name, bits)						\
-	struct CamOsHListHead_t name[1 << (bits)] =					\
-			{ [0 ... ((1 << (bits)) - 1)] = CAM_OS_HLIST_HEAD_INIT }
+#define CAM_OS_DEFINE_HASHTABLE(name, bits)                        \
+    struct CamOsHListHead_t name[1 << (bits)] =                    \
+            { [0 ... ((1 << (bits)) - 1)] = CAM_OS_HLIST_HEAD_INIT }
 
 static inline void _CAM_OS_HASH_INIT(struct CamOsHListHead_t *ht, unsigned int sz)
 {
-	u32 i;
+    u32 i;
 
-	for (i = 0; i < sz; i++)
-		CAM_OS_INIT_HLIST_HEAD(&ht[i]);
+    for (i = 0; i < sz; i++)
+        CAM_OS_INIT_HLIST_HEAD(&ht[i]);
 }
 
 #define CAM_OS_HASH_INIT(hashtable) _CAM_OS_HASH_INIT(hashtable, CAM_OS_HASH_SIZE(hashtable))
 
-#define CAM_OS_HASH_ADD(hashtable, node, key)						\
-	CAM_OS_HLIST_ADD_HEAD(node, &hashtable[CAM_OS_HASH_MIN(key, CAM_OS_HASH_BITS(hashtable))])
+#define CAM_OS_HASH_ADD(hashtable, node, key)                        \
+    CAM_OS_HLIST_ADD_HEAD(node, &hashtable[CAM_OS_HASH_MIN(key, CAM_OS_HASH_BITS(hashtable))])
 
-#define CAM_OS_HASH_FOR_EACH_POSSIBLE(name, obj, member, key)			\
-	CAM_OS_HLIST_FOR_EACH_ENTRY(obj, &name[CAM_OS_HASH_MIN(key, CAM_OS_HASH_BITS(name))], member)
+#define CAM_OS_HASH_FOR_EACH_POSSIBLE(name, obj, member, key)            \
+    CAM_OS_HLIST_FOR_EACH_ENTRY(obj, &name[CAM_OS_HASH_MIN(key, CAM_OS_HASH_BITS(name))], member)
 
 static inline void CAM_OS_HASH_DEL(struct CamOsHListNode_t *node)
 {
-	CAM_OS_HLIST_DEL_INIT(node);
+    CAM_OS_HLIST_DEL_INIT(node);
 }
 
 #ifdef __cplusplus

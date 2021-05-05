@@ -1,1 +1,0 @@
-../../infinity2m/usb/usb_patch_mstar.h

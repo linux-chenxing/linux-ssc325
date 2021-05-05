@@ -1,1 +1,0 @@
-../cedric/mstar_mci.h

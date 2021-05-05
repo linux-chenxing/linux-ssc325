@@ -23,9 +23,35 @@
 /*
  * This component encapsulates the ALSA devices for USB audio gadget
  */
+int gaudio_mixer_control(int info_id, int value)
+{
+	char cmd_bin[50] = "\0";
+	char cur_cmd[100] = "\0";
+
+	char *cmd_argv[] = {cmd_bin, "-c", cur_cmd, NULL};
+	char *cmd_envp[] = {
+		"HOME=/",
+		"TERM=linux",
+		"PATH=/sbin:/usr/sbin:/bin:/usr/bin",
+		"LD_LIBRARY_PATH=/lib",
+		NULL
+		};
+
+	switch (info_id)
+	{
+		case CAPTURE_VOLUME_ID:
+			sprintf(cmd_bin, "/bin/sh");
+			sprintf(cur_cmd, "echo set_ai_volume 0 %d 0 > /proc/mi_modules/mi_ai/mi_ai0", value);
+			break;
+		default:
+			printk("Unknow mixer info\n");
+			return -1;
+	}
+
+	return call_usermodehelper(cmd_bin, cmd_argv, cmd_envp, UMH_WAIT_PROC);
+}
 
 /*-------------------------------------------------------------------------*/
-
 /**
  * Some ALSA internal helper functions
  */
@@ -99,6 +125,8 @@ static int capture_default_hw_params(struct gaudio_snd_dev *snd)
 	struct snd_pcm_hw_params *params;
 	struct snd_pcm_sw_params sparams;
 	snd_pcm_sframes_t result;
+	struct f_uac1_opts	*audio_opts =
+            container_of(snd->card->func.fi, struct f_uac1_opts, func_inst);
 
 	/*
 	 * SNDRV_PCM_ACCESS_RW_INTERLEAVED,
@@ -108,10 +136,10 @@ static int capture_default_hw_params(struct gaudio_snd_dev *snd)
 	 */
 	snd->access = SNDRV_PCM_ACCESS_RW_INTERLEAVED;
 	snd->format = SNDRV_PCM_FORMAT_S16_LE;
-	snd->channels = 1;
-	snd->rate = 16000;
-	snd->period_bytes = UAC1_AUDIO_CAPTURE_BUF_SIZE/2;
-	snd->buffer_bytes = UAC1_AUDIO_CAPTURE_BUF_SIZE;
+	snd->channels = audio_opts->capture_channel_count;
+	snd->rate = audio_opts->capture_sample_rate;
+	snd->period_bytes = audio_opts->audio_capture_period_size;
+	snd->buffer_bytes = audio_opts->audio_capture_buf_size;
 
 	params = kzalloc(sizeof(*params), GFP_KERNEL);
 	if (!params)
@@ -179,6 +207,8 @@ static int playback_default_hw_params(struct gaudio_snd_dev *snd)
 	struct snd_pcm_substream *substream = snd->substream;
 	struct snd_pcm_hw_params *params;
 	snd_pcm_sframes_t result;
+	struct f_uac1_opts	*audio_opts =
+            container_of(snd->card->func.fi, struct f_uac1_opts, func_inst);
 
    /*
 	* SNDRV_PCM_ACCESS_RW_INTERLEAVED,
@@ -188,10 +218,10 @@ static int playback_default_hw_params(struct gaudio_snd_dev *snd)
 	*/
 	snd->access = SNDRV_PCM_ACCESS_RW_INTERLEAVED;
 	snd->format = SNDRV_PCM_FORMAT_S16_LE;
-	snd->channels = 1;
-	snd->rate = 16000;
-	snd->period_bytes = UAC1_AUDIO_PLAYBACK_BUF_SIZE / 2;
-	snd->buffer_bytes = UAC1_AUDIO_PLAYBACK_BUF_SIZE;
+	snd->channels = audio_opts->playback_channel_count;
+	snd->rate = audio_opts->playback_sample_rate;
+	snd->period_bytes = audio_opts->audio_playback_buf_size / 2;
+	snd->buffer_bytes = audio_opts->audio_playback_buf_size;
 
 	params = kzalloc(sizeof(*params), GFP_KERNEL);
 	if (!params)
@@ -291,7 +321,7 @@ try_again:
 #else
 	result = snd_pcm_lib_read(substream, buf, frames);
 	if (result != frames) {
-		pr_err("Capture error: %d count%d, state%d \n", (int)result, count, runtime->status->state);
+		pr_debug("Capture warring: %d count%d, state%d \n", (int)result, count, runtime->status->state);
 		set_fs(old_fs);
 		goto try_again;
 	}

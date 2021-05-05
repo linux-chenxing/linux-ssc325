@@ -43,4 +43,10 @@ bool "Supply to EEE function"
 default n
 help
     Supply to EEE function
+
+config EMAC_PHY_RESTART_AN
+bool "Supply to phy restart AN"
+default n
+help
+    Supply to phy restart AN
 endif

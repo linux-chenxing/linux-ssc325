@@ -1,9 +1,8 @@
 /*
-* mdrv_sata_host.c - Sigmastar
+* mdrv_sata_host.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -25,6 +24,8 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/dma-mapping.h>
+#include <linux/of_platform.h>
+#include <linux/of_irq.h>
 
 #include <scsi/scsi_host.h>
 #include <scsi/scsi_cmnd.h>
@@ -38,6 +39,10 @@
 //#include "chip_setup.h"
 #include <../../../drivers/ata/ahci.h>
 
+#ifdef CONFIG_ARCH_INFINITY2
+#include "mhal_sata_host.c"
+#endif
+
 #define SW_OOB_MODE 0
 
 #define sata_reg_write16(val, addr) { (*((volatile unsigned short*)(addr))) = (unsigned short)(val); }
@@ -47,11 +52,29 @@
     #include <linux/of_device.h>
 #endif
 
+//#ifdef CONFIG_ARCH_INFINITY2
+#if 0
+extern void ahci_save_initial_config(struct device *dev, struct ahci_host_priv *hpriv, unsigned int force_port_map, unsigned int mask_port_map);
+#else
 extern void ahci_save_initial_config(struct device *dev, struct ahci_host_priv *hpriv);
+#endif
 
 extern int ahci_scr_read(struct ata_link *link, unsigned int sc_reg, u32 *val);
 extern int ahci_scr_write(struct ata_link *link, unsigned int sc_reg, u32 val);
 extern unsigned ahci_scr_offset(struct ata_port *ap, unsigned int sc_reg);
+
+#ifdef CONFIG_ARCH_INFINITY2
+    #undef writel
+    #undef readl
+
+    extern u32 ahci_reg_read(void __iomem * p_reg_addr);
+    extern void ahci_reg_write(u32 data, void __iomem * p_reg_addr);
+    //extern u32 ahci_reg_read(phys_addr_t reg_addr);
+    //extern void ahci_reg_write(u32 data, phys_addr_t p_reg_addr);;
+
+    #define writel ahci_reg_write
+    #define readl ahci_reg_read
+#endif
 
 #define SATA_DEBUG
 #ifdef SATA_DEBUG
@@ -193,11 +216,11 @@ static void build_cmd_fis(void *cmd_tbl, hal_cmd_h2dfis *pfis, phys_addr_t misc_
     for (offset = 0; offset < sizeof(hal_cmd_h2dfis); offset += 4)
     {
         // which address to write?
-        writel(address, misc_base + SATA_MISC_CFIFO_ADDRL);
+        writel(address, (void*)misc_base + SATA_MISC_CFIFO_ADDRL);
         //printf("write data 0x%8.8x to addr 0x%x\n", address, misc_base + SATA_MISC_CFIFO_ADDRL);
 
         // what data to write?
-        writel(*dptr, misc_base + SATA_MISC_CFIFO_WDATAL);
+        writel(*dptr, (void*)misc_base + SATA_MISC_CFIFO_WDATAL);
         //printf("write data 0x%8.8x to addr 0x%x\n", *dptr, misc_base + SATA_MISC_CFIFO_WDATAL);
 
         // read(0) or write(1)? normally write
@@ -245,11 +268,11 @@ static void build_cmd_prdt(void *base_address, u32 *pprdt, phys_addr_t misc_base
     for (offset = 0; offset < sizeof(u32) * prdt_num * 4; offset += 4)
     {
         // which address to write?
-        writel(address, misc_base + SATA_MISC_CFIFO_ADDRL);
+        writel(address, (void*)misc_base + SATA_MISC_CFIFO_ADDRL);
         //printf("write data 0x%8.8x to addr 0x%x\n", address, misc_base + SATA_MISC_CFIFO_ADDRL);
 
         // what data to write?
-        writel(*dptr, misc_base + SATA_MISC_CFIFO_WDATAL);
+        writel(*dptr, (void*)misc_base + SATA_MISC_CFIFO_WDATAL);
         //printf("write data 0x%8.8x to addr 0x%x\n", *dptr, misc_base + SATA_MISC_CFIFO_WDATAL);
 
         // read(0) or write(1)? normally write
@@ -266,7 +289,6 @@ static void build_cmd_prdt(void *base_address, u32 *pprdt, phys_addr_t misc_base
 #endif
 }
 
-extern void Chip_Flush_Memory(void);
 static void build_cmd_header(void *cmd_slot, u32 u32offset_address, u32 *pcmdheader, phys_addr_t misc_base)
 {
 #if (SATA_CMD_TYPE != TYPE_RIU)
@@ -280,7 +302,7 @@ static void build_cmd_header(void *cmd_slot, u32 u32offset_address, u32 *pcmdhea
 
     memcpy(cmd_address, pcmdheader, SATA_KA9_CMD_HDR_SIZE);
     //print_cmd_header(cmd_address);
-    Chip_Flush_Memory();
+    Chip_Flush_MIU_Pipe();
 
 #if (SATA_CMD_TYPE == TYPE_XIU)
     writew(0x01, u32MiscAddr + SATA_MISC_ACCESS_MODE);
@@ -293,11 +315,11 @@ static void build_cmd_header(void *cmd_slot, u32 u32offset_address, u32 *pcmdhea
     for (offset = 0; offset < SATA_KA9_CMD_HDR_SIZE; offset += 4)
     {
         // which address to write?
-        writel(address, misc_base + SATA_MISC_CFIFO_ADDRL);
+        writel(address, (void*)misc_base + SATA_MISC_CFIFO_ADDRL);
         //printf("write data 0x%8.8x to addr 0x%x\n", address, misc_base + SATA_MISC_CFIFO_ADDRL);
 
         // what data to write?
-        writel(*dptr, misc_base + SATA_MISC_CFIFO_WDATAL);
+        writel(*dptr, (void*)misc_base + SATA_MISC_CFIFO_WDATAL);
         //printf("write data 0x%8.8x to addr 0x%x\n", *dptr, misc_base + SATA_MISC_CFIFO_WDATAL);
 
         // read(0) or write(1)? normally write
@@ -316,6 +338,49 @@ static void build_cmd_header(void *cmd_slot, u32 u32offset_address, u32 *pcmdhea
 #endif
 }
 
+
+static irqreturn_t sstar_ahci_single_level_irq_intr(int irq, void *dev_instance)
+{
+	struct ata_host *host = dev_instance;
+	struct ahci_host_priv *hpriv;
+	unsigned int rc = 0;
+	void __iomem *mmio;
+	u32 irq_stat, irq_masked;
+
+	VPRINTK("ENTER\n");
+
+	hpriv = host->private_data;
+	mmio = hpriv->mmio;
+
+	/* sigh.  0xffffffff is a valid return from h/w */
+	irq_stat = readl(mmio + HOST_IRQ_STAT);
+	if (!irq_stat)
+		return IRQ_NONE;
+
+	irq_masked = irq_stat & hpriv->port_map;
+
+	spin_lock(&host->lock);
+
+	rc = ahci_handle_port_intr(host, irq_masked);
+
+	/* HOST_IRQ_STAT behaves as level triggered latch meaning that
+	 * it should be cleared after all the port events are cleared;
+	 * otherwise, it will raise a spurious interrupt after each
+	 * valid one.  Please read section 10.6.2 of ahci 1.1 for more
+	 * information.
+	 *
+	 * Also, use the unmasked value to clear interrupt as spurious
+	 * pending event on a dummy port might cause screaming IRQ.
+	 */
+	writel(irq_stat, mmio + HOST_IRQ_STAT);
+
+	spin_unlock(&host->lock);
+
+	VPRINTK("EXIT\n");
+
+	return IRQ_RETVAL(rc);
+}
+
 static inline unsigned int sata_sstar_tag(unsigned int tag)
 {
     /* all non NCQ/queued commands should have tag#0 */
@@ -324,7 +389,7 @@ static inline unsigned int sata_sstar_tag(unsigned int tag)
         return 0;
     }
 
-    if (unlikely(tag >= SATA_KA9_QUEUE_DEPTH))
+    if (unlikely(tag >= SATA_SSTAR_QUEUE_DEPTH))
     {
         DPRINTK("tag %d invalid : out of range\n", tag);
         //printk("[%s][%d]\n",__FUNCTION__,__LINE__);
@@ -436,7 +501,7 @@ static void sstar_ahci_start_engine(phys_addr_t port_base)
 static void sstar_ahci_start_fis_rx(struct ata_port *ap)
 {
     struct sata_sstar_port_priv *pp = ap->private_data;
-    phys_addr_t port_base = ss_hpriv->port_base;//SATA_GHC_1_ADDRESS_START;
+    phys_addr_t port_base =ss_hpriv->port_base;//SATA_GHC_1_ADDRESS_START;
     u32 tmp;
 
     // set FIS registers
@@ -562,6 +627,7 @@ static unsigned int sata_sstar_qc_issue(struct ata_queued_cmd *qc)
     unsigned int tag = sata_sstar_tag(qc->tag);
     struct ata_port *ap = qc->ap->host->ports[0];
     struct ata_link *link = qc->dev->link;
+    struct ahci_port_priv *pp = ap->private_data;
 
     //printk("%s\n", __func__);
 
@@ -569,7 +635,9 @@ static unsigned int sata_sstar_qc_issue(struct ata_queued_cmd *qc)
     {
         //printk("NCQ device- %d\n", qc->tag);
         writel(1 << qc->tag, (void*)SS_PORT_SCR_ACT + port_base);
-        ap->sactive = link->sactive;  // save ncq active tag
+//        ap->sactive = link->sactive;  // save ncq active tag
+        //ap->sactive = link->sactive;  // save ncq active tag
+        pp->active_link->sactive = link->sactive;
         //sata_info("sactive = 0x%x\n", ap->sactive);
     }
     writel(1 << tag, (void*)SS_PORT_CMD_ISSUE + port_base);
@@ -610,9 +678,28 @@ static bool sata_sstar_qc_fill_rtf(struct ata_queued_cmd *qc)
     return true;
 }
 
+
+static unsigned sata_sstar_scr_offset(struct ata_port *ap, unsigned int sc_reg)
+{
+	static const int offset[] = {
+		[SCR_STATUS]		= PORT_SCR_STAT,
+		[SCR_CONTROL]		= PORT_SCR_CTL,
+		[SCR_ERROR]		= PORT_SCR_ERR,
+		[SCR_ACTIVE]		= PORT_SCR_ACT,
+		[SCR_NOTIFICATION]	= PORT_SCR_NTF,
+	};
+	struct ahci_host_priv *hpriv = ap->host->private_data;
+
+	if (sc_reg < ARRAY_SIZE(offset) &&
+	    (sc_reg != SCR_NOTIFICATION || (hpriv->cap & HOST_CAP_SNTF)))
+		return offset[sc_reg];
+	return 0;
+}
+
+
 static int sata_sstar_scr_read(struct ata_link *link, unsigned int sc_reg, u32 *val)
 {
-    int offset = ahci_scr_offset(link->ap, sc_reg);
+    int offset = sata_sstar_scr_offset(link->ap, sc_reg);
     phys_addr_t port_base = ss_hpriv->port_base;
     if (offset)
     {
@@ -624,7 +711,7 @@ static int sata_sstar_scr_read(struct ata_link *link, unsigned int sc_reg, u32 *
 
 static int sata_sstar_scr_write(struct ata_link *link, unsigned int sc_reg_in, u32 val)
 {
-    int offset = ahci_scr_offset(link->ap, sc_reg_in);
+    int offset = sata_sstar_scr_offset(link->ap, sc_reg_in);
     phys_addr_t port_base = ss_hpriv->port_base;
     //struct sata_sstar_host_priv *host_priv = link->ap->host->private_data;
     if (offset)
@@ -834,7 +921,7 @@ static void sata_sstar_post_internal_cmd(struct ata_queued_cmd *qc)
 static int sata_sstar_port_start(struct ata_port *ap)
 {
     struct sata_sstar_port_priv *pp;
-    struct sata_sstar_host_priv *host_priv = ap->host->ports[0]->private_data;
+//    struct sata_sstar_host_priv *host_priv = ap->host->ports[0]->private_data;
     u32 temp;
     phys_addr_t port_base = ss_hpriv->port_base;
     u32 GHC_PHY = 0x0;
@@ -909,7 +996,7 @@ static int sata_sstar_port_start(struct ata_port *ap)
     //sata_info("port_base= 0x%x ;\n", port_base);
 
     ap->private_data = pp;
-    ap->ss_private_data = host_priv;
+//    ap->ss_private_data = host_priv;
     temp = readl((void*)SS_PORT_CMD + port_base) & ~PORT_CMD_ICC_MASK;
 
     // spin up device
@@ -936,6 +1023,12 @@ static int sata_sstar_port_start(struct ata_port *ap)
     {
         GHC_PHY = SATA_GHC_0_PHY;//0x103900
     }
+#ifdef CONFIG_ARCH_INFINITY2
+    else if(port_base == SATA_GHC_1_P0_ADDRESS_START)
+    {
+        GHC_PHY = SATA_GHC_1_PHY;//0x162A00
+    }
+#endif
     // test: enable PHY
     writew(0x9a8f, (volatile void *)SSTAR_RIU_BASE + ((GHC_PHY | 0x02) << 1));  // [0]: Reset
     writew(0x9a8e, (volatile void *)SSTAR_RIU_BASE + ((GHC_PHY | 0x02) << 1));
@@ -1208,7 +1301,11 @@ static int sstar_sata_hardware_init(phys_addr_t hba_base, phys_addr_t port_base,
 
     MHal_SATA_HW_Inital(misc_base, port_base, hba_base);
 
+#ifdef CONFIG_ARCH_INFINITY2
+    writew(HOST_RESET, (volatile void *)hba_base + (HOST_CTL));
+#else
     writel(HOST_RESET, (volatile void *)hba_base + (HOST_CTL));
+#endif
 
     #if (SW_OOB_MODE == 1)
     sstar_sata_sw_oob_mode1();
@@ -1252,7 +1349,7 @@ static struct scsi_host_template sstar_sata_sht =
 #else
     ATA_BASE_SHT("sstar_sata"),
 #endif
-    .can_queue = SATA_KA9_QUEUE_DEPTH,
+    .can_queue = SATA_SSTAR_QUEUE_DEPTH,
     .sg_tablesize = SATA_KA9_USED_PRD,
     .dma_boundary = ATA_DMA_BOUNDARY,
 };
@@ -1293,6 +1390,28 @@ static const struct ata_port_info sstar_sata_port_info[] =
         .port_ops = &sstar_sata_ops,
     },
 };
+
+int __ss_sata_get_irq_number_host(void)
+{
+    struct device_node *dev_node;
+    struct platform_device *pdev;
+    int irq = 0;
+
+    dev_node = of_find_compatible_node(NULL, NULL, SSTAR_SATA_DTS_NAME);
+
+    if (!dev_node)
+        return -ENODEV;
+
+    pdev = of_find_device_by_node(dev_node);
+    if (!pdev)
+    {
+        of_node_put(dev_node);
+        return -ENODEV;
+    }
+    irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
+    printk("[SATA] Virtual IRQ: %d\n", irq);
+    return irq;
+}
 
 static int sstar_sata_probe(struct platform_device *pdev)
 {
@@ -1371,7 +1490,11 @@ static int sstar_sata_probe(struct platform_device *pdev)
         return -EINVAL;
     }
 
+#if 0
     irq = platform_get_irq(pdev, 0);
+#else
+    irq =  __ss_sata_get_irq_number_host();
+#endif
     if (irq <= 0)
     {
         sata_error("[%s]SATA Get IRQ Fail\n", __func__);
@@ -1393,14 +1516,14 @@ static int sstar_sata_probe(struct platform_device *pdev)
         return -ENOMEM;
     }
 
-    //    printk("SSTAR_RIU_BASE = 0x%llx..\n", SSTAR_RIU_BASE);
+    //    printk("SSTAR_RIU_BASE = 0x%llx..\n", SSTAR_RIU_BASE);  // sstar_pm_base
     // FIXME: need a way to set DMA mask in DTB, otherwise we will get dma allocation fail.
 #if 0 //defined(CONFIG_OF)
     printk("CONFIG_OF\n");
-    printk("SSTAR_RIU_BASE = 0x%llx..\n", SSTAR_RIU_BASE);
-    hpriv->hba_base  = (SSTAR_RIU_BASE + (hba_base << 1));
-    hpriv->port_base = (SSTAR_RIU_BASE + (port_base << 1));
-    hpriv->misc_base = (SSTAR_RIU_BASE + (misc_base << 1));
+    printk("SSTAR_RIU_BASE = 0x%llx..\n", SSTAR_RIU_BASE);   // sstar_pm_base
+    hpriv->hba_base  = (SSTAR_RIU_BASE + (hba_base << 1));   // (mstar_pm_base + (hba_base << 1));
+    hpriv->port_base = (SSTAR_RIU_BASE + (port_base << 1));  // (mstar_pm_base + (port_base << 1));
+    hpriv->misc_base = (SSTAR_RIU_BASE + (misc_base << 1));  // (mstar_pm_base + (misc_base << 1));
 #else
     ss_hpriv->hba_base  = hba_mem->start;
     ss_hpriv->port_base = port_mem->start;
@@ -1437,7 +1560,12 @@ static int sstar_sata_probe(struct platform_device *pdev)
     hpriv->mmio = (void __iomem *) hba_mem->start;
     hpriv->irq = irq;
 
+//#ifdef CONFIG_ARCH_INFINITY2
+#if 0
+    ahci_save_initial_config(dev, hpriv, 0, 0);
+#else
     ahci_save_initial_config(dev, hpriv);
+#endif
 
     /* DH test */
     if (hpriv->cap & HOST_CAP_NCQ)
@@ -1454,7 +1582,11 @@ static int sstar_sata_probe(struct platform_device *pdev)
 
     //return ata_host_activate(host, irq, sata_sstar_interrupt, IRQF_SHARED, &sstar_sata_sht);
     //return ata_host_activate(host, irq, ahci_interrupt, IRQF_SHARED, &sstar_sata_sht);
+#ifdef CONFIG_ARCH_INFINITY2
+    return ata_host_activate(host, irq, sstar_ahci_single_level_irq_intr, IRQF_SHARED, &sstar_sata_sht);
+#else
     return ahci_host_activate(host, &sstar_sata_sht);
+#endif
 
 out_devm_kzalloc_hpriv:
     devm_kfree(dev, hpriv);
@@ -1468,7 +1600,7 @@ static int sstar_sata_remove(struct platform_device *pdev)
     struct device *dev = &pdev->dev;
     struct ata_host *host = dev_get_drvdata(dev);
     struct ahci_host_priv *host_priv = host->private_data;
-    struct sata_sstar_host_priv *ss_hpriv = host->ports[0]->ss_private_data;
+//    struct sata_sstar_host_priv *ss_hpriv = host->ports[0]->ss_private_data;
 
     ata_host_detach(host);
 
@@ -1579,11 +1711,19 @@ static struct resource satahost_resources[] =
         .end   = SATA_MISC_0_ADDRESS_END,
         .flags = IORESOURCE_MEM,
     },
+#if  defined(CONFIG_ARCH_INFINITY2)
+    [3] = {
+        .start = INT_IRQ_15_SATA_INTRQ,  //15 + 32, //E_IRQ_SATA_INT,
+        .end   = INT_IRQ_15_SATA_INTRQ,  //15 + 32, //E_IRQ_SATA_INT,
+        .flags = IORESOURCE_IRQ,
+    },
+#elif defined(CONFIG_ARCH_INFINITY2M)
     [3] = {
         .start = INT_IRQ_SATA,
         .end   = INT_IRQ_SATA,
         .flags = IORESOURCE_IRQ,
     },
+#endif
 };
 
 struct platform_device sstar_satahost_device =

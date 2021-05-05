@@ -1,9 +1,8 @@
 /*
-* infinity2m-scc010a-s01a-s.dts - Sigmastar
+* infinity2m-ssc010a-s01a.dts- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: Joe.Su <joe.su@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,15 +11,17 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
 /dts-v1/;
 #include "infinity2m.dtsi"
+#include "infinity2m-ssc010a-s01a.dtsi"
+#include "infinity2m-ssc010a-s01a-padmux.dtsi"
 
 / {
-    model = "INFINITY2M SSC010A-S01A-S QFN128";
+    model = "INFINITY2M SSC010A-S01A-S";
     compatible = "sstar,infinity2m";
 
     /* memory setting will be replaced with LX_MEM*/
@@ -38,22 +39,14 @@
         #size-cells = <1>;
         ranges;
 
-        cma0 {
+        /*cma0 {
             compatible = "shared-dma-pool";
             size = <0x400000>;
             reusable;
             alignment = <0x1000>;
             linux,cma-default;
-        };
+        };*/
     };
 
-    soc {
-        cpufreq {
-            vid_width = <2>;
-            vid_gpios = <PAD_UART1_RX PAD_SAR_GPIO1>;
-            vid_voltages = <850 950 900 1000>;  //2b'00 2b'01 2b'10 2b'11
-            vid_default = <1>;  //2b'01
-        };
-    };
 
 };

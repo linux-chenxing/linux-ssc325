@@ -1,9 +1,8 @@
 /*
 * mdrv_sar.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/module.h>
@@ -28,6 +27,7 @@
 #include <linux/of_device.h>
 #include <linux/interrupt.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/uaccess.h>
 #include <linux/io.h>
 #include <linux/cpufreq.h>
@@ -38,7 +38,9 @@
 #include "../include/ms_types.h"
 #include "../include/ms_platform.h"
 #include "mdrv_sar.h"
-
+#ifdef CONFIG_CAM_CLK
+    #include "drv_camclk_Api.h"
+#endif
 
 //#define OPEN_SAR_DEBUG
 static U32 _gMIO_MapBase = 0;
@@ -51,8 +53,13 @@ static U32 _gMIO_MapBase = 0;
 
 struct ms_sar
 {
-    struct device		*dev;
+    struct device *dev;
     void __iomem *reg_base;
+#ifdef CONFIG_CAM_CLK
+    void *pvSarClk;
+#else
+    struct clk *clk;
+#endif
 };
 
 static int ms_sar_open(struct inode *inode, struct file *file);
@@ -92,7 +99,7 @@ BOOL HAL_SAR_Write2ByteMask(U32 u32RegAddr, U16 u16Val, U16 u16Mask)
 static long ms_sar_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
     S32 s32Err= 0;
-    ADC_CONFIG_READ_ADC adcCfg;
+    SAR_ADC_CONFIG_READ adcCfg;
 
     //printk("%s is invoked\n", __FUNCTION__);
 
@@ -128,12 +135,12 @@ static long ms_sar_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
     switch(cmd)
     {
-    case MS_SAR_INIT:
+    case IOCTL_SAR_INIT:
         ms_sar_hw_init();
         break;
 
-    case MS_SAR_SET_CHANNEL_READ_VALUE:
-        if(copy_from_user(&adcCfg, (ADC_CONFIG_READ_ADC __user *)arg, sizeof(ADC_CONFIG_READ_ADC)))
+    case IOCTL_SAR_SET_CHANNEL_READ_VALUE:
+        if(copy_from_user(&adcCfg, (SAR_ADC_CONFIG_READ __user *)arg, sizeof(SAR_ADC_CONFIG_READ)))
         {
             return EFAULT;
         }
@@ -143,7 +150,7 @@ static long ms_sar_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         adcCfg.adc_value = ms_sar_get(channel);
         sarDbg("channel = %d , adc =%d \n",channel, adcCfg.adc_value);
 
-        if(copy_to_user((ADC_CONFIG_READ_ADC __user *)arg, &adcCfg, sizeof( ADC_CONFIG_READ_ADC)))
+        if(copy_to_user((SAR_ADC_CONFIG_READ __user *)arg, &adcCfg, sizeof( SAR_ADC_CONFIG_READ)))
         {
             return EFAULT;
         }
@@ -207,15 +214,22 @@ int ms_sar_get(int ch)
 }
 EXPORT_SYMBOL(ms_sar_get);
 
-
 static int infinity_sar_probe(struct platform_device *pdev)
 {
     struct device *dev;
     struct ms_sar *sar;
     struct resource *res;
-
-    //sarDbg("[SAR] infinity_sar_probe \n");
-    printk("[SAR] infinity_sar_probe \n");
+#ifdef CONFIG_CAM_CLK
+    u32 SarClk = 0;
+    CAMCLK_Set_Attribute stSetCfg;
+    CAMCLK_Get_Attribute stGetCfg;
+#else
+    int retval;
+    struct clk *clk;
+    struct clk_hw *hw_parent;
+#endif
+    sarDbg("[SAR] probe\n");
+    // printk("[SAR] infinity_sar_probe \n");
     dev = &pdev->dev;
     sar = devm_kzalloc(dev, sizeof(*sar), GFP_KERNEL);
     if (!sar)
@@ -231,36 +245,112 @@ static int infinity_sar_probe(struct platform_device *pdev)
     }
     sar->reg_base = devm_ioremap_resource(&pdev->dev, res);
     _gMIO_MapBase=(U32)sar->reg_base;
+#ifdef CONFIG_CAM_CLK
+    of_property_read_u32_index(dev->of_node,"camclk", 0,&(SarClk));
+    if (!SarClk)
+    {
+        printk(KERN_DEBUG "[%s] Fail to get clk!\n", __func__);
+    }
+    else
+    {
+        if(CamClkRegister("Sar",SarClk,&(sar->pvSarClk))==CAMCLK_RET_OK)
+        {
+            CamClkAttrGet(sar->pvSarClk,&stGetCfg);
+            CAMCLK_SETPARENT(stSetCfg,stGetCfg.u32Parent[0]);
+            CamClkAttrSet(sar->pvSarClk,&stSetCfg);
+            CamClkSetOnOff(sar->pvSarClk,1);
+        }
+    }
+#else
+    //2. set clk
+    clk = of_clk_get(pdev->dev.of_node, 0);
+    if(IS_ERR(clk))
+    {
+        retval = PTR_ERR(clk);
+        sarDbg("[%s]: of_clk_get failed\n", __func__);
+    }
+    else
+    {
+        /* select clock mux */
+        hw_parent = clk_hw_get_parent_by_index(__clk_get_hw(clk), 0);  // select mux 0
+        sarDbg( "[%s]parent_num:%d parent[0]:%s\n", __func__,
+                clk_hw_get_num_parents(__clk_get_hw(clk)), clk_hw_get_name(hw_parent));
+        clk_set_parent(clk, hw_parent->clk);
 
+        clk_prepare_enable(clk);
+        sar->clk = clk;
+        sarDbg("[SAR] clk_prepare_enable\n");
+    }
+#endif
+    platform_set_drvdata(pdev, sar);
     misc_register(&sar_miscdev);
     return 0;
 }
 
-static int infinity_sar_remove(struct platform_device *dev)
+static int infinity_sar_remove(struct platform_device *pdev)
 {
-    sarDbg("[SAR]infinity_sar_remove \n");
+    struct ms_sar *sar = platform_get_drvdata(pdev);
+    struct device *dev = &pdev->dev;
+
+    sarDbg("[SAR] remove\n");
     misc_deregister(&sar_miscdev);
-    return 0;
-}
-
-#ifdef CONFIG_PM
-
-static int infinity_sar_suspend(struct platform_device *dev, pm_message_t state)
-{
-    sarDbg("[SAR]infinity_sar_suspend \n");
-    return 0;
-}
-
-static int infinity_sar_resume(struct platform_device *dev)
-{
-    sarDbg("[SAR]infinity_sar_resume \n");
-    return 0;
-}
-
+    if (sar) {
+#ifdef CONFIG_CAM_CLK
+        if(sar->pvSarClk)
+        {
+            CamClkSetOnOff(sar->pvSarClk,0);
+            CamClkUnregister(sar->pvSarClk);
+        }
 #else
-#define infinity_sar_suspend NULL
-#define infinity_sar_resume  NULL
-#endif /* CONFIG_PM */
+
+        if (sar->clk)
+        {
+            clk_disable_unprepare(sar->clk);
+            clk_put(sar->clk);
+        }
+#endif
+        devm_kfree(dev, sar);
+    }
+    return 0;
+}
+
+#ifdef CONFIG_PM_SLEEP
+static int infinity_sar_suspend(struct platform_device *pdev, pm_message_t state)
+{
+    struct ms_sar *sar = platform_get_drvdata(pdev);
+
+    sarDbg("[SAR] suspend\n");
+#ifdef CONFIG_CAM_CLK
+    if(sar && sar->pvSarClk)
+    {
+       CamClkSetOnOff(sar->pvSarClk,0);
+    }
+#else
+    if (sar && sar->clk) {
+        clk_disable_unprepare(sar->clk);
+    }
+#endif
+    return 0;
+}
+
+static int infinity_sar_resume(struct platform_device *pdev)
+{
+    struct ms_sar *sar = platform_get_drvdata(pdev);
+
+    sarDbg("[SAR] resume\n");
+#ifdef CONFIG_CAM_CLK
+    if(sar && sar->pvSarClk)
+    {
+       CamClkSetOnOff(sar->pvSarClk,1);
+    }
+#else
+    if (sar && sar->clk) {
+        clk_prepare_enable(sar->clk);
+    }
+#endif
+    return 0;
+}
+#endif /* CONFIG_PM_SLEEP */
 
 
 
@@ -276,7 +366,7 @@ static struct platform_driver infinity_sar_driver =
 {
     .probe		= infinity_sar_probe,
     .remove		= infinity_sar_remove,
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
     .suspend	= infinity_sar_suspend,
     .resume		= infinity_sar_resume,
 #endif

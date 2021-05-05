@@ -1,9 +1,8 @@
 /*
 * ms_platform.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef __MS_PLATFORM_H__
@@ -70,6 +69,13 @@
 #define INREGMSK16(x, y)        (INREG16(x) & (y))
 #define OUTREGMSK16(x, y, z)    OUTREG16(x, ((INREG16(x)&~(z))|((y)&(z))))
 
+/* Make sure riu bit operation enabled, or the effect of SETREG16_BIT_OP is the same as SETREG16 */
+#define SETREG16_BIT_OP(x, y)       OUTREG32(x, INREG16(x)|(y)|(u32)(y)<<16)
+/* Make sure riu bit operation enabled, or the effect of CLRREG16_BIT_OP is the same as CLRREG16 */
+#define CLRREG16_BIT_OP(x, y)       OUTREG32(x, (INREG16(x)&~(y))|(u32)(y)<<16)
+/* Make sure riu bit operation enabled, or the effect of OUTREGMSK16_BIT_OP is the same as OUTREGMSK16 */
+#define OUTREGMSK16_BIT_OP(x, y, z) OUTREG32(x, ((INREG16(x)&~(z))|((y)&(z)))|(u32)(z)<<16)
+
 #define INREG32(x)              ms_readl(x)
 #define OUTREG32(x, y)          ms_writel((u32)(y), x)
 #define SETREG32(x, y)          OUTREG32(x, INREG32(x)|(y))
@@ -124,7 +130,7 @@ extern  void    Chip_Flush_Cache_Range(unsigned long u32Addr, unsigned long u32S
 extern  void    Chip_Clean_Cache_Range(unsigned long u32Addr, unsigned long u32Size);
 extern  void    Chip_Inv_Cache_Range(unsigned long u32Addr, unsigned long u32Size);
 extern  void    Chip_Flush_CacheAll(void);
-
+extern void     Chip_Flush_Dcache_Page(struct page *page);
 extern  u64     Chip_Phys_to_MIU(u64 phys);
 extern  u64     Chip_MIU_to_Phys(u64 miu);
 

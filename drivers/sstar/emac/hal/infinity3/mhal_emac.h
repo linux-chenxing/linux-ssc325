@@ -1,10 +1,8 @@
-/* SigmaStar trade secret */
 /*
 * mhal_emac.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -13,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef __HAL_EMAC__
@@ -483,6 +481,8 @@ void MHal_EMAC_PadLed(void*, u32 reg, u32 msk, u32 val);
 void MHal_EMAC_PhyMode(void*, u32 phy_mode);
 
 int MHal_EMAC_FlowControl_TX(void*);
+
+void MHal_EMAC_MIU_Protect_RX(void* hal, u32 start, u32 end);
 
 // for fpga
 void MHal_EMAC_mdio_path(void* hal, int mdio_path);

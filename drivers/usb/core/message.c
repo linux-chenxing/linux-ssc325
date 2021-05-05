@@ -19,12 +19,10 @@
 
 #include "usb.h"
 
-#ifndef MP_USB_MSTAR
-#include <usb_patch_mstar.h>
+#ifdef CONFIG_MP_USB_MSTAR
+#include "usb_common_sstar.h"
 #endif
-#if (MP_USB_MSTAR==1)
-#include "../host/ehci-mstar.h"
-#endif
+
 static void cancel_async_set_config(struct usb_device *udev);
 
 struct api_context {

@@ -1,9 +1,8 @@
 /*
 * halAESDMA.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -299,6 +298,9 @@ void HAL_RSA_LoadSignInverse(U32 *ptr_Sign, U8 u8Signlentgh)
         // RIU[(RSA_BASE_ADDR+(0x23<<1))]= (U16)(((*(ptr_E+i))>>8)&0xFF00)|(((*(ptr_E+i))>>24)&0xFF);
        // RIU[(RSA_BASE_ADDR+(0x24<<1))]= (U16)(((*(ptr_E+i))>>8)&0xFF)|(((*(ptr_E+i))<<8)&0xFF00);
     U32 i;
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_RSA
+    U16 dummy;
+#endif
 	U8 lentgh = u8Signlentgh;
 
     RIU[(RSA_BASE_ADDR+(0x22<<1))]= RSA_A_BASE_ADDR; //RSA A addr
@@ -313,7 +315,13 @@ void HAL_RSA_LoadSignInverse(U32 *ptr_Sign, U8 u8Signlentgh)
 //        RIU[(RSA_BASE_ADDR+(0x24<<1))]= (U16)(((*(ptr_Sign + i))>>8)&0xFF)|(((*(ptr_Sign + i))<<8)&0xFF00);
 
 		RIU[(RSA_BASE_ADDR+(0x23<<1))]= (U16)(((*(ptr_Sign + (lentgh-1) - i))>>8)&0xFF00)|(((*(ptr_Sign + (lentgh-1) - i))>>24)&0xFF);
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_RSA
+		dummy = RIU[(RSA_BASE_ADDR+(0x23<<1))];
+#endif
 		RIU[(RSA_BASE_ADDR+(0x24<<1))]= (U16)(((*(ptr_Sign + (lentgh-1) - i))>>8)&0xFF)|(((*(ptr_Sign + (lentgh-1) - i))<<8)&0xFF00);
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_RSA
+        dummy = RIU[(RSA_BASE_ADDR+(0x24<<1))];
+#endif
    }
 
     RIU[(RSA_BASE_ADDR+(0x20<<1))]= ((RIU[(RSA_BASE_ADDR+(0x20<<1))])&(~RSA_IND32_START)); //RSA stop
@@ -375,6 +383,9 @@ void HAL_RSA_LoadKeyN(U32 *ptr_N ,U8 u8Nlentgh)
 void HAL_RSA_LoadKeyNInverse(U32 *ptr_N,U8 u8Nlentgh)
 {
     U32 i;
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_RSA
+    U16 dummy;
+#endif
 	U8 lentgh = u8Nlentgh;
 
     RIU[(RSA_BASE_ADDR+(0x22<<1))]= RSA_N_BASE_ADDR; //RSA N addr
@@ -385,7 +396,13 @@ void HAL_RSA_LoadKeyNInverse(U32 *ptr_N,U8 u8Nlentgh)
     for( i = 0; i < lentgh; i++ )
     {
         RIU[(RSA_BASE_ADDR+(0x23<<1))]= (U16)(((*(ptr_N + (lentgh-1) - i))>>8)&0xFF00)|(((*(ptr_N + (lentgh-1) - i))>>24)&0xFF);
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_RSA
+        dummy = RIU[(RSA_BASE_ADDR+(0x23<<1))];
+#endif
         RIU[(RSA_BASE_ADDR+(0x24<<1))]= (U16)(((*(ptr_N + (lentgh-1) - i))>>8)&0xFF)|(((*(ptr_N + (lentgh-1) - i))<<8)&0xFF00);
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_RSA
+        dummy = RIU[(RSA_BASE_ADDR+(0x24<<1))];
+#endif
 	}
     RIU[(RSA_BASE_ADDR+(0x20<<1))]= ((RIU[(RSA_BASE_ADDR+(0x20<<1))])&(~RSA_IND32_START)); //RSA stop
 }
@@ -393,6 +410,9 @@ void HAL_RSA_LoadKeyNInverse(U32 *ptr_N,U8 u8Nlentgh)
 void HAL_RSA_LoadKeyEInverse(U32 *ptr_E,U8 u8Elentgh)
 {
     U32 i;
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_RSA
+    U16 dummy;
+#endif
 	U8 lentgh = u8Elentgh;
 
     RIU[(RSA_BASE_ADDR+(0x22<<1))]= RSA_E_BASE_ADDR;
@@ -403,7 +423,13 @@ void HAL_RSA_LoadKeyEInverse(U32 *ptr_E,U8 u8Elentgh)
 	for( i = 0; i < lentgh; i++ )
 	{
 		RIU[(RSA_BASE_ADDR+(0x23<<1))]= (U16)(((*(ptr_E + (lentgh-1) - i))>>8)&0xFF00)|(((*(ptr_E + (lentgh-1) - i))>>24)&0xFF);
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_RSA
+		dummy = RIU[(RSA_BASE_ADDR+(0x23<<1))];
+#endif
         RIU[(RSA_BASE_ADDR+(0x24<<1))]= (U16)(((*(ptr_E + (lentgh-1) - i))>>8)&0xFF)|(((*(ptr_E + (lentgh-1) - i))<<8)&0xFF00);
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_RSA
+        dummy = RIU[(RSA_BASE_ADDR+(0x24<<1))];
+#endif
 	}
 	RIU[(RSA_BASE_ADDR+(0x20<<1))]= ((RIU[(RSA_BASE_ADDR+(0x20<<1))])&(~RSA_IND32_START)); //RSA stop
 
@@ -471,8 +497,20 @@ void HAL_RSA_SetFileOutAddr(U32 u32offset)
 U32 HAL_RSA_FileOut(void)
 {
 	U32 output;
-	output = (U16)(((RIU[(RSA_BASE_ADDR+(0x26<<1))] >>8 )& 0xff )|((RIU[(RSA_BASE_ADDR+(0x26<<1))] << 8 )& 0xff00 )) ;
-	output = output | ((((RIU[(RSA_BASE_ADDR+(0x25<<1))]>>8)& 0xff)|((RIU[(RSA_BASE_ADDR+(0x25<<1))]<<8)& 0xff00)) << 16);
+	U32 dummy;
+	//output = (U16)(((RIU[(RSA_BASE_ADDR+(0x26<<1))] >>8 )& 0xff )|((RIU[(RSA_BASE_ADDR+(0x26<<1))] << 8 )& 0xff00 )) ;
+	//output = output | ((((RIU[(RSA_BASE_ADDR+(0x25<<1))]>>8)& 0xff)|((RIU[(RSA_BASE_ADDR+(0x25<<1))]<<8)& 0xff00)) << 16);
+    dummy = RIU[(RSA_BASE_ADDR+(0x26<<1))];
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_RSA
+    dummy = RIU[(RSA_BASE_ADDR+(0x26<<1))];
+#endif
+    output = (U16)(((dummy >> 8) & 0xFF) | ((dummy << 8) & 0xFF00));
+
+    dummy = RIU[(RSA_BASE_ADDR+(0x25<<1))];
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_RSA
+    dummy = RIU[(RSA_BASE_ADDR+(0x25<<1))];
+#endif
+    output = output | ((((dummy >> 8) & 0xFF) | ((dummy << 8) & 0xFF00)) << 16);
 
     return output;
 }
@@ -590,6 +628,9 @@ void HAL_SHA_ReadOut(U32 u32Buf)
     for( index = 0; index < 16; index++ )
     {
         *((U16 *)u32Buf + index) = RIU[(SHARNG_BASE_ADDR+(0x10<<1)+index*2)];
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_SHA
+		*((U16 *)u32Buf + index) = RIU[(SHARNG_BASE_ADDR+(0x10<<1)+index*2)];
+#endif
     }
 }
 
@@ -608,11 +649,17 @@ void HAL_SHA_SetInitHashMode(U8 uMode)
 void HAL_SHA_Write_InitValue(U32 u32Buf)
 {
     U32 index;
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_SHA
+    U16 dummy;
+#endif
 
     //SHA_Out
     for( index = 0; index < 16; index++ )
     {
-         RIU[(SHARNG_BASE_ADDR+(0x10<<1)+index*2)] = *((U16 *)u32Buf + index);
+        RIU[(SHARNG_BASE_ADDR+(0x10<<1)+index*2)] = *((U16 *)u32Buf + index);
+#ifdef CONFIG_SRAM_DUMMY_ACCESS_SHA
+		dummy = RIU[(SHARNG_BASE_ADDR+(0x10<<1)+index*2)];
+#endif
     }
 }
 

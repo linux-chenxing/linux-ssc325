@@ -26,18 +26,8 @@ config MS_FLASH_ISP
   #select JFFS2_FS_DEBUG
   #select JFFS2_FS_WRITEBUFFER
 
-bool "Serial Flash driver"
+tristate "Serial Flash driver"
 default n
 ---help---
     Enable compilation option for Serial Flash.
     FSP support Quadread/Daulread/write with BDMA.
-    
-if MS_FLASH_ISP
-config MS_FLASH_ISP_MXP_PARTS
-    bool
-    default y
-
-
-endif
-
-	

@@ -1,9 +1,8 @@
 /*
 * hal_card_intr_v5.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: joe.su <joe.su@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 /***************************************************************************************************************
@@ -50,37 +49,25 @@
 //***********************************************************************************************************
 //***********************************************************************************************************
 
-
-typedef enum
-{
-    EV_INT_SD       = BIT00_T,
-    EV_INT_MS       = BIT01_T,
-    EV_INT_CF       = BIT02_T,
-    EV_INT_SM       = BIT03_T,
-    EV_INT_XD       = BIT04_T,
-
-} IntCardEmType;
-
 typedef struct
 {
     U32_T slotNo;
-    IPEmType eIP;
-    IntCardEmType eCardInt;
+    IpOrder eIP;
     void * p_data;
 
 } IntSourceStruct;
 
 
-void Hal_CARD_INT_MIEIntCtrl(IPEmType eIP, IntCardEmType eCardInt, BOOL_T bEnable);
-BOOL_T Hal_CARD_INT_MIEIntRunning(IPEmType eIP, IntCardEmType eCardInt);
+void Hal_CARD_INT_MIEIntCtrl(IpOrder eIP, BOOL_T bEnable);
+BOOL_T Hal_CARD_INT_MIEIntRunning(IpOrder eIP);
 
-void Hal_CARD_INT_SetMIEIntEn(IPEmType eIP, IntCardEmType eCardInt, U16_T u16RegMIEIntEN);
-void Hal_CARD_INT_SetMIEIntEn_ForSDIO(IPEmType eIP, IntCardEmType eCardInt, BOOL_T bEnable);
-void Hal_CARD_INT_ClearMIEEvent(IPEmType eIP);
-U16_T Hal_CARD_INT_GetMIEEvent(IPEmType eIP);
+void Hal_CARD_INT_SetMIEIntEn(IpOrder eIP, U16_T u16RegMIEIntEN);
+void Hal_CARD_INT_SetMIEIntEn_ForSDIO(IpOrder eIP, BOOL_T bEnable);
+void Hal_CARD_INT_ClearMIEEvent(IpOrder eIP);
+U16_T Hal_CARD_INT_GetMIEEvent(IpOrder eIP);
 
-BOOL_T Hal_CARD_INT_WaitMIEEvent(IPEmType eIP, U16_T u16ReqEvent, U32_T u32WaitMs);
-void Hal_CARD_INT_StopWaitMIEEventCtrl(IPEmType eIP, BOOL_T bEnable);
+BOOL_T Hal_CARD_INT_WaitMIEEvent(IpOrder eIP, U16_T u16ReqEvent, U32_T u32WaitMs);
+void Hal_CARD_INT_StopWaitMIEEventCtrl(IpOrder eIP, BOOL_T bEnable);
 
 //###########################################################################################################
 #if(D_OS == D_OS__LINUX)

@@ -1,9 +1,8 @@
 /*
 * mdrv_spinand.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/string.h>
@@ -139,10 +138,7 @@ static struct nand_bbt_descr spi_nand_bbt_mirror_descr = {
 
 
 
-#if defined(CONFIG_MTD_CMDLINE_PARTS)
-//	#define CONFIG_MTD_PARTITIONS
-//	#define CONFIG_MTD_CMDLINE_PARTS
-//	#ifdef CONFIG_MTD_PARTITIONS
+#if defined(CONFIG_MTD_CMDLINE_PARTS) || defined(CONFIG_MTD_CMDLINE_PARTS_MODULE)
 #define MTD_PARTITION_MAX		64
 static struct mtd_partition partition_info[MTD_PARTITION_MAX];
 #endif
@@ -289,12 +285,17 @@ void spi_nand_cmdfunc(struct mtd_info *mtd, unsigned command, int column, int pa
         spi_nand_debug("NAND_CMD_READOOB");
         ret = MDrv_SPINAND_Read(page_addr, (U8 *)gtSpiNandDrv.pu8_pagebuf, (U8 *)gtSpiNandDrv.pu8_sparebuf);
 
-		if (ret != ERR_SPINAND_SUCCESS)
+        if(ret == ECC_NOT_CORRECTED)
         {
-            spi_nand_err("MDrv_SPINAND_Read = %ld \n", ret);
+            mtd->ecc_stats.failed++;
+            spi_nand_err("MDrv_SPINAND_Read=%lx, P: %d", ret, page_addr);
+        }
+        else if((ret != ERR_SPINAND_SUCCESS) && (ret != ECC_NOT_CORRECTED))
+        {
+            mtd->ecc_stats.corrected += 1;
         }
 
-		gtSpiNandDrv.u32_column = column;
+        gtSpiNandDrv.u32_column = column;
         break;
 
     case NAND_CMD_ERASE2:
@@ -311,6 +312,10 @@ void spi_nand_cmdfunc(struct mtd_info *mtd, unsigned command, int column, int pa
             spi_nand_err("MDrv_SPINAND_Erase= %ld \n", ret);
             gtSpiNandDrv.u8_status |= NAND_STATUS_FAIL;
         }
+        break;
+
+    case NAND_CMD_RESET:   //add this to avoid print "unsupported command" fo jffs2
+        spi_nand_debug("NAND_CMD_RESET"); 
         break;
 
     case NAND_CMD_READ0:
@@ -389,19 +394,21 @@ int spi_nand_ecc_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
     }
 
     ret = MDrv_SPINAND_Read(page, (U8 *)u8_DmaBuf, (U8 *)chip->oob_poi);
-    if (ret != ERR_SPINAND_SUCCESS && ret != ERR_SPINAND_ECC_BITFLIP)
-    {
-        spi_nand_err("MDrv_SPINAND_Read=%ld", ret);
-    }
 
+    if(ret == ECC_NOT_CORRECTED)
+    {
+//        spi_nand_err("MDrv_SPINAND_Read=%x, P: 0x%x", ret, page);
+        mtd->ecc_stats.failed++;
+    }
+    else if((ret != ERR_SPINAND_SUCCESS) && (ret != ECC_NOT_CORRECTED))
+    {
+        mtd->ecc_stats.corrected += 1;
+    }
     if (u8_DmaBuf != buf)
     {
         memcpy((void *) buf, (const void *) u8_DmaBuf, mtd->writesize);
     }
-    if (ret == ERR_SPINAND_ECC_BITFLIP)
-    {
-        mtd->ecc_stats.corrected += 1;
-    }
+
     return 0;
 }
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
@@ -435,15 +442,17 @@ int spi_nand_ecc_read_page(struct mtd_info *mtd, struct nand_chip *chip,
     }
 
     ret = MDrv_SPINAND_Read(page, (U8 *)u8_DmaBuf, (U8 *)chip->oob_poi);
-    if (ret != ERR_SPINAND_SUCCESS && ret != ERR_SPINAND_ECC_BITFLIP)
+
+    if(ret == ECC_NOT_CORRECTED)
     {
-        spi_nand_err("MDrv_SPINAND_Read=%ld", ret);
+        spi_nand_err("MDrv_SPINAND_Read=0x%lx, P: %d", ret, page);
         mtd->ecc_stats.failed++;
     }
-    if (ret == ERR_SPINAND_ECC_BITFLIP)
+    else if((ret != ERR_SPINAND_SUCCESS) && (ret != ECC_NOT_CORRECTED))
     {
         mtd->ecc_stats.corrected += 1;
     }
+
     if (u8_DmaBuf != buf)
     {
         memcpy((void *) buf, (const void *) u8_DmaBuf, mtd->writesize);
@@ -477,12 +486,10 @@ int spi_nand_ecc_read_subpage(struct mtd_info *mtd, struct nand_chip *chip,
     {
         //printk("read subpage %ld success\n", u32_curRow);
     }
-    else if (ret == ERR_SPINAND_ECC_ERROR)
+    else if (ret == ECC_NOT_CORRECTED)
         mtd->ecc_stats.failed++;
-    else if (ret == ERR_SPINAND_ECC_BITFLIP)
+    else if ((ret != ERR_SPINAND_SUCCESS) && (ret != ECC_NOT_CORRECTED))
         mtd->ecc_stats.corrected += 1;
-    else
-        return -ret;
 
     if (u8_DmaBuf != buf)
     {
@@ -509,7 +516,8 @@ int spi_nand_ecc_read_oob(struct mtd_info *mtd, struct nand_chip *chip, int page
 //	    spi_nand_msg("0x%X", page);
 
     ret = MDrv_SPINAND_Read(page, (U8 *)gtSpiNandDrv.pu8_pagebuf, (U8 *)chip->oob_poi);
-    if (ret != ERR_SPINAND_SUCCESS && ret != ERR_SPINAND_ECC_BITFLIP)
+
+    if ((ret != ERR_SPINAND_SUCCESS) && (ret == ECC_NOT_CORRECTED))
     {
         spi_nand_err("MDrv_SPINAND_Read=%ld", ret);
         ret = MDrv_SPINAND_Read(page, (U8 *)gtSpiNandDrv.pu8_pagebuf, (U8 *)chip->oob_poi);
@@ -521,10 +529,10 @@ int spi_nand_ecc_read_oob(struct mtd_info *mtd, struct nand_chip *chip, int page
 
 int spi_nand_ecc_write_oob(struct mtd_info *mtd, struct nand_chip *chip, int page)
 {
-    U32 ret;
+    U32 ret = 0;
 
     spi_nand_debug("0x%X", page);
-
+#if 0
     memset((void *)gtSpiNandDrv.pu8_pagebuf, 0xFF, mtd->writesize);
     ret = MDrv_SPINAND_Write(page, (U8 *)gtSpiNandDrv.pu8_pagebuf, (U8 *)chip->oob_poi);
     if (ret != ERR_SPINAND_SUCCESS)
@@ -546,7 +554,8 @@ int spi_nand_ecc_write_oob(struct mtd_info *mtd, struct nand_chip *chip, int pag
             return -EIO;
         }
     }
-    return 0;
+#endif
+    return ret;
 }
 
 static U32 _checkSum(U8 *pu8_Data, U16 u16_ByteCnt)
@@ -694,7 +703,7 @@ static void _addSstarPartition(struct mtd_info* mtd, SPI_NAND_PARTITION_INFO_t *
 	{
 	    partition_info[NumOfPart].name = "UBI";
 	    partition_info[NumOfPart].offset = (U32)(pRecord->u16_StartBlk * u32_BlkSize);
-		partition_info[NumOfPart].size = (U32)((gtSpiNandDrv.tSpinandInfo.u16_BlkCnt - pRecord->u16_StartBlk) * u32_BlkSize);
+           partition_info[NumOfPart].size = (U32)((gtSpiNandDrv.tSpinandInfo.u16_BlkCnt - pRecord->u16_StartBlk) * u32_BlkSize);
 	    partition_info[NumOfPart].mask_flags = 0;
 	    printk("%s:%llX, %llX\n", partition_info[NumOfPart].name,
 		                            partition_info[NumOfPart].offset,
@@ -706,8 +715,83 @@ static void _addSstarPartition(struct mtd_info* mtd, SPI_NAND_PARTITION_INFO_t *
 
 }
 
+#ifdef CONFIG_CAM_CLK
+    #include "drv_camclk_Api.h"
+    void **pvSpinandclk = NULL;
+    u32 SpinandParentCnt = 1;
+
+u8 spinand_ClkRegister( struct device *dev)
+{
+    u32 u32clknum;
+    u32 SpinandClk;
+    u8 str[16];
+
+    if(of_find_property(dev->of_node,"camclk",&SpinandParentCnt))
+    {
+        SpinandParentCnt /= sizeof(int);
+        //printk( "[%s] Number : %d\n", __func__, num_parents);
+        if(SpinandParentCnt < 0)
+        {
+            printk( "[%s] Fail to get parent count! Error Number : %d\n", __func__, SpinandParentCnt);
+            return 0;
+        }
+        pvSpinandclk = kzalloc((sizeof(void *) * SpinandParentCnt), GFP_KERNEL);
+        if(!pvSpinandclk){
+            return 0;
+        }
+        for(u32clknum = 0; u32clknum < SpinandParentCnt; u32clknum++)
+        {
+            SpinandClk = 0;
+            of_property_read_u32_index(dev->of_node,"camclk", u32clknum,&(SpinandClk));
+            if (!SpinandClk)
+            {
+                printk( "[%s] Fail to get clk!\n", __func__);
+            }
+            else
+            {
+                CamOsSnprintf(str, 16, "spinand_%d ",u32clknum);
+                CamClkRegister(str,SpinandClk,&(pvSpinandclk[u32clknum]));
+            }
+        }
+    }
+    else
+    {
+        printk( "[%s] W/O Camclk \n", __func__);
+    }
+    return 1;
+}
+u8 spinand_ClkUnregister(void)
+{
+
+    u32 u32clknum;
+
+    for(u32clknum=0;u32clknum<SpinandParentCnt;u32clknum++)
+    {
+        if(pvSpinandclk[u32clknum])
+        {
+            printk(KERN_DEBUG "[%s] %p\n", __func__,pvSpinandclk[u32clknum]);
+            CamClkUnregister(pvSpinandclk[u32clknum]);
+            pvSpinandclk[u32clknum] = NULL;
+        }
+    }
+    kfree(pvSpinandclk);
+
+    return 1;
+}
+#endif
 void _enableClock(struct platform_device *pdev)
 {
+#ifdef CONFIG_CAM_CLK
+    u32 u32clknum = 0;
+    spinand_ClkRegister(&pdev->dev);
+    for(u32clknum = 0; u32clknum < SpinandParentCnt; u32clknum++)
+    {
+        if (pvSpinandclk[u32clknum])
+        {
+            CamClkSetOnOff(pvSpinandclk[u32clknum],1);
+        }
+    }
+#else
     int num_parents, i;
     struct clk **spinand_clks;
     num_parents = of_clk_get_parent_count(pdev->dev.of_node);
@@ -740,10 +824,23 @@ void _enableClock(struct platform_device *pdev)
         }
         kfree(spinand_clks);
     }
+#endif
 }
 
 void _disableClock(struct platform_device *pdev)
 {
+#ifdef CONFIG_CAM_CLK
+    u32 u32clknum = 0;
+
+    for(u32clknum = 0; u32clknum < SpinandParentCnt; u32clknum++)
+    {
+        if (pvSpinandclk[u32clknum])
+        {
+            CamClkSetOnOff(pvSpinandclk[u32clknum],0);
+        }
+    }
+    spinand_ClkUnregister();
+#else
     int num_parents, i;
     struct clk **spinand_clks;
 
@@ -776,6 +873,7 @@ void _disableClock(struct platform_device *pdev)
         }
         kfree(spinand_clks);
     }
+#endif
 }
 
 static void _dumpNandInformation(void)
@@ -876,6 +974,13 @@ static int mstar_spinand_probe(struct platform_device *pdev)
     struct mtd_info* mtd;
     int err = 0;
 
+#if defined(CONFIG_MTD_CMDLINE_PARTS) || defined(CONFIG_MTD_CMDLINE_PARTS_MODULE)
+        static const char *part_probes[] = { "cmdlinepart", NULL, };
+#endif
+#if defined(CONFIG_ARCH_INFINITY2)
+    if(Chip_Get_Storage_Type()!= MS_STORAGE_SPINAND_ECC)
+        return 0;
+#endif
     _enableClock(pdev);
     spi_nand_msg("mstar_spinand enableClock");
 
@@ -1015,20 +1120,25 @@ static int mstar_spinand_probe(struct platform_device *pdev)
         return -ENOMEM;
     }
 
-#ifdef CONFIG_MTD_CMDLINE_PARTS
+#if defined(CONFIG_MTD_CMDLINE_PARTS) || defined(CONFIG_MTD_CMDLINE_PARTS_MODULE)
 //	#ifdef CONFIG_MTD_PARTITIONS
     {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,5,0)
         struct mtd_partitions pparts;
-        err = parse_mtd_partitions(mtd, NULL, &pparts, 0);
-        if(!err && pparts.nr_parts > 0)
+        err = parse_mtd_partitions(mtd, part_probes, &pparts, 0);
+
+        if((!err) && (pparts.nr_parts > 0))
         {
-            spi_nand_msg( "Mtd parts default");
+            spi_nand_msg( "Mtd parts parse");
             add_mtd_partitions(mtd, pparts.parts, pparts.nr_parts);
+        }
+        else if (IS_ERR_VALUE(err))
+        {  
+            spi_nand_msg("parse_mtd_partitions error!!! %d\r\n", err);
         }
 #else
         int mtd_parts_nb = 0;
-        mtd_parts_nb = parse_mtd_partitions(mtd, NULL, &info->parts, 0);
+        mtd_parts_nb = parse_mtd_partitions(mtd, part_probes, &info->parts, 0);
         if (mtd_parts_nb > 0)
         {
             spi_nand_msg( "Mtd parts default");

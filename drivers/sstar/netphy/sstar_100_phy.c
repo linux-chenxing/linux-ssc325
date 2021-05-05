@@ -1,6 +1,37 @@
+/*
+* sstar_100_phy.c- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
+*/
 #include <linux/phy.h>
 #include <linux/module.h>
 #include <linux/delay.h>
+
+
+//-------------------------------------------------------------------------------------------------
+//  Driver Compiler Options
+//-------------------------------------------------------------------------------------------------
+#define NETPHYINFO_ENABLE               0
+
+//-------------------------------------------------------------------------------------------------
+//  Local Defines
+//-------------------------------------------------------------------------------------------------
+#if NETPHYINFO_ENABLE
+    #define NETPHY_PRINT(x, args...)        { printk(x, ##args); }
+#else
+    #define NETPHY_PRINT(x, args...)        { }
+#endif
 
 #define SSTAR_100_PHY_ID        0x11112222
 #define SSTAR_100_PHY_ID_MSK    0xffffffff
@@ -11,6 +42,9 @@ typedef struct
 } sstar_phy_priv_t;
 
 
+//-------------------------------------------------------------------------------------------------
+//  Implementation
+//-------------------------------------------------------------------------------------------------
 static int sstar_phy_config_init(struct phy_device *phydev)
 {
     // printk("[%s][%d]\n", __FUNCTION__, __LINE__);
@@ -39,7 +73,7 @@ static int sstar_phy_reset(struct phy_device *phydev)
     if (10 < (cnt))                                                             \
     {                                                                           \
         phy_write((phydev),  MII_BMCR, 0x1200);                                 \
-        printk("[%s][%d] restart an process\n", __FUNCTION__, __LINE__);        \
+        NETPHY_PRINT("[%s][%d] restart an process\n", __FUNCTION__, __LINE__);  \
         (cnt) = 0;                                                              \
         return 1;                                                               \
     }                                                                           \
@@ -68,14 +102,14 @@ static int sstar_phy_patch(struct phy_device *phydev)
     {
         // phy_restart_cnt++;
         // gu32PhyResetCount1++;
-        printk("[%s][%d] hcd_link_st_ok:0x%08x, an_100t_link_st:0x%08x\n", __FUNCTION__, __LINE__, hcd_link_st_ok, an_100t_link_st);
+        NETPHY_PRINT("[%s][%d] hcd_link_st_ok:0x%08x, an_100t_link_st:0x%08x\n", __FUNCTION__, __LINE__, hcd_link_st_ok, an_100t_link_st);
         PHY_AN(phydev, priv->cnt_restart);
     }
     else if (((hcd_link_st_ok & 0x100) && !(an_100t_link_st & 0x300)))
     {
         // phy_restart_cnt++;
         // gu32PhyResetCount1++;
-        printk("[%s][%d] hcd_link_st_ok:0x%08x, an_100t_link_st:0x%08x\n", __FUNCTION__, __LINE__, hcd_link_st_ok, an_100t_link_st);
+        NETPHY_PRINT("[%s][%d] hcd_link_st_ok:0x%08x, an_100t_link_st:0x%08x\n", __FUNCTION__, __LINE__, hcd_link_st_ok, an_100t_link_st);
         PHY_AN(phydev, priv->cnt_restart);
     }
 
@@ -89,7 +123,7 @@ static int sstar_phy_patch(struct phy_device *phydev)
 
     if ((an_state1 != an_state2) || (an_state1 != an_state3))
     {
-        printk("[%s][%d] an_state 1:0x%08x, 2:0x%08x, 3:0x%08x\n", __FUNCTION__, __LINE__, an_state1, an_state2, an_state3);
+        NETPHY_PRINT("[%s][%d] an_state 1:0x%08x, 2:0x%08x, 3:0x%08x\n", __FUNCTION__, __LINE__, an_state1, an_state2, an_state3);
         return 0;
     }
 
@@ -97,14 +131,14 @@ static int sstar_phy_patch(struct phy_device *phydev)
     {
         // phy_restart_cnt++;
         // gu32PhyResetCount3++;
-        printk("[%s][%d] an_state=0x%x\n", __FUNCTION__, __LINE__, an_state1);
+        NETPHY_PRINT("[%s][%d] an_state=0x%x\n", __FUNCTION__, __LINE__, an_state1);
         PHY_AN(phydev, priv->cnt_restart);
     }
     else if ((an_state1 & 0xf000) == 0x2000)
     {
         // phy_restart_cnt++;
         // gu32PhyResetCount4++;
-        printk("[%s][%d] an_state=0x%x\n", __FUNCTION__, __LINE__, an_state1);
+        NETPHY_PRINT("[%s][%d] an_state=0x%x\n", __FUNCTION__, __LINE__, an_state1);
         PHY_AN(phydev, priv->cnt_restart);
     }
     return 0;
@@ -249,7 +283,7 @@ static int _sstar_phy_read_status(struct phy_device *phydev)
         {
             phydev->speed = SPEED_10;
             phydev->duplex = DUPLEX_HALF;
-            printk("[%s][%d] No speed and mode found (LPA=0x%8x, ADV=0x%8x)\n", __FUNCTION__, __LINE__, lpa, adv);
+            NETPHY_PRINT("[%s][%d] No speed and mode found (LPA=0x%8x, ADV=0x%8x)\n", __FUNCTION__, __LINE__, lpa, adv);
         }
         if (phydev->duplex == DUPLEX_FULL) {
             phydev->pause = lpa & LPA_PAUSE_CAP ? 1 : 0;

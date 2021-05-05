@@ -1,9 +1,8 @@
 /*
 * mhal_iic.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _HAL_HWI2C_H_
@@ -150,19 +149,20 @@ typedef enum _HAL_HWI2C_CLKSEL
     E_HAL_HWI2C_CLKSEL_NOSUP
 }HAL_HWI2C_CLKSEL;
 
-typedef enum _HAL_HWI2C_CLK
+typedef enum _HAL_HWI2C_CLK_SEL
 {
-    E_HAL_HWI2C_CLK_DIV4 = 1, //750K@12MHz
-    E_HAL_HWI2C_CLK_DIV8,     //375K@12MHz
-    E_HAL_HWI2C_CLK_DIV16,    //187.5K@12MHz
-    E_HAL_HWI2C_CLK_DIV32,    //93.75K@12MHz
-    E_HAL_HWI2C_CLK_DIV64,    //46.875K@12MHz
-    E_HAL_HWI2C_CLK_DIV128,   //23.4375K@12MHz
-    E_HAL_HWI2C_CLK_DIV256,   //11.71875K@12MHz
-    E_HAL_HWI2C_CLK_DIV512,   //5.859375K@12MHz
-    E_HAL_HWI2C_CLK_DIV1024,  //2.9296875K@12MHz
-    E_HAL_HWI2C_CLK_NOSUP
-}HAL_HWI2C_CLK;
+    E_HAL_HWI2C_CLK_25KHZ = 0,  
+    E_HAL_HWI2C_CLK_50KHZ,    
+    E_HAL_HWI2C_CLK_100KHZ,      
+    E_HAL_HWI2C_CLK_200KHZ,   
+    E_HAL_HWI2C_CLK_300KHZ,     
+    E_HAL_HWI2C_CLK_400KHZ,
+    E_HAL_HWI2C_CLK_600KHZ,
+    E_HAL_HWI2C_CLK_800KHZ,
+    E_HAL_HWI2C_CLK_1000KHZ,
+    E_HAL_HWI2C_CLK_1500KHZ,
+    E_HAL_HWI2C_CLK_NOSUP      /// non-support speed
+}HAL_HWI2C_CLK_SEL;
 
 typedef enum {
     E_HAL_HWI2C_READ_MODE_DIRECT,                       ///< first transmit slave address + reg address and then start receive the data */
@@ -208,7 +208,7 @@ typedef struct _HAL_HWI2C_PortCfg //Synchronize with drvHWI2C.h
     BOOL                 bDmaEnable;     /// DMA enable
 
     HAL_HWI2C_PORT          ePort;          /// number
-    HAL_HWI2C_CLKSEL        eSpeed;         /// clock speed
+    HAL_HWI2C_CLK_SEL        eSpeed;         /// clock speed
     HAL_HWI2C_ReadMode      eReadMode;      /// read mode
     BOOL                 bEnable;        /// enable
 
@@ -219,11 +219,21 @@ typedef struct _HAL_HWI2C_CfgInit //Synchronize with drvHWI2C.h
 {
     HAL_HWI2C_PortCfg   sCfgPort[4];    /// port cfg info
     HAL_HWI2C_PinCfg    sI2CPin;        /// pin info
-    HAL_HWI2C_CLKSEL    eSpeed;         /// speed
+    HAL_HWI2C_CLK_SEL    eSpeed;         /// speed
     HAL_HWI2C_PORT      ePort;          /// port
     HAL_HWI2C_ReadMode  eReadMode;      /// read mode
     
 }HAL_HWI2C_CfgInit;
+
+typedef struct _HAL_HWI2C_ClkCntCfg
+{
+    U16 u16ClkHCnt;
+    U16 u16ClkLCnt;
+    U16 u16StpCnt;
+    U16 u16SdaCnt;
+    U16 u16SttCnt;
+    U16 u16LchCnt;
+}HAL_HWI2C_ClkCntCfg;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Extern function
@@ -250,6 +260,7 @@ _extern_HAL_IIC_ BOOL HAL_HWI2C_GetPortIdxByOffset(U16 u16Offset, U8* pu8Port);
 _extern_HAL_IIC_ BOOL HAL_HWI2C_GetPortIdxByPort(HAL_HWI2C_PORT ePort, U8* pu8Port);
 _extern_HAL_IIC_ BOOL HAL_HWI2C_SelectPort(int ePort);
 _extern_HAL_IIC_ BOOL HAL_HWI2C_SetClk(U16 u16PortOffset, HAL_HWI2C_CLKSEL eClkSel);
+_extern_HAL_IIC_ BOOL HAL_HWI2C_SetClkCnt(U16 u16PortOffset, HAL_HWI2C_ClkCntCfg *clkcnt);
 
 _extern_HAL_IIC_ BOOL HAL_HWI2C_Start(U16 u16PortOffset);
 _extern_HAL_IIC_ BOOL HAL_HWI2C_Stop(U16 u16PortOffset);

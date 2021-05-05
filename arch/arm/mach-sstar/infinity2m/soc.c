@@ -1,9 +1,8 @@
 /*
 * soc.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: XXXX <XXXX@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/kernel.h>
@@ -51,7 +50,10 @@ static struct map_desc mstar_io_desc[] __initdata =
         {IO_VIRT,   __phys_to_pfn(IO_PHYS),     IO_SIZE,        MT_DEVICE},
         {SPI_VIRT,  __phys_to_pfn(SPI_PHYS),    SPI_SIZE,       MT_DEVICE},
         {GIC_VIRT,  __phys_to_pfn(GIC_PHYS),    GIC_SIZE,       MT_DEVICE},
-        //{IMI_VIRT,  __phys_to_pfn(IMI_PHYS),    IMI_SIZE,       MT_DEVICE},
+#ifdef CONFIG_SS_AMP
+        {IMI_VIRT,  __phys_to_pfn(IMI_PHYS),    IMI_SIZE,       MT_DEVICE},
+        {IPC_MEM_VIRT, __phys_to_pfn(IPC_MEM_PHYS), IPC_MEM_SIZE, MT_DEVICE},
+#endif
 };
 
 
@@ -77,7 +79,7 @@ static int mcm_rw(int index, int ratio, int write);
 
 
 /*************************************
-*        Mstar chip flush function
+*        Sstar chip flush function
 *************************************/
 static DEFINE_SPINLOCK(mstar_l2prefetch_lock);
 
@@ -134,11 +136,10 @@ static int mstar_get_revision(void)
     return (tmp+1);
 }
 
-
 static void mstar_chip_flush_miu_pipe(void)
 {
-    unsigned long   dwLockFlag = 0;
-    unsigned short dwReadData = 0;
+    volatile unsigned long dwLockFlag = 0;
+    volatile unsigned short dwReadData = 0;
 
     spin_lock_irqsave(&mstar_l2prefetch_lock, dwLockFlag);
     //toggle the flush miu pipe fire bit
@@ -154,6 +155,12 @@ static void mstar_chip_flush_miu_pipe(void)
 
     spin_unlock_irqrestore(&mstar_l2prefetch_lock, dwLockFlag);
 
+}
+
+static void mstar_chip_flush_STB_and_miu_pipe(void)
+{
+    dsb();
+    mstar_chip_flush_miu_pipe();
 }
 
 static u64 mstar_phys_to_MIU(u64 x)
@@ -177,35 +184,27 @@ static int mstar_get_storage_type(void)
 {
 /*//check DIDKEY bank, offset 0x70
 #define STORAGE_SPI_NAND            BIT2
-#define STORAGE_EMMC                BIT3
-#define STORAGE_P_NAND              BIT4
+#define STORAGE_SPI_NAND_SKIPSD     BIT3
+#define STORAGE_SPI_NOR_SKIPSD      BIT4
 #define STORAGE_SPI_NOR             BIT5
 */
     u8 type = (INREG16(BASE_REG_DIDKEY_PA + 0x70*4) & 0x3C);
 
-    if(BIT4 == type)
-        return (int)MS_STORAGE_NAND;
-    else if(BIT5 == type)
-        return (int)MS_STORAGE_NOR;
-    else if(BIT3 == type)
-        return (int)MS_STORAGE_EMMC;
-    else if(BIT2 == type)
+    if(BIT3 == type || BIT2 == type)
         return (int)MS_STORAGE_SPINAND_ECC;
+    else if(BIT5 == type || BIT4 == type)
+        return (int)MS_STORAGE_NOR;
     else
         return (int)MS_STORAGE_UNKNOWN;
 }
 
 static int mstar_get_package_type(void)
 {
-    if(!strcmp(&mstar_soc_dev_attr.machine[10], "SSC007A-S01A"))
-        return MS_I2M_PACKAGE_BGA_128MB;
-    else if(!strcmp(&mstar_soc_dev_attr.machine[10], "MSC000A-S02A-256M") || !strcmp(&mstar_soc_dev_attr.machine[10], "MSC250C"))
-        return MS_I2M_PACKAGE_DDR3_1866_256MB;
-    else if(!strcmp(&mstar_soc_dev_attr.machine[10], "MSC000A-S04A"))
+    //printk("BOARD name [%s] \n", &mstar_soc_dev_attr.machine[11]);
+
+    if(!strcmp(&mstar_soc_dev_attr.machine[11], "SSC010A-S01A-S"))
         return MS_I2M_PACKAGE_QFN_DDR3_128MB;
-    else if(!strcmp(&mstar_soc_dev_attr.machine[10], "MSC000A-S03A-64M"))
-        return MS_I2M_PACKAGE_QFN_DDR2_64MB;
-    else if(!strcmp(&mstar_soc_dev_attr.machine[10], "FPGA"))
+    else if(!strcmp(&mstar_soc_dev_attr.machine[11], "FPGA"))
         return MS_I2M_PACKAGE_FPGA_128MB;
     else
     {
@@ -274,29 +273,28 @@ static int mstar_usb_vbus_control(int param)
         {
             printk(KERN_ERR "Get power-enable-pad from DTS GPIO(%d)\n", pin_data);
             power_en_gpio = (unsigned char)pin_data;
-        }
-        else
-        {
-            printk(KERN_ERR "Can't get power-enable-pad from DTS, set default GPIO(%d)\n", pin_data);
-            power_en_gpio = PAD_PM_LED0;
-        }
-        ret = gpio_request(power_en_gpio, "USB0-power-enable");
-        if (ret < 0) {
-            printk(KERN_INFO "Failed to request USB0-power-enable GPIO(%d)\n", power_en_gpio);
-            power_en_gpio =-1;
-            return ret;
+
+            ret = gpio_request(power_en_gpio, "USB0-power-enable");
+            if (ret < 0) {
+                printk(KERN_INFO "Failed to request USB0-power-enable GPIO(%d)\n", power_en_gpio);
+                power_en_gpio =-1;
+                return ret;
+            }
         }
     }
 
-    if(0 == vbus_enable) //disable vbus
+    if (power_en_gpio >= 0)
     {
-        gpio_direction_output(power_en_gpio, 0);
-        printk(KERN_INFO "[%s] Disable USB VBUS GPIO(%d)\n", __FUNCTION__,power_en_gpio);
-    }
-    else if(1 == vbus_enable)
-    {
-        gpio_direction_output(power_en_gpio, 1);
-        printk(KERN_INFO "[%s] Enable USB VBUS GPIO(%d)\n", __FUNCTION__,power_en_gpio);
+        if(0 == vbus_enable) //disable vbus
+        {
+            gpio_direction_output(power_en_gpio, 0);
+            printk(KERN_INFO "[%s] Disable USB VBUS GPIO(%d)\n", __FUNCTION__,power_en_gpio);
+        }
+        else if(1 == vbus_enable)
+        {
+            gpio_direction_output(power_en_gpio, 1);
+            printk(KERN_INFO "[%s] Enable USB VBUS GPIO(%d)\n", __FUNCTION__,power_en_gpio);
+        }
     }
     return 0;
 }
@@ -362,7 +360,8 @@ static void __init mstar_init_early(void)
     //enable axi exclusive access
     *(volatile unsigned short *)(0xFD204414) = 0x10;
 
-    chip->chip_flush_miu_pipe=mstar_chip_flush_miu_pipe;
+    chip->chip_flush_miu_pipe=mstar_chip_flush_STB_and_miu_pipe;//dsb
+    chip->chip_flush_miu_pipe_nodsb=mstar_chip_flush_miu_pipe;//nodsb
     chip->phys_to_miu=mstar_phys_to_MIU;
     chip->miu_to_phys=mstar_MIU_to_phys;
     chip->chip_get_device_id=mstar_get_device_id;
@@ -376,6 +375,308 @@ static void __init mstar_init_early(void)
     chip->chip_get_package_type=mstar_get_package_type;
     chip->chip_get_us_ticks=mstar_chip_get_us_ticks;
 
+}
+
+static void mstar_analog_ip_powerdown(void)
+{
+#ifdef CONFIG_ANALOG_PD_XINDIGPLL
+    // reg_miu_128bus_pll_pd BANK 1031, 16bit OFFSET 0x01[8]
+    SETREG16(BASE_REG_MIUPLL_PA + REG_ID_01, BIT8);
+#endif
+#ifdef CONFIG_ANALOG_PD_ARMPLL
+    // reg_mipspll_pd BANK 1032, 16bit OFFSET 0x11[8]
+    SETREG16(BASE_REG_ARMPLL_PA + REG_ID_11, BIT8);
+#endif
+#ifdef CONFIG_ANALOG_PD_AUDIO
+    // BANK 1034, 16bit OFFSET 0x00[1:0]: reg_en_byp_inmux
+    //                         0xffffffffffffffff[2]: reg_en_chop_adc0
+    //                         0x00[7:4]: reg_en_ck_dac
+    //                         0x00[8]: reg_en_dac_disch
+    //                         0x00[9]: reg_en_itest_dac
+    //                         0x00[10]: reg_en_itest_dac
+    //                         0x00[11]: reg_en_msp
+    OUTREG16(BASE_REG_AUSDM_PA + REG_ID_00, 0x0000);
+    // BANK 1034, 16bit OFFSET 0x01[1:0]: reg_en_mute_inmux
+    //                         0x01[2]: reg_en_mute_mic_stg1_l
+    //                         0x01[3]: reg_en_mute_mic_stg1_r
+    //                         0x01[4]: reg_en_qs_ldo_adc
+    //                         0x01[5]: reg_en_qs_ldo_dac
+    //                         0x01[6]: reg_en_shrt_l_adc0
+    //                         0x01[7]: reg_en_shrt_r_adc0
+    //                         0x01[9:8]: reg_en_tst_ibias_adc
+    //                         0x01[10]: reg_en_vref_disch
+    //                         0x01[12:10]: reg_en_vref_sftdch
+    OUTREG16(BASE_REG_AUSDM_PA + REG_ID_01, 0x0000);
+    // BANK 1034, 16bit OFFSET 0x03[0]: reg_pd_adc0
+    //                         0x03[1]: reg_pd_bias_dac
+    //                         0x03[3:2]: reg_pd_inmux
+    //                         0x03[4]: reg_pd_l0_dac
+    //                         0x03[5]: reg_pd_ldo_adc
+    //                         0x03[6]: reg_pd_ldo_dac
+    //                         0x03[7]: reg_pd_mic_stg1_l
+    //                         0x03[8]: reg_pd_mic_stg1_r
+    //                         0x03[9]: reg_pd_r0_dac
+    //                         0x03[10]: reg_pd_ref_dac
+    //                         0x03[11]: reg_pd_vi
+    //                         0x03[12]: reg_pd_vref
+    OUTREG16(BASE_REG_AUSDM_PA + REG_ID_03, 0x1FFF);
+#endif
+#ifdef CONFIG_ANALOG_PD_EMAC
+    // BANK 33, 16bit OFFSET 0x79[7]
+    SETREG16(BASE_REG_LANTOP2_PA + REG_ID_79, BIT7);
+    // BANK 33, 16bit OFFSET 0x79[11:8]
+    SETREG16(BASE_REG_LANTOP2_PA + REG_ID_79, BIT8 | BIT9 | BIT10 | BIT11);
+    // BANK 32, 16bit OFFSET 0x1F[14]: reg_analog_testen
+    SETREG16(BASE_REG_LANTOP1_PA + REG_ID_1F, BIT14);
+    // BANK 32, 16bit OFFSET 0x5D[14]: reg_gcr_test_clk_en/PD_REF
+    SETREG16(BASE_REG_LANTOP1_PA + REG_ID_5D, BIT14);
+    // BANK 32, 16bit OFFSET 0x66[3]: reg_gc_adcpl_ccpd1
+    //SETREG16(BASE_REG_LANTOP1_PA + REG_ID_66, BIT3);
+    // BANK 32, 16bit OFFSET 0x66[4]: reg_pd_adcpl_reg
+    SETREG16(BASE_REG_LANTOP1_PA + REG_ID_66, BIT4);
+    // BANK 32, 16bit OFFSET 0x5B[12]: reg_adc_pd
+    SETREG16(BASE_REG_LANTOP1_PA + REG_ID_5B, BIT12);
+    // BANK 32, 16bit OFFSET 0x7E[1]: PD_REG25
+    SETREG16(BASE_REG_LANTOP1_PA + REG_ID_7E, BIT1);
+    // BANK 32, 16bit OFFSET 0x7E[8]: PD_LDO11
+    SETREG16(BASE_REG_LANTOP1_PA + REG_ID_7E, BIT11);
+    // BANK 32, 16bit OFFSET 0x69[14]: reg_atop_rx_inoff, 0x69[15]: reg_atop_tx_outoff
+    SETREG16(BASE_REG_LANTOP1_PA + REG_ID_69, BIT14 | BIT15);
+    // BANK 33, 16bit OFFSET 0x44[4]: RX_OFF
+    SETREG16(BASE_REG_LANTOP2_PA + REG_ID_44, BIT4);
+    // BANK 33, 16bit OFFSET 0x50[12]: reg_pd_vbuf
+    SETREG16(BASE_REG_LANTOP2_PA + REG_ID_50, BIT12);
+    // BANK 33, 16bit OFFSET 0x50[13]: reg_pd_sadc
+    SETREG16(BASE_REG_LANTOP2_PA + REG_ID_50, BIT13);
+    // BANK 33, 16bit OFFSET 0x1D[0]: reg_pd_tx_ld
+    SETREG16(BASE_REG_LANTOP2_PA + REG_ID_1D, BIT0);
+    // BANK 33, 16bit OFFSET 0x1D[1]: reg_pd_tx_idac
+    SETREG16(BASE_REG_LANTOP2_PA + REG_ID_1D, BIT1);
+    // BANK 33, 16bit OFFSET 0x78[10]: reg_pd_tx_vbgr
+    SETREG16(BASE_REG_LANTOP2_PA + REG_ID_78, BIT10);
+    // BANK 33, 16bit OFFSET 0x78[11]: reg_pd_tx_trimming_dac
+    SETREG16(BASE_REG_LANTOP2_PA + REG_ID_78, BIT11);
+    // BANK 33, 16bit OFFSET 0x78[12]: reg_pd_tx_ld_dio
+    SETREG16(BASE_REG_LANTOP2_PA + REG_ID_78, BIT12);
+    // BANK 33, 16bit OFFSET 0x78[13]: reg_pd_tx_ldo
+    SETREG16(BASE_REG_LANTOP2_PA + REG_ID_78, BIT13);
+#endif
+#ifdef CONFIG_ANALOG_PD_HDMI_ATOP
+    // BANK 1126, 16bit OFFSET 0x16[3:0]: reg_din_en_pstdrv_tap0_ch
+    //                         0x16[7:4]: reg_din_en_pstdrv_tap1_ch
+    //                         0x16[11:8]: reg_din_en_pstdrv_tap2_ch
+    OUTREG16(BASE_REG_HDMI_TX_ATOP_PA + REG_ID_16, 0x0);
+    // BANK 1126, 16bit OFFSET 0x1B[1]: reg_gcr_en_hdmitxpll_xtal
+    CLRREG16(BASE_REG_HDMI_TX_ATOP_PA + REG_ID_1B, BIT0);
+    // BANK 1126, 16bit OFFSET 0x30[3:0]: reg_pd_pstdrv_tap0_ch
+    //                         0x30[7:4]: reg_pd_pstdrv_tap1_ch
+    //                         0x30[11:8]: reg_pd_pstdrv_tap2_ch
+    SETREG16(BASE_REG_HDMI_TX_ATOP_PA + REG_ID_30, BIT0 | BIT1 | BIT2 | BIT3 | BIT4 | BIT5 | BIT6 | BIT7 |
+                                                BIT8 | BIT9 | BIT10 | BIT11);
+    // BANK 1126, 16bit OFFSET 0x31[3:0]: reg_pd_predrv_tap0_ch
+    //                         0x31[7:4]: reg_pd_predrv_tap1_ch
+    //                         0x31[11:8]: reg_pd_predrv_tap2_ch
+    SETREG16(BASE_REG_HDMI_TX_ATOP_PA + REG_ID_31, BIT0 | BIT1 | BIT2 | BIT3 | BIT4 | BIT5 | BIT6 | BIT7 |
+                                                BIT8 | BIT9 | BIT10 | BIT11);
+    // BANK 1126, 16bit OFFSET 0x32[3:0]: reg_pd_rterm_ch
+    //                         0x32[7:4]: reg_pd_ldo_predrv_ch
+    //                         0x32[11:8]: reg_pd_ldo_mux_ch
+    SETREG16(BASE_REG_HDMI_TX_ATOP_PA + REG_ID_32, BIT0 | BIT1 | BIT2 | BIT3 | BIT4 | BIT5 | BIT6 | BIT7 |
+                                                BIT8 | BIT9 | BIT10 | BIT11);
+    // BANK 1126, 16bit OFFSET 0x33[0]: reg_pd_ldo_clktree
+    SETREG16(BASE_REG_HDMI_TX_ATOP_PA + REG_ID_33, BIT0);
+    // BANK 1126, 16bit OFFSET 0x34[0]: reg_pd_hdmitxpll
+    SETREG16(BASE_REG_HDMI_TX_ATOP_PA + REG_ID_34, BIT0);
+    // BANK 1126, 16bit OFFSET 0x35[3:0]: reg_pd_drv_biasgen_ch, 0x35[4]: reg_pd_biasgen
+    SETREG16(BASE_REG_HDMI_TX_ATOP_PA + REG_ID_35, BIT0 | BIT1 | BIT2 | BIT3 | BIT4);
+#endif
+#ifdef CONFIG_ANALOG_PD_IDAC_ATOP
+    // BANK 1127, 16bit OFFSET 0x15[0]: reg_en_idac_b
+    //                         0x15[1]: reg_en_idac_g
+    //                         0x15[2]: reg_en_idac_r
+    OUTREG16(BASE_REG_DAC_ATOP_PA + REG_ID_15, 0x0);
+    // BANK 1127, 16bit OFFSET 0x16[0]: reg_en_idac_ref
+    OUTREG16(BASE_REG_DAC_ATOP_PA + REG_ID_16, 0x0);
+    // BANK 1127, 16bit OFFSET 0x14[0]: reg_en_hd_dac_b_det
+    //                         0x14[1]: reg_en_hd_dac_g_det
+    //                         0x14[2]: reg_en_hd_dac_r_det
+    OUTREG16(BASE_REG_DAC_ATOP_PA + REG_ID_14, 0x0);
+    // BANK 1127, 16bit OFFSET 0x1F[0]: reg_pd_idac_ldo
+    OUTREG16(BASE_REG_DAC_ATOP_PA + REG_ID_1F, 0x1);
+    // BANK 1127, 16bit OFFSET 0x10[0]: reg_gpio_en_pad_out_b
+    //                         0x10[1]: reg_gpio_en_pad_out_g
+    //                         0x10[2]: reg_gpio_en_pad_out_r
+    OUTREG16(BASE_REG_DAC_ATOP_PA + REG_ID_10, 0x0);
+#endif
+#ifdef CONFIG_ANALOG_PD_IDAC_LPLL
+    // BANK 1127, 16bit OFFSET 0x36[0]: reg_emmcpll_pd
+    SETREG16(BASE_REG_HDMI_TX_ATOP_PA + REG_ID_36, BIT0);
+#endif
+#ifdef CONFIG_ANALOG_PD_DISP_LPLL
+    // BANK 1133, 16bit OFFSET 0x40[15]: reg_lpll_ext_pd
+    SETREG16(BASE_REG_DISP_LPLL_PA + REG_ID_40, BIT15);
+#endif
+#ifdef CONFIG_ANALOG_PD_MIPI_DPHY_TX_TOP
+     // BANK 1528, 16bit OFFSET 0x00[6]: reg_pd_ldo
+    SETREG16(BASE_REG_DPHY_DSI_PA + REG_ID_00, BIT6);
+    // BANK 1528, 16bit OFFSET 0x04[4]: reg_sw_lptx_en0
+    //                         0x04[6]: reg_sw_lprx_en0
+    //                         0x04[9:8]: reg_sw_outconf_ch0_bit
+    CLRREG16(BASE_REG_DPHY_DSI_PA + REG_ID_04, BIT4 | BIT6 | BIT8 | BIT9);
+    // BANK 1528, 16bit OFFSET 0x08[4]: reg_sw_lptx_en1
+    //                         0x08[6]: reg_sw_lprx_en1
+    //                         0x08[9:8]: reg_sw_outconf_ch1_bit
+    CLRREG16(BASE_REG_DPHY_DSI_PA + REG_ID_08, BIT4 | BIT6 | BIT8 | BIT9);
+    // BANK 1528, 16bit OFFSET 0x0c[4]: reg_sw_lptx_en2
+    //                         0x0c[6]: reg_sw_lprx_en2
+    //                         0x0c[9:8]: reg_sw_outconf_ch2_bit
+    CLRREG16(BASE_REG_DPHY_DSI_PA + REG_ID_0C, BIT4 | BIT6 | BIT8 | BIT9);
+    // BANK 1528, 16bit OFFSET 0x20[4]: reg_sw_lptx_en3
+    //                         0x20[6]: reg_sw_lprx_en3
+    //                         0x20[9:8]: reg_sw_outconf_ch3_bit
+    CLRREG16(BASE_REG_DPHY_DSI_PA + REG_ID_20, BIT4 | BIT6 | BIT8 | BIT9);
+    // BANK 1528, 16bit OFFSET 0x23[4]: reg_sw_lptx_en4
+    //                         0x23[6]: reg_sw_lprx_en4
+    //                         0x23[9:8]: reg_sw_outconf_ch4_bit
+    CLRREG16(BASE_REG_DPHY_DSI_PA + REG_ID_23, BIT4 | BIT6 | BIT8 | BIT9);
+    // BANK 1528, 16bit OFFSET 0x05[10]: reg_sw_hsrx_en_ch0
+    CLRREG16(BASE_REG_DPHY_DSI_PA + REG_ID_05, BIT10);
+    // BANK 1528, 16bit OFFSET 0x09[10]: reg_sw_hsrx_en_ch1
+    CLRREG16(BASE_REG_DPHY_DSI_PA + REG_ID_09, BIT10);
+    // BANK 1528, 16bit OFFSET 0x0D[10]: reg_sw_hsrx_en_ch2
+    CLRREG16(BASE_REG_DPHY_DSI_PA + REG_ID_0D, BIT10);
+    // BANK 1528, 16bit OFFSET 0x21[10]: reg_sw_hsrx_en_ch3
+    CLRREG16(BASE_REG_DPHY_DSI_PA + REG_ID_21, BIT10);
+    // BANK 1528, 16bit OFFSET 0x24[10]: reg_sw_hsrx_en_ch4
+    CLRREG16(BASE_REG_DPHY_DSI_PA + REG_ID_24, BIT10);
+    // BANK 1528, 16bit OFFSET 0x03[0]: reg_sw_dphy_cken
+    CLRREG16(BASE_REG_DPHY_DSI_PA + REG_ID_03, BIT0);
+#endif
+#ifdef CONFIG_ANALOG_PD_MPLL
+    // BANK 1030, 16bit OFFSET 0x01[8]: reg_pd_mpll
+    //                         0x01[9]: reg_pd_mpll_clk_adc_vco_div2
+    //                         0x01[10]: reg_pd_mpll_clk_adc_vco_div2_2
+    //                         0x01[11]: reg_pd_mpll_clk_adc_vco_div2_3
+    //                         0x01[12]: reg_pd_digclk
+    SETREG16(BASE_REG_MPLL_PA + REG_ID_01, BIT8 | BIT9 | BIT10 | BIT11 | BIT12);
+    // BANK 1030, 16bit OFFSET 0x02[0]: reg_en_mpll_rst
+    CLRREG16(BASE_REG_MPLL_PA + REG_ID_02, BIT0);
+    // BANK 1030, 16bit OFFSET 0x04[0]: reg_en_mpll_test
+    //                         0x04[1]: reg_en_mpll_ov_sw
+    //                         0x04[10]: reg_en_mpll_xtal
+    //                         0x04[15]: reg_en_mpll_prdt
+    CLRREG16(BASE_REG_MPLL_PA + REG_ID_04, BIT0 | BIT1 | BIT10 | BIT15);
+#endif
+#ifdef CONFIG_ANALOG_PD_SATA_ATOP
+    // BANK 1525, 16bit OFFSET 0x00
+    OUTREG16(BASE_REG_SATA_MAC_PA + REG_ID_00, 0x0000);
+    // BANK 1527, 16bit OFFSET 0x20[0]: reg_pd_sata_txpll
+    SETREG16(BASE_REG_SATA_ATOP_PA + REG_ID_20, BIT0);
+    // BANK 1527, 16bit OFFSET 0x30[0]: reg_pd_sata_rxpll
+    SETREG16(BASE_REG_SATA_ATOP_PA + REG_ID_30, BIT0);
+    // BANK 1527, 16bit OFFSET 0x31[10]: reg_pd_sata_rxpll_cdr
+    SETREG16(BASE_REG_SATA_ATOP_PA + REG_ID_31, BIT10);
+    // BANK 1526, 16bit OFFSET 0x08[15:0]
+    OUTREG16(BASE_REG_SATA_PHY_PA + REG_ID_08, 0xFFFF);
+    // BANK 1526, 16bit OFFSET 0x00[15:0]
+    OUTREG16(BASE_REG_SATA_PHY_PA + REG_ID_00, 0x105B);
+    // BANK 1526, 16bit OFFSET 0x01[5]: reg_ssusb_pll_ssc_en
+    //                         0x01[6]: reg_ssusb_rx_impcalib_en
+    CLRREG16(BASE_REG_SATA_PHY_PA + REG_ID_00, BIT5 | BIT6);
+#endif
+#ifdef CONFIG_ANALOG_PD_UPLL_0
+    // BANK 1420, 16bit OFFSET 0x00[1]: reg_upll_pd
+    //                         0x00[4]: reg_upll_enddisc
+    //                         0x00[5]: reg_upll_enfrun
+    SETREG16(BASE_REG_UPLL0_PA + REG_ID_00, BIT1 | BIT4 | BIT5);
+    // BANK 1420, 16bit OFFSET 0x00[7]: reg_upll_enxtal
+    CLRREG16(BASE_REG_UPLL0_PA + REG_ID_00, BIT7);
+    // BANK 1420, 16bit OFFSET 0x01[7]: reg_upll_en_prdt
+    CLRREG16(BASE_REG_UPLL0_PA + REG_ID_01, BIT7);
+    // BANK 1420, 16bit OFFSET 0x02[15:0]: reg_upll_test
+    OUTREG16(BASE_REG_UPLL0_PA + REG_ID_02, 0x0000);
+    // BANK 1420, 16bit OFFSET 0x07[0]: reg_clk0_upll_384_en
+    //                         0x07[1]: reg_upll_en_prdt2
+    //                         0x07[2]: reg_en_clk_upll_192m
+    CLRREG16(BASE_REG_UPLL0_PA + REG_ID_07, BIT0 | BIT1 | BIT2);
+    // BANK 1420, 16bit OFFSET 0x07[3]: reg_pd_clk0_audio
+    SETREG16(BASE_REG_UPLL0_PA + REG_ID_07, BIT3);
+#endif
+#ifdef CONFIG_ANALOG_PD_UPLL_1
+    // BANK 141F, 16bit OFFSET 0x00[1]: reg_upll_pd
+    //                         0x00[4]: reg_upll_enddisc
+    //                         0x00[5]: reg_upll_enfrun
+    SETREG16(BASE_REG_UPLL1_PA + REG_ID_00, BIT1 | BIT4 | BIT5);
+    // BANK 141F, 16bit OFFSET 0x00[7]: reg_upll_enxtal
+    CLRREG16(BASE_REG_UPLL1_PA + REG_ID_00, BIT7);
+    // BANK 141F, 16bit OFFSET 0x01[7]: reg_upll_en_prdt
+    CLRREG16(BASE_REG_UPLL1_PA + REG_ID_01, BIT7);
+    // BANK 141F, 16bit OFFSET 0x02[15:0]: reg_upll_test
+    OUTREG16(BASE_REG_UPLL1_PA + REG_ID_02, 0x0000);
+    // BANK 141F, 16bit OFFSET 0x07[0]: reg_clk0_upll_384_en
+    //                         0x07[1]: reg_upll_en_prdt2
+    //                         0x07[2]: reg_en_clk_upll_192m
+    CLRREG16(BASE_REG_UPLL1_PA + REG_ID_07, BIT0 | BIT1 | BIT2);
+    // BANK 141F, 16bit OFFSET 0x07[3]: reg_pd_clk0_audio
+    SETREG16(BASE_REG_UPLL1_PA + REG_ID_07, BIT3);
+#endif
+#ifdef CONFIG_ANALOG_PD_USB20_P1
+    // BANK 1421, 16bit OFFSET 0x00[2]: reg_ref_pdn
+    //                         0x00[6]: reg_r_dp_pden
+    //                         0x00[7]: reg_r_dm_pden
+    //                         0x00[8]: reg_hs_dm_pdn
+    //                         0x00[9]: reg_pll_pdn
+    //                         0x00[10]: reg_hs_ted_pdn
+    //                         0x00[11]: reg_hs_preamp_pdn
+    //                         0x00[12]: reg_fl_xcvr_pdn
+    //                         0x00[13]: reg_vbusdet_pdn
+    //                         0x00[14]: reg_iref_pdn
+    //                         0x00[15]: reg_reg_pdn
+    SETREG16(BASE_REG_UTMI0_PA + REG_ID_00, BIT2 | BIT6 | BIT7 | BIT8 | BIT9 | BIT10 |
+                                            BIT11 | BIT12 | BIT13 | BIT14 | BIT15);
+    // BANK 1421, 16bit OFFSET 0x04[7]: reg_clk_extra_0_ena/PD_BG_CURRENT
+    OUTREG16(BASE_REG_UTMI0_PA + REG_ID_04, 0x0080);
+    // BANK 1421, 16bit OFFSET 0x05[6]: reg_clktest_inv/HS_TXSER_EN
+    CLRREG16(BASE_REG_UTMI0_PA + REG_ID_05, BIT6);
+#endif
+#ifdef CONFIG_ANALOG_PD_USB20_P2
+    // BANK 1425, 16bit OFFSET 0x00[2]: reg_ref_pdn
+    //                         0x00[6]: reg_r_dp_pden
+    //                         0x00[7]: reg_r_dm_pden
+    //                         0x00[8]: reg_hs_dm_pdn
+    //                         0x00[9]: reg_pll_pdn
+    //                         0x00[10]: reg_hs_ted_pdn
+    //                         0x00[11]: reg_hs_preamp_pdn
+    //                         0x00[12]: reg_fl_xcvr_pdn
+    //                         0x00[13]: reg_vbusdet_pdn
+    //                         0x00[14]: reg_iref_pdn
+    //                         0x00[15]: reg_reg_pdn
+    SETREG16(BASE_REG_UTMI1_PA + REG_ID_00, BIT2 | BIT6 | BIT7 | BIT8 | BIT9 | BIT10 |
+                                            BIT11 | BIT12 | BIT13 | BIT14 | BIT15);
+    // BANK 1425, 16bit OFFSET 0x04[7]: reg_clk_extra_0_ena/PD_BG_CURRENT
+    OUTREG16(BASE_REG_UTMI1_PA + REG_ID_04, 0x0080);
+    // BANK 1425, 16bit OFFSET 0x05[6]: reg_clktest_inv/HS_TXSER_EN
+    CLRREG16(BASE_REG_UTMI1_PA + REG_ID_05, BIT6);
+#endif
+#ifdef CONFIG_ANALOG_PD_USB20_P3
+    // BANK 1429, 16bit OFFSET 0x00[2]: reg_ref_pdn
+    //                         0x00[6]: reg_r_dp_pden
+    //                         0x00[7]: reg_r_dm_pden
+    //                         0x00[8]: reg_hs_dm_pdn
+    //                         0x00[9]: reg_pll_pdn
+    //                         0x00[10]: reg_hs_ted_pdn
+    //                         0x00[11]: reg_hs_preamp_pdn
+    //                         0x00[12]: reg_fl_xcvr_pdn
+    //                         0x00[13]: reg_vbusdet_pdn
+    //                         0x00[14]: reg_iref_pdn
+    //                         0x00[15]: reg_reg_pdn
+    SETREG16(BASE_REG_UTMI2_PA + REG_ID_00, BIT2 | BIT6 | BIT7 | BIT8 | BIT9 | BIT10 |
+                                            BIT11 | BIT12 | BIT13 | BIT14 | BIT15);
+    // BANK 1429, 16bit OFFSET 0x04[7]: reg_clk_extra_0_ena/PD_BG_CURRENT
+    OUTREG16(BASE_REG_UTMI2_PA + REG_ID_04, 0x0080);
+    // BANK 1429, 16bit OFFSET 0x05[6]: reg_clktest_inv/HS_TXSER_EN
+    CLRREG16(BASE_REG_UTMI2_PA + REG_ID_05, BIT6);
+#endif
 }
 
 extern char* LX_VERSION;
@@ -416,6 +717,9 @@ out:
     //write log_buf address to mailbox
     OUTREG16(BASE_REG_MAILBOX_PA+BK_REG(0x08), (int)log_buf_addr_get() & 0xFFFF);
     OUTREG16(BASE_REG_MAILBOX_PA+BK_REG(0x09), ((int)log_buf_addr_get() >> 16 )& 0xFFFF);
+
+    // power down analog IP here
+    mstar_analog_ip_powerdown();
 }
 
 struct mcm_client{
@@ -609,6 +913,120 @@ static inline void __init mstar_init_late(void)
     mstar_create_MIU_node();
     mstar_create_MCM_node();
 }
+
+#ifdef CONFIG_MSYS_DDR_SELFREFRESH_REBOOT
+static void TurnOnISOFlow(void)
+{
+retry:
+    // Turn-on ISO flow
+    OUTREG8(0x1F00680C, 0x00);
+    mdelay(2);
+    if ((INREG8(0x1F006820) & 0x08) != 0x00) {
+        goto retry;
+    }
+    OUTREG8(0x1F00680C, 0x01);
+    mdelay(2);
+    if ((INREG8(0x1F006820) & 0x08) != 0x08) {
+        goto retry;
+    }
+    OUTREG8(0x1F00680C, 0x03);
+    mdelay(2);
+    if ((INREG8(0x1F006820) & 0x08) != 0x00){
+        goto retry;
+    }
+    OUTREG8(0x1F00680C, 0x07);
+    mdelay(2);
+    if ((INREG8(0x1F006820) & 0x08) != 0x08){
+        goto retry;
+    }
+    OUTREG8(0x1F00680C, 0x05);
+    mdelay(2);
+    if ((INREG8(0x1F006820) & 0x08) != 0x00) {
+        goto retry;;
+    }
+    OUTREG8(0x1F00680C, 0x01);
+    mdelay(2);
+    if ((INREG8(0x1F006820) & 0x08) != 0x08) {
+        goto retry;
+    }
+    OUTREG8(0x1F00680C, 0x00);
+    mdelay(2);
+    if ((INREG8(0x1F006820) & 0x08) != 0x00) {
+        goto retry;
+    }
+}
+
+void __reboot_with_ddr_selfrefresh (void) __attribute__((target("arm"))) __attribute__((aligned(4)));
+
+void __reboot_with_ddr_selfrefresh(void)
+{
+    U16 i=0;
+    // =======================================================================
+    // TODO: self-refresh script here...
+
+    // =======================================================================
+    // reboot
+    //riu_isp
+    OUTREG16(0x1f001000, 0xAAAA);
+    //password
+    do {
+        i++;
+        OUTREG16(0x1f001004, 0x0005);  //cmd
+        OUTREG16(0x1f001030, 0x0001);  //trigger
+        while((INREG16(0x1f001054) & 0x1) != 0x1)  //check read data ready
+        ;
+    }while((INREG16(0x1f001014) & 0x1) != 0x0);//check WIP=0
+
+    while(1)
+    {
+        OUTREG8(0x1f221000, 0x30+i);
+        mdelay(5);
+        OUTREG8(0x1f001cb8, 0x79);
+    }
+}
+
+#include <asm/fncpy.h>
+#include "ms_platform.h"
+static void (*mstar_suspend_imi_fn)(void);
+static void __iomem *suspend_imi_vbase;
+
+void mstar_reboot_with_ddr_selfrefresh(void) __attribute__((target("thumb"))) __attribute__((aligned(8)));
+void mstar_reboot_with_ddr_selfrefresh(void)
+{
+    suspend_imi_vbase = __arm_ioremap_exec(0xA0000000, 0x1000, false);  //put suspend code at IMI offset 32K;
+
+    printk(KERN_INFO "%s: IMI @ 0x%p...\n", __func__, suspend_imi_vbase);
+
+    /* Keep resume address to RTC SW0/SW1 registers */
+    OUTREG16(0x1F006810, (0xBEEF));
+    OUTREG16(0x1F006800, 0x0020); // bit 5: reg_dig2rtc_sw0_wr
+    // Turn-on ISO flow
+    TurnOnISOFlow();
+    OUTREG16(0x1F006810, (0xDEAD));
+    OUTREG16(0x1F006800, 0x0040); // bit 6: reg_dig2rtc_sw1_wr
+    // Turn-on ISO flow
+    TurnOnISOFlow();
+    OUTREG16(0x1F006800, 0x0000);
+
+    printk(KERN_INFO "%s: fncpy...\n", __func__);
+
+#if 1
+    mstar_suspend_imi_fn = fncpy(suspend_imi_vbase, (void*)&__reboot_with_ddr_selfrefresh, 0x1000);
+#else
+    memcpy(suspend_imi_vbase, (void*)&__reboot_with_ddr_selfrefresh, 0x1000);
+    mstar_suspend_imi_fn = (void*)suspend_imi_vbase;
+#endif
+
+    //flush cache to ensure memory is updated before self-refresh
+    __cpuc_flush_kern_all();
+    //flush L3 cache
+    Chip_Flush_MIU_Pipe();
+    //flush tlb to ensure following translation is all in tlb
+    local_flush_tlb_all();
+    mstar_suspend_imi_fn();
+    return;
+}
+#endif
 
 static void global_reset(enum reboot_mode mode, const char * cmd)
 {

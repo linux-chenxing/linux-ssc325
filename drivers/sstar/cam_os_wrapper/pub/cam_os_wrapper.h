@@ -1,9 +1,8 @@
 /*
-* cam_os_wrapper.h - Sigmastar
+* cam_os_wrapper.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -28,7 +27,7 @@
 #ifndef __CAM_OS_WRAPPER_H__
 #define __CAM_OS_WRAPPER_H__
 
-#define CAM_OS_WRAPPER_VERSION "v1.0.21"
+#define CAM_OS_WRAPPER_VERSION "v1.0.34"
 
 #if defined(__aarch64__)
 #define CAM_OS_BITS_PER_LONG 64
@@ -56,6 +55,7 @@ typedef signed   long long  s64;
 #include "cam_os_util_bitmap.h"
 #include "cam_os_util_ioctl.h"
 #include "cam_os_util_string.h"
+#include "cam_os_struct.h"
 
 #define CAM_OS_MAX_TIMEOUT ((u32)(~0U))
 #define CAM_OS_MAX_INT     ((s32)(~0U>>1))
@@ -97,27 +97,27 @@ typedef enum
 
 typedef struct
 {
-    u32 nPriv[11];
+    u32 nPriv[CAM_OS_MUTEX_SIZE];
 } CamOsMutex_t;
 
 typedef struct
 {
-    u32 nPriv[16];
+    u32 nPriv[CAM_OS_TSEM_SIZE];
 } CamOsTsem_t;
 
 typedef struct
 {
-    u32 nPriv[20];
+    u32 nPriv[CAM_OS_RWTSEM_SIZE];
 } CamOsRwsem_t;
 
 typedef struct
 {
-    u32 nPriv[20];
+    u32 nPriv[CAM_OS_TCOND_SIZE];
 } CamOsTcond_t;
 
 typedef struct
 {
-    u32 nPriv[6];
+    u32 nPriv[CAM_OS_SPINLOCK_SIZE];
 }CamOsSpinlock_t;
 
 typedef struct
@@ -131,16 +131,20 @@ typedef struct
     u32 nPriority;      /* From 1(lowest) to 99(highest), use OS default priority if set 0 */
     u32 nStackSize;     /* If nStackSize is zero, use OS default value */
     char *szName;
+    struct {
+        u32 nRuntime;
+        u32 nDeadline;
+    } Sched;
 } CamOsThreadAttrb_t, *pCamOsThreadAttrb;
 
 typedef struct
 {
-    u32 nPriv[8];
+    u32 nPriv[CAM_OS_TIMER_SIZE];
 } CamOsTimer_t;
 
 typedef struct
 {
-    u32 nPriv[2];
+    u32 nPriv[CAM_OS_MEMCACHE_SIZE];
 } CamOsMemCache_t;
 
 typedef struct
@@ -150,12 +154,21 @@ typedef struct
 
 typedef struct
 {
-    u32 nPriv[20];
+    u32 nPriv[CAM_OS_IDR_SIZE];
 } CamOsIdr_t;
+
+typedef struct
+{
+    u32 nBytes;
+    u16 nType;
+    u16 nBusWidth;
+} CamOsDramInfo_t;
 
 typedef void * CamOsThread;
 
 typedef void (*CamOsIrqHandler)(u32 nIrq, void *pDevId);
+
+typedef void * CamOsWorkQueue;
 
 //=============================================================================
 // Description:
@@ -241,6 +254,7 @@ void CamOsHexdump(char *szBuf, u32 nSize);
 //=============================================================================
 // Description:
 //      Suspend execution for millisecond intervals.
+//      In Linux, sleeping for larger msecs(10ms+).
 // Parameters:
 //      [in]  nMsec: Millisecond to suspend.
 // Return:
@@ -251,6 +265,7 @@ void CamOsMsSleep(u32 nMsec);
 //=============================================================================
 // Description:
 //      Suspend execution for microsecond intervals.
+//      In Linux, sleeping for ~usecs or small msecs(10us~20ms).
 // Parameters:
 //      [in]  nUsec: Microsecond to suspend.
 // Return:
@@ -322,6 +337,57 @@ void CamOsGetMonotonicTime(CamOsTimespec_t *ptRes);
 //      Difference of ptEnd and ptStart, or return 0 if giving invalid parameter.
 //=============================================================================
 s64 CamOsTimeDiff(CamOsTimespec_t *ptStart, CamOsTimespec_t *ptEnd, CamOsTimeDiffUnit_e eUnit);
+
+//=============================================================================
+// Description:
+//      Get time in jiffies.
+// Parameters:
+//      N/A
+// Return:
+//      Jiffies value.
+//=============================================================================
+u32 CamOsGetJiffies(void);
+
+//=============================================================================
+// Description:
+//      Get number of jiffies in a second.
+// Parameters:
+//      N/A
+// Return:
+//      Hz value.
+//=============================================================================
+u32 CamOsGetHz(void);
+
+//=============================================================================
+// Description:
+//      Convert jiffies to milliseconds.
+// Parameters:
+//      [in]  nJiffies: jiffies.
+// Return:
+//      Milliseconds.
+//=============================================================================
+u32 CamOsJiffiesToMs(u32 nJiffies);
+
+//=============================================================================
+// Description:
+//      Convert milliseconds to jiffies.
+// Parameters:
+//      [in]  nMsec: Milliseconds.
+// Return:
+//      Jiffies.
+//=============================================================================
+u32 CamOsMsToJiffies(u32 nMsec);
+
+//=============================================================================
+// Description:
+//      Calculate the difference between two jiffies value.
+// Parameters:
+//      [in]  nStart: start time in jiffies.
+//      [in]  nEnd: end time in jiffies.
+// Return:
+//      The difference between two jiffies value.
+//=============================================================================
+u32 CamOsJiffiesDiff(u32 nStart, u32 nEnd);
 
 //=============================================================================
 // Description:
@@ -439,7 +505,8 @@ CamOsRet_e CamOsThreadSetName(CamOsThread tThread, const char *szName);
 //      Get the name of a thread. The buffer specified by name should be at
 //      least 16 characters in length.
 // Parameters:
-//      [in]  tThread: Handle of target thread.
+//      [in]  tThread: Handle of target thread. If NULL, function will return
+//                     current thread's name
 //      [out] szName: Buffer used to return the thread name.
 //      [in]  nLen: Specifies the number of bytes available in szName
 // Return:
@@ -824,6 +891,53 @@ CamOsRet_e CamOsSpinUnlockIrqRestore(CamOsSpinlock_t *ptSpinlock);
 
 //=============================================================================
 // Description:
+//      Allocate a new work queue.
+// Parameters:
+//      [out] ptWorkQueue: A successful call to CamOsWorkQueueCreate() stores
+//            the handle of the new work queue.
+//      [in]  szName: Name of work queue.
+//      [in]  nMax: maximum works of work queue.
+// Return:
+//      CAM_OS_OK is returned if successful; otherwise, returns CamOsRet_e.
+//=============================================================================
+CamOsRet_e CamOsWorkQueueCreate(CamOsWorkQueue *ptWorkQueue, const char *szName, u32 nMax);
+
+//=============================================================================
+// Description:
+//      Destroy a work queue.
+// Parameters:
+//      [in]  ptWorkQueue: Handle of work queue.
+// Return:
+//      CAM_OS_OK is returned if successful; otherwise, returns CamOsRet_e.
+//=============================================================================
+CamOsRet_e CamOsWorkQueueDestroy(CamOsWorkQueue ptWorkQueue);
+
+//=============================================================================
+// Description:
+//      Add a work into work queue.
+// Parameters:
+//      [in]  ptWorkQueue: Handle of work queue.
+//      [in]  pfnFunc: Callback function of work.
+//      [in]  pData: Private date of work.
+//      [in]  nDelay: Delay work by nDelay milliseconds.
+// Return:
+//      CAM_OS_OK is returned if successful; otherwise, returns CamOsRet_e.
+//=============================================================================
+CamOsRet_e CamOsWorkQueueAdd(CamOsWorkQueue ptWorkQueue, void (*pfnFunc)(void *),void *pData, u32 nDelay);
+
+//=============================================================================
+// Description:
+//      Cancel a work in work queue.
+// Parameters:
+//      [in]  ptWorkQueue: Handle of work queue.
+//      [in]  pData: Private date of work.
+// Return:
+//      CAM_OS_OK is returned if successful; otherwise, returns CamOsRet_e.
+//=============================================================================
+CamOsRet_e CamOsWorkQueueCancel(CamOsWorkQueue ptWorkQueue, void *pData);
+
+//=============================================================================
+// Description:
 //      Allocates a block of nSize bytes of memory, returning a pointer to the
 //      beginning of the block.
 // Parameters:
@@ -875,6 +989,18 @@ void CamOsMemFlush(void* pPtr, u32 nSize);
 
 //=============================================================================
 // Description:
+//      Flush data in inner and outer cache
+// Parameters:
+//      [in]  pVa: Virtual start address
+//      [in]  pPa: Physical start address
+//      [in]  nSize: Size of the memory block, in bytes.
+// Return:
+//      N/A
+//=============================================================================
+void CamOsMemFlushExt(void* pVa, void* pPa, u32 nSize);
+
+//=============================================================================
+// Description:
 //      Invalidate data in cache
 // Parameters:
 //      [in]  pPtr: Virtual start address
@@ -897,6 +1023,16 @@ void CamOsMemInvalidate(void* pPtr, u32 nSize);
 //      N/A
 //=============================================================================
 void CamOsMemRelease(void* pPtr);
+
+//=============================================================================
+// Description:
+//      Flush MIU write buffer.
+// Parameters:
+//      N/A
+// Return:
+//      N/A
+//=============================================================================
+void CamOsMiuPipeFlush(void);
 
 //=============================================================================
 // Description:
@@ -924,25 +1060,13 @@ CamOsRet_e CamOsDirectMemAlloc(const char* szName,
 //      A block of memory previously allocated by a call to CamOsDirectMemAlloc,
 //      is deallocated, making it available again for further allocations.
 // Parameters:
-//      [in]  pVirtPtr: Virtual address pointer to a memory block previously
-//                      allocated with CamOsDirectMemAlloc.
+//      [in]  pPtr: Physical or Virtual address pointer to a memory block
+//                  previously allocated with CamOsDirectMemAlloc.
 //      [in]  nSize: Size of the memory block, in bytes.
 // Return:
 //      CAM_OS_OK is returned if successful; otherwise, returns CamOsRet_e.
 //=============================================================================
-CamOsRet_e CamOsDirectMemRelease(void* pVirtPtr, u32 nSize);
-
-//=============================================================================
-// Description:
-//      Flush chche of a block of memory previously allocated by a call to
-//      CamOsDirectMemAlloc.
-// Parameters:
-//      [in]  pVirtPtr: Virtual address pointer to a memory block previously
-//                      allocated with CamOsDirectMemAlloc.
-// Return:
-//      CAM_OS_OK is returned if successful; otherwise, returns CamOsRet_e.
-//=============================================================================
-CamOsRet_e CamOsDirectMemFlush(void* pVirtPtr);
+CamOsRet_e CamOsDirectMemRelease(void* pPtr, u32 nSize);
 
 //=============================================================================
 // Description:
@@ -956,7 +1080,7 @@ CamOsRet_e CamOsDirectMemStat(void);
 
 //=============================================================================
 // Description:
-//      Transfer Physical address to MIU address.
+//      Transfer physical address to MIU address.
 // Parameters:
 //      [in]  pPtr: Physical address.
 // Return:
@@ -966,7 +1090,7 @@ void* CamOsDirectMemPhysToMiu(void* pPtr);
 
 //=============================================================================
 // Description:
-//      Transfer MIU address to Physical address.
+//      Transfer MIU address to physical address.
 // Parameters:
 //      [in]  pPtr: MIU address.
 // Return:
@@ -976,7 +1100,7 @@ void* CamOsDirectMemMiuToPhys(void* pPtr);
 
 //=============================================================================
 // Description:
-//      Transfer Physical address to Virtual address.
+//      Transfer physical address to virtual address.
 // Parameters:
 //      [in]  pPtr: Physical address.
 // Return:
@@ -986,7 +1110,7 @@ void* CamOsDirectMemPhysToVirt(void* pPtr);
 
 //=============================================================================
 // Description:
-//      Transfer Virtual address to Physical address.
+//      Transfer virtual address to physical address.
 // Parameters:
 //      [in]  pPtr: Virtual address.
 // Return:
@@ -996,7 +1120,7 @@ void* CamOsDirectMemVirtToPhys(void* pPtr);
 
 //=============================================================================
 // Description:
-//      Map Physical address to Virtual address.
+//      Map physical address to virtual address.
 // Parameters:
 //      [in]  pPhyPtr: Physical address.
 //      [in]  nSize: Size of the memory block, in bytes.
@@ -1008,7 +1132,7 @@ void* CamOsPhyMemMap(void* pPhyPtr, u32 nSize, u8 bNonCache);
 
 //=============================================================================
 // Description:
-//      Unmap Virtual address that was mapped by CamOsPhyMemMap.
+//      Unmap virtual address that was mapped by CamOsPhyMemMap.
 // Parameters:
 //      [in]  pVirtPtr: Virtual address.
 //      [in]  nSize: Size of the memory block, in bytes.
@@ -1016,6 +1140,53 @@ void* CamOsPhyMemMap(void* pPhyPtr, u32 nSize, u8 bNonCache);
 //      N/A
 //=============================================================================
 void CamOsPhyMemUnMap(void* pVirtPtr, u32 nSize);
+
+//=============================================================================
+// Description:
+//      Map physical address to virtual address.
+// Parameters:
+//      [in]  pPhyPtr: Physical address.
+//      [in]  nSize: Size of the memory block, in bytes.
+//      [in]  bCache: Map to cache or non-cache area.
+// Return:
+//      Virtual address.
+//=============================================================================
+void* CamOsMemMap(void* pPhyPtr, u32 nSize, u8 bCache);
+
+//=============================================================================
+// Description:
+//      Unmap virtual address that was mapped by CamOsMemMap.
+// Parameters:
+//      [in]  pVirtPtr: Virtual address.
+//      [in]  nSize: Size of the memory block, in bytes.
+// Return:
+//      N/A
+//=============================================================================
+void CamOsMemUnmap(void* pVirtPtr, u32 nSize);
+
+//=============================================================================
+// Description:
+//      In Linux kernel space, map physical address that allocate in user space
+//      to virtual address.
+// Parameters:
+//      [in]  pPhyPtr: Physical address.
+//      [in]  nSize: Size of the memory block, in bytes.
+//      [in]  bCache: Map to cache or non-cache area.
+// Return:
+//      Virtual address.
+//=============================================================================
+void* CamOsMemFromUserModeMap(void* pPhyPtr, u32 nSize, u8 bCache);
+
+//=============================================================================
+// Description:
+//      Unmap virtual address that was mapped by CamOsMemFromUserModeMap.
+// Parameters:
+//      [in]  pVirtPtr: Virtual address.
+//      [in]  nSize: Size of the memory block, in bytes.
+// Return:
+//      N/A
+//=============================================================================
+void CamOsMemFromUserModeUnmap(void* pVirtPtr, u32 nSize);
 
 //=============================================================================
 // Description:
@@ -1067,16 +1238,6 @@ void CamOsMemCacheFree(CamOsMemCache_t *ptMemCache, void *pObjPtr);
 
 //=============================================================================
 // Description:
-//      Flush MIU write buffer.
-// Parameters:
-//      N/A
-// Return:
-//      N/A
-//=============================================================================
-void CamOsMiuPipeFlush(void);
-
-//=============================================================================
-// Description:
 //      Set property value by property name.
 // Parameters:
 //      [in]  szKey: Name of property.
@@ -1105,7 +1266,8 @@ CamOsRet_e CamOsPropertyGet(const char *szkey, char *szValue, const char *szDefa
 // Parameters:
 //      [in]  nDividend: Dividend.
 //      [in]  nDivisor: Divisor.
-//      [out]  pRemainder: Pointer to the remainder.
+//      [out] pRemainder: Pointer to the remainder. This parameter can also be
+//                        a null pointer, in which case it is not used.
 // Return:
 //      Quotient of division.
 //=============================================================================
@@ -1117,7 +1279,8 @@ u64 CamOsMathDivU64(u64 nDividend, u64 nDivisor, u64 *pRemainder);
 // Parameters:
 //      [in]  nDividend: Dividend.
 //      [in]  nDivisor: Divisor.
-//      [out]  pRemainder: Pointer to the remainder.
+//      [out] pRemainder: Pointer to the remainder. This parameter can also be
+//                        a null pointer, in which case it is not used.
 // Return:
 //      Quotient of division.
 //=============================================================================
@@ -1161,13 +1324,24 @@ CamOsRet_e CamOsTimerInit(CamOsTimer_t *ptTimer);
 
 //=============================================================================
 // Description:
-//      Delete timer.
+//      Deactivates a timer
 // Parameters:
 //      [in]  ptTimer: Pointer of type CamOsTimer_t.
 // Return:
 //      0 is returned if timer has expired; otherwise, returns 1.
 //=============================================================================
 u32 CamOsTimerDelete(CamOsTimer_t *ptTimer);
+
+//=============================================================================
+// Description:
+//      Deactivates a timer and wait for the handler to finish. This function
+//      only differs from del_timer on SMP
+// Parameters:
+//      [in]  ptTimer: Pointer of type CamOsTimer_t.
+// Return:
+//      0 is returned if timer has expired; otherwise, returns 1.
+//=============================================================================
+u32 CamOsTimerDeleteSync(CamOsTimer_t *ptTimer);
 
 //=============================================================================
 // Description:
@@ -1420,6 +1594,17 @@ CamOsRet_e CamOsIdrInit(CamOsIdr_t *ptIdr);
 
 //=============================================================================
 // Description:
+//      Init IDR data structure with maximum entry number.
+// Parameters:
+//      [in]  ptIdr: Pointer of type CamOsIdr_t.
+//      [in]  nEntryNum: Maximum number of entries.
+// Return:
+//      CAM_OS_OK is returned if successful; otherwise, returns CamOsRet_e.
+//=============================================================================
+CamOsRet_e CamOsIdrInitEx(CamOsIdr_t *ptIdr, u32 nEntryNum);
+
+//=============================================================================
+// Description:
 //      Destroy the IDR data structure.
 // Parameters:
 //      [in]  ptIdr: Pointer of type CamOsIdr_t.
@@ -1477,6 +1662,17 @@ CamOsMemSize_e CamOsPhysMemSize(void);
 
 //=============================================================================
 // Description:
+//      Get physical memory size of system.
+// Parameters:
+//      [out] ptInfo: A pointer to a CamOsDramInfo_t structure where
+//                    CamOsDramInfo() can store the information.
+// Return:
+//      CAM_OS_OK is returned if successful; otherwise, returns CamOsRet_e.
+//=============================================================================
+CamOsRet_e CamOsDramInfo(CamOsDramInfo_t *ptInfo);
+
+//=============================================================================
+// Description:
 //      Get Chip ID.
 // Parameters:
 //      N/A
@@ -1484,6 +1680,16 @@ CamOsMemSize_e CamOsPhysMemSize(void);
 //      Chip ID.
 //=============================================================================
 u32 CamOsChipId(void);
+
+//=============================================================================
+// Description:
+//      Get Chip Revision.
+// Parameters:
+//      N/A
+// Return:
+//      Chip revision.
+//=============================================================================
+u32 CamOsChipRevision(void);
 
 //=============================================================================
 // Description:
@@ -1541,6 +1747,16 @@ CamOsRet_e CamOsInInterrupt(void);
 
 //=============================================================================
 // Description:
+//      Memory barrier.
+// Parameters:
+//      N/A
+// Return:
+//      N/A.
+//=============================================================================
+void CamOsMemoryBarrier(void);
+
+//=============================================================================
+// Description:
 //      Symmetric multiprocessing memory barrier.
 // Parameters:
 //      N/A
@@ -1568,6 +1784,16 @@ char *CamOsStrError(s32 nErrNo);
 //      N/A
 //=============================================================================
 void CamOsPanic(const char *szMessage);
+
+//=============================================================================
+// Description:
+//      Print call stack information.
+// Parameters:
+//      N/A
+// Return:
+//      N/A
+//=============================================================================
+void CamOsCallStack(void);
 
 //=============================================================================
 // Description:

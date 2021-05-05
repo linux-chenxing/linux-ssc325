@@ -1,9 +1,8 @@
 /*
 * mdrv_pollsample_module.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,11 +11,12 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
-#ifndef _MDRV_POLLSAMPLE_MODULE_H_
-#define _MDRV_POLLSAMPLE_MODULE_H_
+
+#ifndef __MDRV_POLLSAMPLE_MODULE_H__
+#define __MDRV_POLLSAMPLE_MODULE_H__
 
 #include "cam_os_wrapper.h"
 #include "cam_drv_poll.h"
@@ -41,4 +41,4 @@ int pollsamp_release(struct inode *inode, struct file *filp);
 long pollsamp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 unsigned int pollsamp_poll(struct file *filp, poll_table *tpoll);
 
-#endif /* _MDRV_POLLSAMPLE_MODULE_H_ */
+#endif /* __MDRV_POLLSAMPLE_MODULE_H__ */

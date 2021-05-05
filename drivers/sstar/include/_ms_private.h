@@ -1,9 +1,8 @@
 /*
 * _ms_private.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef __MS_PRIVATE__
@@ -22,11 +21,10 @@
 struct ms_chip
 {
 	void (*chip_flush_miu_pipe)(void);
-	void (*chip_flush_memory)(void);
-	void (*chip_read_memory)(void);
+    	void (*chip_flush_miu_pipe_nodsb)(void);
 	int  (*cache_outer_is_enabled)(void);
+       void (*cache_flush_dcache_page)(struct page *page);
 	void (*cache_flush_all)(void);
-	void (*cache_clean_range_va_pa)(unsigned long, unsigned long,unsigned long);
 	void (*cache_flush_range_va_pa)(unsigned long, unsigned long,unsigned long);
 	void (*cache_clean_range)(unsigned long, unsigned long);
 	void (*cache_flush_range)(unsigned long, unsigned long);

@@ -1,4 +1,20 @@
 /*
+* infinity3.dtsi- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
+*/
+/*
  * Copyright (c) 2014 MundoReader S.L.
  * Author: Matthias Brugger <matthias.bgg@gmail.com>
  *
@@ -415,6 +431,8 @@
             slot-max-clks = <48000000>,<48000000>,<48000000>;
 	           slot-intcdzs = <1>,<1>,<1>;
 	           slot-fakecdzs = <0>,<0>,<0>;
+            slot-pwr-off-delay = <30>,<30>,<30>;
+            slot-pwr-on-delay = <1>,<1>,<1>;
             slot-pwr-gpios = <19>,<0>,<0>;
 
             clocks = <&CLK_sdio>,<&GATE_MCM_sdio>,<&GATE_SRAM_sdio>,<&CLK_fcie>,<&GATE_MCM_fcie>,<&GATE_SRAM_fcie>;

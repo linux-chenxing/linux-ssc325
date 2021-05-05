@@ -1,9 +1,8 @@
 /*
 * mdrv_cipher.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/kernel.h>
@@ -105,8 +104,8 @@ static int cipher_aes_crypto(MDRV_AES_HANDLE *handle, AES_DIR dir)
     op.len = handle->len;
     op.dir = (dir == E_AES_DIR_DECRYPT) ? AES_DIR_DECRYPT : AES_DIR_ENCRYPT;
     op.iv = handle->iv;
-    memcpy(op.key, handle->key, AES_KEYSIZE_128);
-    op.keylen = AES_KEYSIZE_128;
+    memcpy(op.key, handle->key, handle->keylen);
+    op.keylen = handle->keylen;
     switch(handle->mode) {
     case E_AES_ALGO_ECB:
         op.mode = AES_MODE_ECB;

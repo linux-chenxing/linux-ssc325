@@ -1,9 +1,8 @@
 /*
 * ms_rtcpwc.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -33,7 +32,8 @@
 #define DTS_DEFAULT_DATE            "default_date"
 
 #define RTC_DEBUG  0
-#define RTC_CHECK_STATUS_DELAY_TIME_MS  2
+// #define RTC_CHECK_STATUS_DELAY_TIME_MS  2
+#define RTC_CHECK_STATUS_DELAY_TIME_US  100
 
 #define ISO_S0						0x00
 #define ISO_S1						0x01
@@ -59,11 +59,27 @@ struct ms_rtc_info {
     struct rtc_device *rtc_dev;
     void __iomem *rtc_base;
     u32 default_base;
+    spinlock_t mutex;
 };
-
+static struct platform_device* g_pdev;
+static unsigned long g_alarm_time = 0;
 int auto_wakeup_delay_seconds = 0;
 //static AUTL_DATETIME        m_ShadowTime = {0};
 static char _bInit = 0;
+static char _bIsoctl_fail = 0;
+
+void ms_rtc_set_alarm(struct device *dev, unsigned long seconds);
+void ms_rtc_alarm_init(struct device *dev);
+
+static ssize_t isoctl_check_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    char *str = buf;
+    char *end = buf + PAGE_SIZE;
+
+    str += scnprintf(str, end - str, "ISO EN sequence: %d\n", _bIsoctl_fail);
+    return (str - buf);
+}
+DEVICE_ATTR(isoctl_check, 0444, isoctl_check_show, NULL);
 
 static ssize_t auto_wakeup_timer_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
 {
@@ -92,6 +108,44 @@ static ssize_t auto_wakeup_timer_show(struct device *dev, struct device_attribut
     return (str - buf);
 }
 DEVICE_ATTR(auto_wakeup_timer, 0644, auto_wakeup_timer_show, auto_wakeup_timer_store);
+
+static ssize_t alarm_timer_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
+{
+    if(NULL!=buf)
+    {
+        size_t len;
+        const char *str = buf;
+        int seconds = 0;
+        while (*str && !isspace(*str)) str++;
+        len = str - buf;
+        if(len)
+        {
+            seconds = simple_strtoul(buf, NULL, 10);
+            ms_rtc_alarm_init(&g_pdev->dev);
+            ms_rtc_set_alarm(&g_pdev->dev,seconds);
+            return n;
+        }
+        return -EINVAL;
+    }
+    return -EINVAL;
+}
+static ssize_t alarm_timer_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    int rest = 0;
+    unsigned long run_sec=0;
+    char *str = buf;
+    char *end = buf + PAGE_SIZE;
+    struct ms_rtc_info *info = dev_get_drvdata(&g_pdev->dev);
+
+    run_sec = (readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_H) << 16) | (readw(info->rtc_base + RTCPWC_RTC2DIG_RDDATA_L));
+    rest = (g_alarm_time > run_sec)? (g_alarm_time - run_sec) : 0;
+
+    if (rest < 0) rest = 0;
+
+    str += scnprintf(str, end - str, "countdown time = %d\n", rest);
+    return (str - buf);
+}
+DEVICE_ATTR(alarm_timer, 0644, alarm_timer_show, alarm_timer_store);
 
 #if 0
 static int ms_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alarm)
@@ -185,12 +239,12 @@ bool ms_rtc_ISOCTL_EX(struct device *dev)
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
-    while((reg ) && (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+    while((reg ) && (--ubCheck)) {
+        // mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        udelay(RTC_CHECK_STATUS_DELAY_TIME_US);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
-
     if(ubCheck == 0)
         return FALSE;
 
@@ -200,14 +254,15 @@ bool ms_rtc_ISOCTL_EX(struct device *dev)
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
-    while((reg != RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT)&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+    while((reg != RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT)&& (--ubCheck)) {
+        // mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        udelay(RTC_CHECK_STATUS_DELAY_TIME_US);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
-
     if(ubCheck == 0)
         return FALSE;
+
 
     ubCheck = ISO_ACK_RETRY_TIME;
     reg = readw(info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
@@ -215,12 +270,12 @@ bool ms_rtc_ISOCTL_EX(struct device *dev)
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
-    while((reg )&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+    while((reg )&& (--ubCheck)) {
+        // mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        udelay(RTC_CHECK_STATUS_DELAY_TIME_US);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
-
     if(ubCheck == 0)
         return FALSE;
 
@@ -230,12 +285,12 @@ bool ms_rtc_ISOCTL_EX(struct device *dev)
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
-    while((reg != RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT)&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+    while((reg != RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT) && (--ubCheck)) {
+        // mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        udelay(RTC_CHECK_STATUS_DELAY_TIME_US);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
-
     if(ubCheck == 0)
         return FALSE;
 
@@ -245,12 +300,12 @@ bool ms_rtc_ISOCTL_EX(struct device *dev)
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
-    while((reg )&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+    while((reg )&& (--ubCheck)) {
+        // mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        udelay(RTC_CHECK_STATUS_DELAY_TIME_US);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
-
     if(ubCheck == 0)
         return FALSE;
 
@@ -260,40 +315,282 @@ bool ms_rtc_ISOCTL_EX(struct device *dev)
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
-    while((reg != RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT )&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+    while((reg != RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT )&& (--ubCheck)) {
+        // mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        udelay(RTC_CHECK_STATUS_DELAY_TIME_US);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
-
     if(ubCheck == 0)
         return FALSE;
 
     ubCheck = ISO_ACK_RETRY_TIME;
     reg = readw(info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
     writew(reg & ISO_S0, info->rtc_base + RTCPWC_DIG2RTC_ISO_CTRL);
+
     reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
     reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
 
-    while((reg )&& (ubCheck --)) {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+    while((reg )&& (--ubCheck)) {
+        // mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        udelay(RTC_CHECK_STATUS_DELAY_TIME_US);
         reg = readw(info->rtc_base + RTCPWC_RTC2DIG_ISO_CTRL_ACK);
         reg = reg & RTCPWC_RTC2DIG_ISO_CTRL_ACK_BIT;
     }
+    if(ubCheck == 0)
+        return FALSE;
+
+    ubCheck = 22;
+    do
+    {
+        reg = readw(info->rtc_base + RTCPWC_DIG2PWC_RTC_TESTBUS);
+        if (reg & RTCPWC_ISO_EN)
+        {
+            break;
+        }
+        udelay(100);
+        ubCheck--;
+    }
+    while (ubCheck);
 
     if(ubCheck == 0)
         return FALSE;
 
-    udelay(2);
+    // [from designer Belon.Chen] wait 2 ms is must since read/write base/counter/SW0/SW1 is valid after iso state complete
+    mdelay(2);
     return TRUE;
+}
+
+static int _ms_rtc_has_1k_clk(struct device *dev)
+{
+    struct ms_rtc_info *info = dev_get_drvdata(dev);
+    U8 ubCheck = 22; /// delay 22 * 100 = 2200 us
+    U16 reg = 0 ;
+
+    do
+    {
+        reg = readw(info->rtc_base + RTCPWC_DIG2PWC_RTC_TESTBUS);
+        if (reg & RTCPWC_CLK_1K)
+        {
+            return 1;
+        }
+        udelay(100);
+        ubCheck--;
+    }
+    while (ubCheck);
+    return 0;
 }
 
 void ms_rtc_ISOCTL(struct device *dev)
 {
-    while(!ms_rtc_ISOCTL_EX(dev))
+    static int warn_once = 0;
+    U8 ubCheck = ISO_ACK_RETRY_TIME;
+
+    if (0 == _ms_rtc_has_1k_clk(dev))
     {
-        mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        if (!warn_once)
+        {
+            warn_once = 1;
+            printk("[%s][%d] RTCPWC fail to enter correct state and possibly caused by no power supplied\n", __FUNCTION__, __LINE__);
+        }
+        return;
     }
+    while (!ms_rtc_ISOCTL_EX(dev) && (--ubCheck))
+    {
+        // mdelay(RTC_CHECK_STATUS_DELAY_TIME_MS);
+        udelay(RTC_CHECK_STATUS_DELAY_TIME_US);
+    }
+    if(ubCheck == 0)
+        _bIsoctl_fail = 1;
+}
+
+
+//------------------------------------------------------------------------------
+//  Function    : ms_RTC_SetAlarmTime
+//  Description :
+//------------------------------------------------------------------------------
+/** @brief This function is used for setting RTC AlarmTime.
+
+This function is used for setting RTC AlarmTime.
+@param[out] The value of RTC AlarmTime.
+@return It reports the status of the operation.
+*/
+static void ms_rtc_SetAlarmTime(struct device *dev, unsigned long   seconds)
+{
+    struct ms_rtc_info *info = dev_get_drvdata(dev);
+    u16 reg;
+
+    //Clear ALARM Interrupt
+    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+    writew(reg | RTCPWC_DIG2RTC_INT_CLR_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+
+    //Set Base time bit
+    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+    writew(reg | RTCPWC_DIG2RTC_ALARM_WR, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+
+    // Set RTC Alarm Time
+    writew(seconds, info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L);
+    writew((seconds) >> 16, info->rtc_base + RTCPWC_DIG2RTC_WRDATA_H);
+    RTC_DBG("Set RTC Alarm Time=%x\r\n", readw(info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L));
+    RTC_DBG("Set RTC Alarm Time=%x\r\n", readw(info->rtc_base + RTCPWC_DIG2RTC_WRDATA_H));
+
+    //Trigger ISO
+    ms_rtc_ISOCTL(dev);
+
+    //Reset control bits
+    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+    writew(reg & ~RTCPWC_DIG2RTC_ALARM_WR, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
+}
+
+static unsigned long ms_rtc_GetRTCCounter(struct device *dev)
+{
+    struct ms_rtc_info *info = dev_get_drvdata(dev);
+    u16 reg = 0;
+    u32 run_sec = 0;
+    u32 chk_times = 5;
+    u16 counterH = 0, counterL = 0;
+    unsigned long flags;
+
+    spin_lock_irqsave(&info->mutex, flags);
+
+
+    //Set read bit of RTC counter
+    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+    writew(reg | RTCPWC_DIG2RTC_CNT_RD_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+
+    //Trigger ISO
+    ms_rtc_ISOCTL(dev);
+    chk_times = 5;
+
+    //Latch RTC counter and Check valid bit of RTC counter
+    do
+    {
+       reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD_TRIG);
+       writew(reg | RTCPWC_DIG2RTC_CNT_RD_TRIG_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD_TRIG);
+       //Note : The first to retrieve RTC counter will failed without below delay
+       mdelay(5);
+    }while((readw(info->rtc_base + RTCPWC_RTC2DIG_CNT_UPDATING) & RTCPWC_RTC2DIG_CNT_UPDATING_BIT) && (chk_times--));
+
+    if(chk_times == 0)
+    {
+       RTC_ERR("Check valid bit of RTC counter failed!\n");
+       //Reset read bit of RTC counter
+       reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+       writew(reg & ~RTCPWC_DIG2RTC_CNT_RD_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+       spin_unlock_irqrestore(&info->mutex, flags);
+       return 0;
+    }
+
+    //read RTC counter
+    {
+       counterH = readw(info->rtc_base + RTCPWC_REG_RTC2DIG_RDDATA_CNT_H);
+       counterL = readw(info->rtc_base + RTCPWC_REG_RTC2DIG_RDDATA_CNT_L);
+       run_sec =  counterH << 16;
+       run_sec |= counterL;
+       RTC_DBG("CounterL = 0x%x\r\n", counterL);
+       RTC_DBG("CounterH = 0x%x\r\n", counterH);
+    }
+    //Reset read bit of RTC counter
+    reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+    writew(reg & ~RTCPWC_DIG2RTC_CNT_RD_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+
+    spin_unlock_irqrestore(&info->mutex, flags);
+    return run_sec;
+}
+
+void ms_rtc_set_alarm(struct device *dev, unsigned long seconds)
+{
+    struct ms_rtc_info *info = dev_get_drvdata(dev);
+    //unsigned long alarm_time = 0;
+    u16 reg;
+
+    //set alarm time
+    g_alarm_time = ms_rtc_GetRTCCounter(dev)+seconds;
+
+    ms_rtc_SetAlarmTime(dev, g_alarm_time);
+
+    //pull down io4/io5
+    reg = readw(info->rtc_base + RTCPWC_DIG2PWC_PWR_EN_CTRL);
+    writew(reg & ~RTCPWC_PWR_EN, info->rtc_base + RTCPWC_DIG2PWC_PWR_EN_CTRL);
+
+    reg = readw(info->rtc_base + RTCPWC_DIG2PWC_PWR2_EN_CTRL);
+    writew(reg & ~RTCPWC_PWR2_EN, info->rtc_base + RTCPWC_DIG2PWC_PWR2_EN_CTRL);
+
+    //Trigger ISO
+    ms_rtc_ISOCTL(dev);
+
+}
+
+
+void ms_rtc_alarm_init(struct device *dev)
+{
+    struct ms_rtc_info *info = dev_get_drvdata(dev);
+    int ret = 0;
+    u16 reg;
+    int val = 0;
+
+    ret = of_property_read_u32(dev->of_node, "rtcpwc_io4_en", &val);
+    if (ret < 0 && ret != -EINVAL)
+    {
+        RTC_DBG("[%s][%d] of_property_read_u32 (rtcpwc_io4_en) fail\n", __FUNCTION__, __LINE__);
+    }
+    else
+    {
+        RTC_DBG("[%s][%d] rtcpwc_io4_en= (%d)\n", __FUNCTION__, __LINE__, val);
+
+        reg = readw(info->rtc_base + RTCPWC_DIG2PWC_PWR_EN_CTRL);
+        if (!val)
+        {
+            writew(reg & ~RTCPWC_ALARM_ON_EN, info->rtc_base + RTCPWC_DIG2PWC_PWR_EN_CTRL);
+        }
+        else
+        {
+            writew(reg | RTCPWC_ALARM_ON_EN, info->rtc_base + RTCPWC_DIG2PWC_PWR_EN_CTRL);
+        }
+    }
+
+    ret = of_property_read_u32(dev->of_node, "rtcpwc_io5_en", &val);
+    if (ret < 0 && ret != -EINVAL)
+    {
+        RTC_DBG("[%s][%d] of_property_read_u32 fail (rtcpwc_io5_en)\n", __FUNCTION__, __LINE__);
+    }
+    else
+    {
+        RTC_DBG("[%s][%d] rtcpwc_io5_en (%d)\n", __FUNCTION__, __LINE__, val);
+
+        reg = readw(info->rtc_base + RTCPWC_DIG2PWC_PWR2_EN_CTRL);
+        if (!val)
+        {
+            writew(reg & ~RTCPWC_ALARM2_ON_EN, info->rtc_base + RTCPWC_DIG2PWC_PWR2_EN_CTRL);
+        }
+        else
+        {
+            writew(reg | RTCPWC_ALARM2_ON_EN, info->rtc_base + RTCPWC_DIG2PWC_PWR2_EN_CTRL);
+        }
+    }
+
+    ret = of_property_read_u32(dev->of_node, "rtcpwc_alarm_en", &val);
+    if (ret < 0 && ret != -EINVAL)
+    {
+        RTC_DBG("[%s][%d] of_property_read_u32 fail (rtcpwc_alarm_en)\n", __FUNCTION__, __LINE__);
+    }
+    else
+    {
+        RTC_DBG("[%s][%d] rtcpwc_alarm_en (%d)\n", __FUNCTION__, __LINE__, val);
+
+        reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+        if (!val)
+        {
+            writew(reg & ~RTCPWC_DIG2RTC_ALARM_EN_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+        }
+        else
+        {
+            writew(reg | RTCPWC_DIG2RTC_ALARM_EN_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+        }
+    }
+
+    //Trigger ISO
+    ms_rtc_ISOCTL(dev);
 }
 
 //------------------------------------------------------------------------------
@@ -306,6 +603,7 @@ This function is used for getting RTC SW0.
 @param[out] The value of RTC SW0(magic number).
 @return It reports the status of the operation.
 */
+// SW0 has only 16 bits
 u32 ms_rtc_GetSW0(struct device *dev)
 {
     struct ms_rtc_info *info = dev_get_drvdata(dev);
@@ -329,6 +627,7 @@ u32 ms_rtc_GetSW0(struct device *dev)
     return ulBaseTime;
 }
 
+// SW0 has only 16 bits
 void ms_rtc_SetSW0(struct device *dev, u32 val)
 {
     struct ms_rtc_info *info = dev_get_drvdata(dev);
@@ -337,7 +636,7 @@ void ms_rtc_SetSW0(struct device *dev, u32 val)
     reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
     writew(reg | RTCPWC_DIG2RTC_SW0_WR, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
     // Set sw password
-    writew(val, info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L);
+    writew(((val>> 0) & 0xFFFF), info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L);
     RTC_DBG("Set RTC SetSW0=%x\r\n", readw(info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L));
     //Trigger ISO
     ms_rtc_ISOCTL(dev);
@@ -347,6 +646,7 @@ void ms_rtc_SetSW0(struct device *dev, u32 val)
 }
 
 #ifdef CONFIG_RTCPWC_INNER_EHHE
+// SW1 has only 16 bits
 u32 ms_rtc_GetSW1(struct device *dev)
 {
     struct ms_rtc_info *info = dev_get_drvdata(dev);
@@ -368,6 +668,7 @@ u32 ms_rtc_GetSW1(struct device *dev)
     return ulBaseTime;
 }
 
+// SW1 has only 16 bits
 void ms_rtc_SetSW1(struct device *dev, u32 val)
 {
     struct ms_rtc_info *info = dev_get_drvdata(dev);
@@ -376,7 +677,7 @@ void ms_rtc_SetSW1(struct device *dev, u32 val)
     reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
     writew(reg | RTCPWC_DIG2RTC_SW1_WR, info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
     // Set sw password
-    writew(val, info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L);
+    writew(((val>> 0) & 0xFFFF), info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L);
     RTC_DBG("Set RTC SetSW1=%x\r\n", readw(info->rtc_base + RTCPWC_DIG2RTC_WRDATA_L));
     //Trigger ISO
     ms_rtc_ISOCTL(dev);
@@ -400,6 +701,15 @@ void ms_rtc_SetBaseTime(struct device *dev, unsigned long   seconds)
 {
     struct ms_rtc_info *info = dev_get_drvdata(dev);
     u16 reg;
+
+    // Toggle reset
+    reg = readw(info->rtc_base + RTCPWC_DIG2PWC_OPT);
+#ifndef CONFIG_RTCPWC_SW_RST_OFF
+    RTC_DBG("%s: RTC SW reset\r\n", __FUNCTION__);
+    writew(reg | RTCPWC_SW_RST, info->rtc_base + RTCPWC_DIG2PWC_OPT);
+    mdelay(1);
+#endif
+    writew(reg, info->rtc_base + RTCPWC_DIG2PWC_OPT);
 
     //Set Base time bit
     reg = readw(info->rtc_base + RTCPWC_DIG2RTC_BASE_WR);
@@ -479,7 +789,8 @@ u32 ms_rtc_GetBaseTime(struct device *dev)
     password = ms_rtc_GetSW0(dev);
 
 #ifdef CONFIG_RTCPWC_INNER_EHHE
-    if ((password == RTC_PASSWORD) && (ms_rtc_GetSW1(dev) == (ulBaseTime = _ms_rtc_GetBaseTime(dev))))
+    if ((password == RTC_PASSWORD) && 
+        ((ms_rtc_GetSW1(dev) & 0xFFFF) == ((ulBaseTime = _ms_rtc_GetBaseTime(dev)) & 0xFFFF)))
 #else
     if(password == RTC_PASSWORD)
 #endif
@@ -541,9 +852,12 @@ static int ms_rtc_read_time(struct device *dev, struct rtc_time *tm)
     u64 ullSeconds = 0;
     u16 counterH = 0, counterL = 0;
     int m_ulBaseTimeInSeconds = 0;
+    unsigned long flags;
 
     if (0 == _bInit)
         return 0;
+
+    spin_lock_irqsave(&info->mutex, flags);
 
     m_ulBaseTimeInSeconds = ms_rtc_GetBaseTime(dev);
 
@@ -577,6 +891,7 @@ static int ms_rtc_read_time(struct device *dev, struct rtc_time *tm)
                 //Reset read bit of RTC counter
                 reg = readw(info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
                 writew(reg & ~RTCPWC_DIG2RTC_CNT_RD_BIT, info->rtc_base + RTCPWC_DIG2RTC_CNT_RD);
+                spin_unlock_irqrestore(&info->mutex, flags);
                 return 0;
             }
 
@@ -609,16 +924,20 @@ static int ms_rtc_read_time(struct device *dev, struct rtc_time *tm)
     RTC_DBG("ms_rtc_read_time[%d,%d,%d,%d,%d,%d]\n",
         tm->tm_year,tm->tm_mon,tm->tm_mday,tm->tm_hour,tm->tm_min,tm->tm_sec);
 
+    spin_unlock_irqrestore(&info->mutex, flags);
     return rtc_valid_tm(tm);
 }
 
 static int ms_rtc_set_time(struct device *dev, struct rtc_time *tm)
 {
+    struct ms_rtc_info *info = dev_get_drvdata(dev);
     unsigned long  seconds;
+    unsigned long flags;
 
     if (0 == _bInit)
         return 0;
 
+    spin_lock_irqsave(&info->mutex, flags);
     RTC_DBG("ms_rtc_set_time[%d,%d,%d,%d,%d,%d]\n",
         tm->tm_year,tm->tm_mon,tm->tm_mday,tm->tm_hour,tm->tm_min,tm->tm_sec);
 
@@ -629,6 +948,7 @@ static int ms_rtc_set_time(struct device *dev, struct rtc_time *tm)
 #ifdef CONFIG_RTCPWC_INNER_EHHE
     ms_rtc_SetSW1(dev, seconds);
 #endif // #ifdef CONFIG_RTCPWC_INNER_EHHE
+    spin_unlock_irqrestore(&info->mutex, flags);
     return 0;
 }
 
@@ -651,38 +971,30 @@ static irqreturn_t ms_rtc_interrupt(s32 irq, void *dev_id)
 
     return IRQ_HANDLED;
 }
+#endif
 
-
-#ifdef CONFIG_PM
-static s32 ms_rtc_suspend(struct platform_device *pdev, pm_message_t state)
+#ifdef CONFIG_PM_SLEEP
+static s32 ms_rtcpwc_suspend(struct platform_device *pdev, pm_message_t state)
 {
-    if(auto_wakeup_delay_seconds)
-    {
-        struct rtc_time tm;
-        struct rtc_wkalrm alarm;
-        unsigned long seconds;
-        ms_rtc_read_time(&pdev->dev, &tm);
-        rtc_tm_to_time(&tm, &seconds);
-        RTC_DBG("[%s]: Ready to use RTC alarm, time=%ld\n", __func__, seconds);
-        seconds += auto_wakeup_delay_seconds;
-        rtc_time_to_tm(seconds, &alarm.time);
-        alarm.enabled=1;
-        ms_rtc_set_alarm(&pdev->dev, &alarm);
+    return 0;
+}
+
+static s32 ms_rtcpwc_resume(struct platform_device *pdev)
+{
+    return 0;
+}
+#endif
+
+static int ms_rtcpwc_remove(struct platform_device *pdev)
+{
+    struct device *dev = &pdev->dev;
+    struct ms_rtc_info *info = dev_get_drvdata(dev);
+
+    if (info) {
+        devm_kfree(dev, info);
     }
     return 0;
 }
-#endif
-static s32 ms_rtc_resume(struct platform_device *pdev)
-{
-    return 0;
-}
-
-#endif
-static int ms_rtcpwc_remove(struct platform_device *pdev)
-{
-    return 0;
-}
-
 
 static int ms_rtcpwc_probe(struct platform_device *pdev)
 {
@@ -711,6 +1023,7 @@ static int ms_rtcpwc_probe(struct platform_device *pdev)
         return PTR_ERR(info->rtc_base);
 
     info->pdev = pdev;
+
 /*
     res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 
@@ -728,6 +1041,7 @@ static int ms_rtcpwc_probe(struct platform_device *pdev)
     }
 */
     platform_set_drvdata(pdev, info);
+    g_pdev = pdev;
 
     info->rtc_dev = devm_rtc_device_register(&pdev->dev,
                 dev_name(&pdev->dev), &ms_rtcpwc_ops,
@@ -752,6 +1066,8 @@ static int ms_rtcpwc_probe(struct platform_device *pdev)
     rtc_dev = device_create(msys_get_sysfs_class(), NULL, dev, NULL, "ms_rtcwc");
 
     device_create_file(rtc_dev, &dev_attr_auto_wakeup_timer);
+    device_create_file(rtc_dev, &dev_attr_alarm_timer);
+    device_create_file(rtc_dev, &dev_attr_isoctl_check);
     {
         int num = 0;
         struct rtc_time tm = { 0 };
@@ -766,6 +1082,8 @@ static int ms_rtcpwc_probe(struct platform_device *pdev)
         }
     }
     _bInit = 1;
+    spin_lock_init(&info->mutex);
+
     return ret;
 }
 
@@ -778,7 +1096,7 @@ MODULE_DEVICE_TABLE(of, ms_rtcpwc_of_match_table);
 static struct platform_driver ms_rtcpwc_driver = {
     .remove = ms_rtcpwc_remove,
     .probe = ms_rtcpwc_probe,
-#if 0
+#ifdef CONFIG_PM_SLEEP
     .suspend = ms_rtcpwc_suspend,
     .resume = ms_rtcpwc_resume,
 #endif

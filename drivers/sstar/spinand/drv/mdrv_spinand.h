@@ -1,9 +1,8 @@
 /*
 * mdrv_spinand.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,14 +11,14 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _DRV_SPINAND_H_
 #define _DRV_SPINAND_H_
 #include <linux/platform_device.h>
 #include "inc/mdrv_spinand_common.h"
-#include "../hal/reg_spinand.h"
+//#include "../hal/reg_spinand.h"
 #ifdef __cplusplus
 extern "C"
 {

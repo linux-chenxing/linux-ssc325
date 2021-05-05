@@ -1,9 +1,8 @@
 /*
 * regSERFLASH.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef _REG_SERFLASH_H_
@@ -209,6 +208,9 @@
 #define SF_SR_SRWD_MASK                 BMASK(7:7)
     #define SF_SR_SRWD                      BITS(7:7, 1)
     #define SF_SR_QUAD                      BITS(6:6, 1)
+
+#define SF_SR2_SRWD_MASK                BMASK(7:7)
+    #define SF_SR2_QUAD                     BITS(1:1, 1)
 
 // PM_SLEEP CMD.
 #define REG_PM_CKG_SPI              0x20 // Ref spec. before using these setting.

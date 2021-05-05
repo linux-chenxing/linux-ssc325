@@ -1,9 +1,8 @@
 /*
 * reg_rtcpwc.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 /*
@@ -39,6 +38,9 @@
 //	#define RTCPWC_DIG2RTC_CNT_RST_WR_BIT		BIT3
 #define RTCPWC_DIG2RTC_CNT_RD					(0x04) //(0x01 << 2)
 	#define RTCPWC_DIG2RTC_CNT_RD_BIT			BIT0
+    #define RTCPWC_DIG2RTC_ALARM_RD_BIT         BIT1
+    #define RTCPWC_DIG2RTC_ALARM_EN_BIT         BIT2
+    #define RTCPWC_DIG2RTC_INT_CLR_BIT          BIT3
 
 #define RTCPWC_DIG2RTC_ISO_CTRL					(0x0C) //(0x03 << 2)
 	#define RTCPWC_DIG2RTC_BASE_WR_MASK		BIT0|BIT1|BIT2
@@ -62,6 +64,20 @@
 
 #define RTCPWC_DIG2RTC_CNT_RD_TRIG				(0x38) //(0x0E << 2)
 	#define RTCPWC_DIG2RTC_CNT_RD_TRIG_BIT		BIT0
+
+#define RTCPWC_DIG2PWC_OPT                      (0x40) //(0x10 << 2)
+    #define RTCPWC_SW_RST                       BIT8
+
+#define RTCPWC_DIG2PWC_RTC_TESTBUS              (0x54) //(0x15 << 2)
+    #define RTCPWC_ISO_EN                       BIT0
+    #define RTCPWC_CLK_1K                       BIT5
+
+#define RTCPWC_DIG2PWC_PWR_EN_CTRL              (0x3C)   //(0xF << 2)
+    #define RTCPWC_PWR_EN                       BIT0
+    #define RTCPWC_ALARM_ON_EN                  BIT1
+#define RTCPWC_DIG2PWC_PWR2_EN_CTRL             (0x80)   //(0x20 << 2)
+    #define RTCPWC_PWR2_EN                      BIT0
+    #define RTCPWC_ALARM2_ON_EN                 BIT1
 
 #endif /* __KERNEL_RTC_PWC_H__ */
 

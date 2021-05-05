@@ -1,5 +1,5 @@
 #
-# Makefile for MStar cam_drv_poll driver.
+# Makefile for SigmaStar cam_drv_poll driver.
 #
 
 CONFIG_SSTAR_CHIP_NAME := $(subst ",,$(CONFIG_SSTAR_CHIP_NAME))

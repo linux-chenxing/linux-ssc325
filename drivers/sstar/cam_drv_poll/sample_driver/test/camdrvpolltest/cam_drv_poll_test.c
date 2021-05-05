@@ -1,9 +1,8 @@
 /*
 * cam_drv_poll_test.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,9 +11,10 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -61,7 +61,7 @@ static void _TestCamDrvPollThread(void *arg)
 
     do {
          fds[0].fd = handle[0];
-         fds[0].events = CAM_DEV_POLLOUT; //CAM_DEV_POLLPRI;
+         fds[0].events = POLLOUT; //POLLPRI;
          if ((nRetFd = CamDevPoll(&fds[0], 1, 5000)) < 0)
          {
              CamOsPrintf("CamDevPoll failed\n\r");
@@ -80,20 +80,20 @@ static void _TestCamDrvPollThread(void *arg)
 
     do {
         fds[0].fd = handle[0];
-        fds[0].events = CAM_DEV_POLLIN | CAM_DEV_POLLPRI;
+        fds[0].events = POLLIN | POLLPRI;
         if ((nRetFd = CamDevPoll(&fds[0], 1, 10000)) < 0)
         {
             CamOsPrintf("CamDevPoll failed\n\r");
         }
 
         CamOsPrintf("CamDevPoll done nRetFd=%d, events=0x%x\n\r", nRetFd, fds[0].revents);
-        if (fds[0].revents & CAM_DEV_POLLIN)
+        if (fds[0].revents & POLLIN)
         {
-            CamOsPrintf("CamDevPoll got CAM_DEV_POLLIN\n\r");
+            CamOsPrintf("CamDevPoll got POLLIN\n\r");
         }
-        if (fds[0].revents & CAM_DEV_POLLPRI)
+        if (fds[0].revents & POLLPRI)
         {
-          CamOsPrintf("CamDevPoll got CAM_DEV_POLLPRI\n\r");
+          CamOsPrintf("CamDevPoll got POLLPRI\n\r");
         }
      } while ((++cnt < POLL_LOOP_CNT) && nRetFd > 0);
 

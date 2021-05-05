@@ -1,9 +1,8 @@
 /*
 * irq-pmsleep.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/init.h>
@@ -204,7 +203,7 @@ static void ms_handle_cascade_pm_irq(struct irq_desc *desc)
 
     if(!domain)
     {
-        printk("[%s] error %d \n", __FUNCTION__, __LINE__);
+        printk("[%s] err %d \n", __FUNCTION__, __LINE__);
         goto exit;
     }
 
@@ -256,7 +255,7 @@ static void ms_handle_cascade_pm_irq(struct irq_desc *desc)
     virq = irq_find_mapping(domain, cascade_irq);
     if(!virq)
     {
-        printk("[%s] error %d \n", __FUNCTION__, __LINE__);
+        printk("[%s] err %d \n", __FUNCTION__, __LINE__);
         goto exit;
     }
     pr_debug("%s %d final_status:%d 0x%04X virq:%d\n", __FUNCTION__, __LINE__, cascade_irq, final_status, virq);
@@ -328,7 +327,7 @@ static int __init ms_init_pm_intc(struct device_node *np, struct device_node *in
     int irq=0;
     if (!interrupt_parent)
     {
-        pr_err("%s: %s no parent, return\n", __func__, np->name);
+        pr_err("%s: %s no parent\n", __func__, np->name);
         return -ENODEV;
     }
 
@@ -337,7 +336,7 @@ static int __init ms_init_pm_intc(struct device_node *np, struct device_node *in
     parent_domain = irq_find_host(interrupt_parent);
     if (!parent_domain)
     {
-        pr_err("%s: %s unable to obtain intc parent domain, return\n", __func__, np->name);
+        pr_err("%s: %s unable to obtain parent domain\n", __func__, np->name);
         return -ENXIO;
     }
 
@@ -347,14 +346,14 @@ static int __init ms_init_pm_intc(struct device_node *np, struct device_node *in
 
     if (!ms_pm_irq_domain)
     {
-        pr_err("%s: %s failed to allocated domain\n", __func__, np->name);
+        pr_err("%s: %s allocat domain fail\n", __func__, np->name);
         return -ENOMEM;
     }
 
     irq = irq_of_parse_and_map(np, 0);
     if (!irq)
     {
-        pr_err("Get irq number error from DTS\n");
+        pr_err("Get irq err from DTS\n");
         return -EPROBE_DEFER;
     }
 

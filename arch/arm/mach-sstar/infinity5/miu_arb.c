@@ -1,9 +1,8 @@
 /*
 * miu_arb.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: Alterman.Lin <alterman.lin@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/kernel.h>
@@ -123,17 +122,17 @@ static struct miu_policy_tbl policy_rr =
     {
     // miu0
     {
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
     },
     // miu1
     {
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
-        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC006, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
+        {0x00000000, 0xAAAAAAAA, 0xAAAAAAAA, 0x0000, 0xC005, 0xFFFF},
     },
     }
 };
@@ -143,17 +142,17 @@ static struct miu_policy_tbl policy_rt =
     {
     // miu0
     {
-        {0x8021FF99, 0xA0AEA2BE, 0xAAA2AA82, 0x3020, 0xC306, 0xFDF9},
-        {0x0000FFCC, 0xABAAA8A2, 0xA8AAAAAE, 0x0002, 0xC106, 0xEFFF},
-        {0x00000000, 0xAAB80A2A, 0xAA8ABAEA, 0x01C8, 0xC006, 0xFBFF},
-        {0x10321001, 0xAAAAAAFF, 0xAAAAAA00, 0x0000, 0xC306, 0xFFF0},
+        {0x8021FF99, 0xA0AEA2BE, 0xAAA2AA82, 0x3020, 0xC305, 0xFDF9},
+        {0x0000FFCC, 0xABEAA8A2, 0xA82AAAAE, 0x0002, 0xC105, 0xE7FF},
+        {0x00000000, 0xAAB80A0A, 0xAA8ABAFA, 0x01CC, 0xC005, 0xFBFF},
+        {0x10324800, 0xAAAAAAF3, 0xAAAAAA0C, 0x0002, 0xC305, 0xFFF0},
     },
     // miu1
     {
-        {0x8021FF99, 0xA0AEA2BE, 0xAAA2AA82, 0x3020, 0xC306, 0xFDF9},
-        {0x0000FFCC, 0xABAAA8A2, 0xA8AAAAAE, 0x0002, 0xC106, 0xEFFF},
-        {0x00000000, 0xAAB80A2A, 0xAA8ABAEA, 0x01C8, 0xC006, 0xFBFF},
-        {0x10321001, 0xAAAAAAFF, 0xAAAAAA00, 0x0000, 0xC306, 0xFFF0},
+        {0x8021FF99, 0xA0AEA2BE, 0xAAA2AA82, 0x3020, 0xC305, 0xFDF9},
+        {0x0000FFCC, 0xABEAA8A2, 0xA82AAAAE, 0x0002, 0xC105, 0xE7FF},
+        {0x00000000, 0xAAB80A0A, 0xAA8ABAFA, 0x01CC, 0xC005, 0xFBFF},
+        {0x10324800, 0xAAAAAAF3, 0xAAAAAA0C, 0x0002, 0xC305, 0xFFF0},
     },
     }
 };
@@ -1147,4 +1146,17 @@ void create_miu_bw_node(struct bus_type *miu_subsys)
         device_create_file(&miu_arb_dev[i].dev, &dev_attr_policy);
     }
     _load_policy(MIU_ARB_POLICY_RT);
+
+    //adjust group 3 to lowest priority, all groups have same burst length
+    OUTREG16(BASE_REG_MIU_ARB_B_PA + REG_ID_27, 0xC0);
+    OUTREG16(BASE_REG_MIU_ARB_B_PA + REG_ID_31, 0x8080);
+    OUTREG16(BASE_REG_MIU_ARB_B_PA + REG_ID_32, 0xAA);
+    OUTREG16(BASE_REG_MIU_ARB_B_PA + REG_ID_2E, 0x00);
+    OUTREG16(BASE_REG_MIU1_ARB_B_PA + REG_ID_27, 0xC0);
+    OUTREG16(BASE_REG_MIU1_ARB_B_PA + REG_ID_31, 0x8080);
+    OUTREG16(BASE_REG_MIU1_ARB_B_PA + REG_ID_32, 0xAA);
+    OUTREG16(BASE_REG_MIU1_ARB_B_PA + REG_ID_2E, 0x00);
+    //VEN_W high priority enable
+    OUTREG16(BASE_REG_MIU_ARB_E_PA + REG_ID_64, 0xFFFD);
+    OUTREG16(BASE_REG_MIU1_ARB_E_PA + REG_ID_64, 0xFFFD);
 }

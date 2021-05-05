@@ -49,6 +49,10 @@
 
 #include "internal.h"
 
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+extern void notify_migrate_page(struct page *page_src, struct page *page_dst);
+extern void show_page_trace(unsigned long pfn);
+#endif
 /*
  * migrate_prep() needs to be called before we start compiling a list of pages
  * to be migrated using isolate_lru_page(). If scheduling work on other CPUs is
@@ -415,9 +419,13 @@ int migrate_page_move_mapping(struct address_space *mapping,
 
 	if (!mapping) {
 		/* Anonymous page without mapping */
-		if (page_count(page) != expected_count)
+		if (page_count(page) != expected_count){
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+                        printk(KERN_ERR "[MIG%d]m1 pgcnt:%d, %ld\n", mode, page_count(page), page_to_pfn(page));
+                        show_page_trace(page_to_pfn(page));
+#endif
 			return -EAGAIN;
-
+                }
 		/* No turning back from here */
 		newpage->index = page->index;
 		newpage->mapping = page->mapping;
@@ -444,6 +452,11 @@ int migrate_page_move_mapping(struct address_space *mapping,
 
 	if (!page_ref_freeze(page, expected_count)) {
 		spin_unlock_irq(&mapping->tree_lock);
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+                        printk(KERN_ERR "[MIG%d]m2 pgcnt:%d excnt:%d, %ld\n",mode,
+                                                page_count(page), expected_count,page_to_pfn(page));
+                        show_page_trace(page_to_pfn(page));
+#endif
 		return -EAGAIN;
 	}
 
@@ -787,10 +800,13 @@ static int writeout(struct address_space *mapping, struct page *page)
 		/* No write method for the address space */
 		return -EINVAL;
 
-	if (!clear_page_dirty_for_io(page))
+	if (!clear_page_dirty_for_io(page)){
 		/* Someone else already triggered a write */
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+                show_page_trace(page_to_pfn(page));
+#endif
 		return -EAGAIN;
-
+       }
 	/*
 	 * A dirty page may imply that the underlying filesystem has
 	 * the page on some queue. So the page must be clean for
@@ -802,6 +818,14 @@ static int writeout(struct address_space *mapping, struct page *page)
 	remove_migration_ptes(page, page, false);
 
 	rc = mapping->a_ops->writepage(page, &wbc);
+
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+        if (rc < 0)
+        {
+                printk(KERN_ERR "[MIG]m4 rc:0x%x, %ld\n", rc, page_to_pfn(page));
+                show_page_trace(page_to_pfn(page));
+        }
+#endif
 
 	if (rc != AOP_WRITEPAGE_ACTIVATE)
 		/* unlocked. Relock */
@@ -828,8 +852,10 @@ static int fallback_migrate_page(struct address_space *mapping,
 	 * We must have no buffers or drop them.
 	 */
 	if (page_has_private(page) &&
-	    !try_to_release_page(page, GFP_KERNEL))
+	    !try_to_release_page(page, GFP_KERNEL)){
+
 		return -EAGAIN;
+        }
 
 	return migrate_page(mapping, newpage, page, mode);
 }
@@ -960,8 +986,13 @@ static int __unmap_and_move(struct page *page, struct page *newpage,
 			rc = -EBUSY;
 			goto out_unlock;
 		}
-		if (!force)
+		if (!force){
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+                        printk(KERN_ERR "[MIG%d]m8, %ld\n", mode,page_to_pfn(page));
+                        show_page_trace(page_to_pfn(page));
+#endif
 			goto out_unlock;
+            }
 		wait_on_page_writeback(page);
 	}
 
@@ -1031,6 +1062,10 @@ static int __unmap_and_move(struct page *page, struct page *newpage,
 	if (page_was_mapped)
 		remove_migration_ptes(page,
 			rc == MIGRATEPAGE_SUCCESS ? newpage : page, false);
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+        if(rc == 0)
+            notify_migrate_page(page, newpage);
+#endif
 
 out_unlock_both:
 	unlock_page(newpage);

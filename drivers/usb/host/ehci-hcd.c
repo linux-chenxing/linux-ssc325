@@ -39,6 +39,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/debugfs.h>
 #include <linux/slab.h>
+#include <linux/kthread.h>
 
 #include <asm/byteorder.h>
 #include <asm/io.h>
@@ -49,12 +50,10 @@
 #include <asm/firmware.h>
 #endif
 
-#ifndef MP_USB_MSTAR
-#include <usb_patch_mstar.h>
-#endif
-
-#if (MP_USB_MSTAR==1)
-#include "ehci-mstar.h"
+#ifdef CONFIG_MP_USB_MSTAR
+#include "usb_common_sstar.h"
+#include <linux/gpio.h>
+#include <linux/platform_device.h>
 #endif
 
 /*-------------------------------------------------------------------------*/
@@ -124,9 +123,19 @@ static bool ignore_oc = 1;
 #else
 static bool ignore_oc;
 #endif
+#if MP_USB_MSTAR
+int ehci_monitor_status = 0;
+struct task_struct *ehci_monitor_task;
+struct usb_hcd  *ehci_mstar_hcd;
+struct platform_device *ehci_hcd_mstar_platform_dev;
+int vbus_gpio = -1;
+#endif
+
 module_param (ignore_oc, bool, S_IRUGO);
 MODULE_PARM_DESC (ignore_oc, "ignore bogus hardware overcurrent indications");
-
+#if MP_USB_MSTAR
+#define STS_ERR_RXACTIVE (1<<6)
+#endif
 #define	INTR_MASK (STS_IAA | STS_FATAL | STS_PCD | STS_ERR | STS_INT)
 
 /*-------------------------------------------------------------------------*/
@@ -461,7 +470,7 @@ static void ehci_work (struct ehci_hcd *ehci)
 	 * attempts at re-entrant schedule scanning.
 	 */
 #if (MP_USB_MSTAR==1) && (_USB_T3_WBTIMEOUT_PATCH)
-	Chip_Read_Memory();	//Flush Read buffer when H/W finished
+	Chip_Flush_MIU_Pipe();	//Flush Read buffer when H/W finished
 #endif
 	if (ehci->scanning) {
 		ehci->need_rescan = true;
@@ -725,7 +734,7 @@ static int ehci_run (struct usb_hcd *hcd)
 		temp >> 8, temp & 0xff,
 		ignore_oc ? ", overcurrent ignored" : "");
 #endif
-	ehci_writel(ehci, INTR_MASK,
+	ehci_writel(ehci, INTR_MASK | STS_ERR_RXACTIVE,
 		    &ehci->regs->intr_enable); /* Turn On Interrupts */
 
 	/* GRR this is run-once init(), being done every time the HC starts.
@@ -799,7 +808,7 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 	 * We don't use STS_FLR, but some controllers don't like it to
 	 * remain on, so mask it out along with the other status bits.
 	 */
-	masked_status = status & (INTR_MASK | STS_FLR);
+	masked_status = status & (INTR_MASK | STS_FLR | STS_ERR_RXACTIVE);
 
 	/* Shared IRQ? */
 	if (!masked_status || unlikely(ehci->rh_state == EHCI_RH_HALTED)) {
@@ -903,7 +912,19 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 			mod_timer(&hcd->rh_timer, ehci->reset_done[i]);
 		}
 	}
-
+    #if MP_USB_MSTAR
+    if (status & STS_ERR_RXACTIVE){
+        ehci_monitor_status = 1;
+		ehci_mstar_hcd = hcd;
+        ehci_hcd_mstar_platform_dev = container_of(hcd->self.controller, struct platform_device, dev);
+        printk("ERR_INT_SOF_RXACTIVE issue @platform:%p\n", ehci_hcd_mstar_platform_dev);
+        #if _USB_VBUS_RESET_PATCH
+        if (ehci_hcd_mstar_platform_dev)
+            vbus_gpio = vbus_gpio_of_parse_and_map(ehci_hcd_mstar_platform_dev->dev.of_node);
+        gpio_direction_output(vbus_gpio, 0);
+        #endif
+    }
+    #endif
 	/* PCI errors [4.15.2.4] */
 	if (unlikely ((status & STS_FATAL) != 0)) {
 		ehci_err(ehci, "fatal error\n");
@@ -1493,6 +1514,57 @@ MODULE_LICENSE ("GPL");
 #define	FIFTH_PLATFORM_DRIVER	fifth_ehci_hcd_mstar_driver
 #endif
 
+#if (MP_USB_MSTAR==1)
+static int ehci_monitor_thread(void *data)
+{
+	printk(KERN_INFO "ehci monitor start running\n");
+	while(1)
+	{
+		if (ehci_monitor_status) {
+			#if _USB_VBUS_RESET_PATCH
+			gpio_direction_output(vbus_gpio, 1);
+			#endif
+			ehci_monitor_status = 0;
+			if (ehci_mstar_hcd) {
+				printk(KERN_EMERG "ERR_INT_SOF_RXACTIVE occur\n");
+				usb_remove_hcd(ehci_mstar_hcd);
+				usb_put_hcd(ehci_mstar_hcd);
+
+				if (ehci_hcd_mstar_platform_dev)
+				{
+					ehci_hcd_mstar_drv_probe(ehci_hcd_mstar_platform_dev);
+				}
+				else
+					printk(KERN_EMERG "ehci_hcd_mstar_platform_dev null\n");
+			} else {
+				printk(KERN_EMERG "ehci_mstar_hcd null\n");
+			}
+		}
+		mdelay(1000);
+	}
+	return 0;
+}
+
+static int __init ehci_monitor_thread_init(void)
+{
+	ehci_monitor_task = kthread_create(ehci_monitor_thread, NULL, "ehci_monitor");
+	if (IS_ERR(ehci_monitor_task))
+	{
+		printk(KERN_EMERG "Create ehci monitor thread fail\n");
+		return PTR_ERR(ehci_monitor_task);
+	}
+	wake_up_process(ehci_monitor_task);
+
+	return 0;
+}
+
+static void __exit ehci_monitor_thread_exit(void)
+{
+	kthread_stop(ehci_monitor_task);
+	return;
+}
+#endif
+
 static int __init ehci_hcd_init(void)
 {
 	int retval = 0;
@@ -1502,6 +1574,7 @@ static int __init ehci_hcd_init(void)
 
 #if (MP_USB_MSTAR==1)
 	ehci_init_driver(&ehci_mstar_hc_driver, NULL);
+	ehci_monitor_thread_init();
 #endif
 	printk(KERN_INFO "%s: " DRIVER_DESC "\n", hcd_name);
 	set_bit(USB_EHCI_LOADED, &usb_hcds_loaded);
@@ -1536,9 +1609,11 @@ static int __init ehci_hcd_init(void)
 	if (retval < 0)
 		goto clean0;
 	#endif
-	retval = platform_driver_register(&PLATFORM_DRIVER);
-	if (retval < 0)
-		goto clean0;
+    #if !defined(DISABLE_FIRST_EHC)
+    retval = platform_driver_register(&PLATFORM_DRIVER);
+    if (retval < 0)
+        goto clean0;
+    #endif
 	#ifdef ENABLE_THIRD_EHC
 	retval = platform_driver_register(&THIRD_PLATFORM_DRIVER);
 	if (retval < 0)
@@ -1616,6 +1691,7 @@ static void __exit ehci_hcd_cleanup(void)
 #endif
 #ifdef PLATFORM_DRIVER
 #if (MP_USB_MSTAR==1)
+	ehci_monitor_thread_exit();
 	platform_driver_unregister(&PLATFORM_DRIVER);
 #if !defined(DISABLE_SECOND_EHC)
 	platform_driver_unregister(&SECOND_PLATFORM_DRIVER);

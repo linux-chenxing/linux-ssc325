@@ -1,9 +1,8 @@
 /*
 * mhal_iic.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 //#include "MsCommon.h"
@@ -880,7 +879,7 @@ static BOOL HAL_HWI2C_DMA_WaitDone(U16 u16PortOffset, U8 u8ReadWrite)
     //get port index for delay factor
     if(FALSE == HAL_HWI2C_GetPortIdxByOffset(u16PortOffset,&u8Port))
     {
-        HWI2C_HAL_ERR("[DMA]: Get Port Idx By Offset Error!\n");
+        // HWI2C_HAL_ERR("[DMA]: Get Port Idx By Offset Error!\n");
         return FALSE;
     }
     //clear transfer dine first for savfty
@@ -907,7 +906,7 @@ static BOOL HAL_HWI2C_DMA_WaitDone(U16 u16PortOffset, U8 u8ReadWrite)
     return FALSE;
 }
 
-static BOOL HAL_HWI2C_DMA_SetDelayFactor(U16 u16PortOffset, HAL_HWI2C_CLKSEL eClkSel)
+static BOOL HAL_HWI2C_DMA_SetDelayFactor(U16 u16PortOffset, HAL_HWI2C_CLK_SEL eClkSel)
 {
     U8 u8Port;
 
@@ -920,17 +919,21 @@ static BOOL HAL_HWI2C_DMA_SetDelayFactor(U16 u16PortOffset, HAL_HWI2C_CLKSEL eCl
     }
     switch(eClkSel)//use Xtal = 24M Hz
     {
-        case E_HAL_HWI2C_CLKSEL_HIGH: // 400 KHz
+        case E_HAL_HWI2C_CLK_1500KHZ: 
+        case E_HAL_HWI2C_CLK_1000KHZ: 
+        case E_HAL_HWI2C_CLK_800KHZ: 
+        case E_HAL_HWI2C_CLK_600KHZ: 
+        case E_HAL_HWI2C_CLK_400KHZ: // 400 KHz
             g_u16DmaDelayFactor[u8Port]=1; break;
-        case E_HAL_HWI2C_CLKSEL_NORMAL: //300 KHz
+        case E_HAL_HWI2C_CLK_300KHZ: //300 KHz
             g_u16DmaDelayFactor[u8Port]=1; break;
-        case E_HAL_HWI2C_CLKSEL_SLOW: //200 KHz
+        case E_HAL_HWI2C_CLK_200KHZ: //200 KHz
             g_u16DmaDelayFactor[u8Port]=1; break;
-        case E_HAL_HWI2C_CLKSEL_VSLOW: //100 KHz
+        case E_HAL_HWI2C_CLK_100KHZ: //100 KHz
             g_u16DmaDelayFactor[u8Port]=2; break;
-        case E_HAL_HWI2C_CLKSEL_USLOW: //50 KHz
+        case E_HAL_HWI2C_CLK_50KHZ: //50 KHz
             g_u16DmaDelayFactor[u8Port]=3; break;
-        case E_HAL_HWI2C_CLKSEL_UVSLOW: //25 KHz
+        case E_HAL_HWI2C_CLK_25KHZ: //25 KHz
             g_u16DmaDelayFactor[u8Port]=3; break;
         default:
             g_u16DmaDelayFactor[u8Port]=5;
@@ -938,6 +941,7 @@ static BOOL HAL_HWI2C_DMA_SetDelayFactor(U16 u16PortOffset, HAL_HWI2C_CLKSEL eCl
     }
     return TRUE;
 }
+
 
 //#####################
 //
@@ -998,7 +1002,7 @@ BOOL HAL_HWI2C_Master_Enable(U16 u16PortOffset)
     HAL_HWI2C_Reset(u16PortOffset,TRUE);
     HAL_HWI2C_Reset(u16PortOffset,FALSE);
     //(3) configuration
-    HAL_HWI2C_EnINT(u16PortOffset,TRUE);
+    HAL_HWI2C_EnINT(u16PortOffset,FALSE);
     HAL_HWI2C_EnClkStretch(u16PortOffset,TRUE);
     HAL_HWI2C_EnFilter(u16PortOffset,TRUE);
     HAL_HWI2C_EnPushSda(u16PortOffset,TRUE);
@@ -1228,6 +1232,25 @@ BOOL HAL_HWI2C_SetClk(U16 u16PortOffset, HAL_HWI2C_CLKSEL eClkSel)
     HAL_HWI2C_Write2Byte(REG_HWI2C_STT_CNT+u16PortOffset, u16SttCnt);
     HAL_HWI2C_Write2Byte(REG_HWI2C_LTH_CNT+u16PortOffset, u16LchCnt);
     //HAL_HWI2C_Write2Byte(REG_HWI2C_TMT_CNT+u16PortOffset, 0x0000);
+    return TRUE;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief \b Function  \b Name: HAL_HWI2C_SetClkCnt
+/// @brief \b Function  \b Description: Set I2C clock L/H cnt
+/// @param <IN>         \b HAL_HWI2C_ClkCntCfg : clk cnt cfg
+/// @param <OUT>        \b None :
+/// @param <RET>        \b TRUE : ok, FALSE : fail
+////////////////////////////////////////////////////////////////////////////////
+BOOL HAL_HWI2C_SetClkCnt(U16 u16PortOffset, HAL_HWI2C_ClkCntCfg *clkcnt)
+{
+    HWI2C_HAL_FUNC();
+    HAL_HWI2C_Write2Byte(REG_HWI2C_CKH_CNT+u16PortOffset, clkcnt->u16ClkHCnt);
+    HAL_HWI2C_Write2Byte(REG_HWI2C_CKL_CNT+u16PortOffset, clkcnt->u16ClkLCnt);
+    HAL_HWI2C_Write2Byte(REG_HWI2C_STP_CNT+u16PortOffset, clkcnt->u16StpCnt);
+    HAL_HWI2C_Write2Byte(REG_HWI2C_SDA_CNT+u16PortOffset, clkcnt->u16SdaCnt);
+    HAL_HWI2C_Write2Byte(REG_HWI2C_STT_CNT+u16PortOffset, clkcnt->u16SttCnt);
+    HAL_HWI2C_Write2Byte(REG_HWI2C_LTH_CNT+u16PortOffset, clkcnt->u16LchCnt);
     return TRUE;
 }
 
@@ -1511,7 +1534,8 @@ BOOL HAL_HWI2C_Send_Byte(U16 u16PortOffset, U8 u8Data)
 			HAL_HWI2C_Reset(u16PortOffset,TRUE);
 			HAL_HWI2C_Reset(u16PortOffset,FALSE);
 			udelay(2);
-			HAL_HWI2C_Start(u16PortOffset);
+            if(u8Retry)
+			    HAL_HWI2C_Start(u16PortOffset);
 			udelay(2);
 		}
         //MDrv_GPIO_Set_Low(72);
@@ -1598,7 +1622,7 @@ BOOL HAL_HWI2C_DMA_Init(U16 u16PortOffset, HAL_HWI2C_PortCfg* pstPortCfg)
     //check pointer
     if(!pstPortCfg)
     {
-        HWI2C_HAL_ERR("Port cfg null pointer!\n");
+        // HWI2C_HAL_ERR("Port cfg null pointer!\n");
         return FALSE;
     }
     //(1) clear interrupt
@@ -1645,12 +1669,12 @@ BOOL HAL_HWI2C_DMA_WriteBytes(U16 u16PortOffset, U16 u16SlaveCfg, U32 uAddrCnt, 
 
     if (!pRegAddr)
     {
-        HWI2C_HAL_ERR("[DMA_W]: Null address!\n");
+        // HWI2C_HAL_ERR("[DMA_W]: Null address!\n");
         return FALSE;
     }
     if (!pData)
     {
-        HWI2C_HAL_ERR("[DMA_W]: No data for writing!\n");
+        // HWI2C_HAL_ERR("[DMA_W]: No data for writing!\n");
         return FALSE;
     }
 
@@ -1665,13 +1689,13 @@ BOOL HAL_HWI2C_DMA_WriteBytes(U16 u16PortOffset, U16 u16SlaveCfg, U32 uAddrCnt, 
     //set command buffer
     if(HAL_HWI2C_DMA_SetTxfrCmd(u16PortOffset,(U8)uAddrCnt,pRegAddr)==FALSE)
     {
-        HWI2C_HAL_ERR("[DMA_W]: Set command buffer error!\n");
+        // HWI2C_HAL_ERR("[DMA_W]: Set command buffer error!\n");
         return FALSE;
     }
     //set data to dram
     if(HAL_HWI2C_DMA_SetMiuData(u16PortOffset,0,pData)==FALSE)
     {
-        HWI2C_HAL_ERR("[DMA_W]: Set MIU data error!\n");
+        // HWI2C_HAL_ERR("[DMA_W]: Set MIU data error!\n");
         return FALSE;
     }
     //##################
@@ -1706,24 +1730,24 @@ BOOL HAL_HWI2C_DMA_ReadBytes(U16 u16PortOffset, U16 u16SlaveCfg, U32 uAddrCnt, U
 
     if (!pRegAddr)
     {
-        HWI2C_HAL_ERR("[DMA_R]: Null address!\n");
+        // HWI2C_HAL_ERR("[DMA_R]: Null address!\n");
         return FALSE;
     }
     if (!pData)
     {
-        HWI2C_HAL_ERR("[DMA_R]: No data for reading!\n");
+        // HWI2C_HAL_ERR("[DMA_R]: No data for reading!\n");
         return FALSE;
     }
     if (u8Port>=HAL_HWI2C_PORTS)
     {
-        HWI2C_HAL_ERR("[DMA_R]: Port failure!\n");
+        // HWI2C_HAL_ERR("[DMA_R]: Port failure!\n");
         return FALSE;
     }
 
     eReadMode = g_stPortCfg[u8Port].eReadMode;
     if(eReadMode>=E_HAL_HWI2C_READ_MODE_MAX)
     {
-        HWI2C_HAL_ERR("[DMA_R]: Read mode failure!\n");
+        // HWI2C_HAL_ERR("[DMA_R]: Read mode failure!\n");
         return FALSE;
     }
 
@@ -1740,7 +1764,7 @@ BOOL HAL_HWI2C_DMA_ReadBytes(U16 u16PortOffset, U16 u16SlaveCfg, U32 uAddrCnt, U
         //set command buffer
         if(HAL_HWI2C_DMA_SetTxfrCmd(u16PortOffset,(U8)uAddrCnt,pRegAddr)==FALSE)
         {
-            HWI2C_HAL_ERR("[DMA_R:W]: Set command buffer error!\n");
+            // HWI2C_HAL_ERR("[DMA_R:W]: Set command buffer error!\n");
             return FALSE;
         }
         HAL_HWI2C_DMA_SetDataLen(u16PortOffset,0);
@@ -1766,6 +1790,9 @@ BOOL HAL_HWI2C_DMA_ReadBytes(U16 u16PortOffset, U16 u16SlaveCfg, U32 uAddrCnt, U
     HAL_HWI2C_DMA_SetCmdLen(u16PortOffset,0);
     //set command length for reading
     HAL_HWI2C_DMA_SetDataLen(u16PortOffset,uSize);
+    //set DMA buffer MIU address
+    HAL_HWI2C_DMA_SetMiuAddr(u16PortOffset, g_stPortCfg[u8Port].u32DmaPhyAddr);
+
     //##################
     //  Trigger to READ
     if(HAL_HWI2C_DMA_WaitDone(u16PortOffset,HWI2C_DMA_READ)==FALSE)
@@ -1776,7 +1803,7 @@ BOOL HAL_HWI2C_DMA_ReadBytes(U16 u16PortOffset, U16 u16SlaveCfg, U32 uAddrCnt, U
     //get data to dram
     if(HAL_HWI2C_DMA_GetMiuData(u16PortOffset,uSize,pData)==FALSE)
     {
-        HWI2C_HAL_ERR("[DMA_R:R]: Get MIU data error!\n");
+        // HWI2C_HAL_ERR("[DMA_R:R]: Get MIU data error!\n");
         return FALSE;
     }
 
@@ -1800,4 +1827,26 @@ void HAL_HWI2C_Init_ExtraProc(void)
     HWI2C_HAL_FUNC();
     //Extra procedure TODO
 }
+
+BOOL HAL_HWI2C_CheckAbility(HAL_HWI2C_HW_FEATURE etype,mhal_i2c_feature_fp *fp)
+{
+	return FALSE;
+}
+void HAL_HWI2C_IrqFree(U32 u32irq)
+{
+	return;
+}
+void HAL_HWI2C_IrqRequest(U32 u32irq, U32 u32group, void *pdev)
+{
+	return;
+}
+void HAL_HWI2C_DMA_TsemInit(U8 u8Port)
+{
+	return;
+}
+void HAL_HWI2C_DMA_TsemDeinit(U8 u8Port)
+{
+	return;
+}
+
 #endif

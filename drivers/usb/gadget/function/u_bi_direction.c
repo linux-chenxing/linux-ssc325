@@ -1171,8 +1171,8 @@ int bi_out_packet_handle(struct usb_ep *ep, struct usb_request *req)
 	if(req->length != sizeof(bi_control_header_t) ||
 		crq->magic != USB_CAMMAND_MAGIC){
 		BDBG("Dealing specify out data reqlen %d \n",req->actual);
-        if(req->actual)
-		buffer_queue_queue_data(&h->bulk_out_queue, NULL, req->buf, req->actual);
+		if(req->actual)
+			buffer_queue_queue_data(&h->bulk_out_queue, NULL, req->buf, req->actual);
 
 		if(h->opened)
 			wake_up_interruptible(&h->waitq);

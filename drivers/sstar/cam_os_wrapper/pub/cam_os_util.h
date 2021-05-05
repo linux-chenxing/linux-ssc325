@@ -1,9 +1,8 @@
 /*
-* cam_os_util.h - Sigmastar
+* cam_os_util.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: giggs.huang <giggs.huang@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -38,9 +37,9 @@ extern "C" {
 #endif
 #endif
 
-#define CAM_OS_CONTAINER_OF(ptr, type, member) ({          \
-        const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
-        (type *)( (char *)__mptr - offsetof(type,member) );})
+#define CAM_OS_CONTAINER_OF(ptr, type, member) ({              \
+        void *__mptr = (void *)(ptr);                   \
+        ((type *)(__mptr - offsetof(type, member))); })
 
 #ifndef likely
 #define CAM_OS_LIKELY(x) __builtin_expect(!!(x), 1)
@@ -137,5 +136,11 @@ static FORCE_INLINE s32 CAM_OS_FLS64(u64 x)
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
+
+#define CAM_OS_MIN(a,b) (((a)<(b))?(a):(b))
+#define CAM_OS_MAX(a,b) (((a)>(b))?(a):(b))
+
+#define CAM_OS_ALIGN_DOWN(val, alignment)   (((val)/(alignment))*(alignment))
+#define CAM_OS_ALIGN_UP(val, alignment)     ((( (val)+(alignment)-1)/(alignment))*(alignment))
 
 #endif //__CAM_OS_UTIL_H__

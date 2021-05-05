@@ -32,7 +32,7 @@
 #endif
 
 #if (MP_USB_MSTAR==1) && (XHCI_FLUSHPIPE_PATCH)
-extern void Chip_Flush_Memory(void);
+extern void Chip_Flush_MIU_Pipe(void);
 #endif
 #if defined(CONFIG_SUSPEND) && defined(CONFIG_MP_USB_STR_PATCH)
 extern bool is_suspending(void);
@@ -504,7 +504,7 @@ void xhci_ring_device(struct xhci_hcd *xhci, int slot_id)
 	struct xhci_virt_ep *ep;
 
 #if (MP_USB_MSTAR==1) && (XHCI_FLUSHPIPE_PATCH)
-	Chip_Flush_Memory();
+	Chip_Flush_MIU_Pipe();
 #endif
 
 	for (i = 0; i < LAST_EP_INDEX + 1; i++) {

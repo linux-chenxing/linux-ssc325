@@ -25,15 +25,37 @@
 #define FILE_PCM_CAPTURE	"/dev/snd/pcmC0D0c"
 #define FILE_CONTROL		"/dev/snd/controlC0"
 
-#define UAC1_OUT_EP_MAX_PACKET_SIZE  	512
-#define UAC1_OUT_REQ_COUNT           	8
-#define UAC1_AUDIO_PLAYBACK_BUF_SIZE  	2048
-
 #if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)
-#define UAC1_IN_EP_MAX_PACKET_SIZE  	1024
-#define UAC1_IN_REQ_COUNT           	8
-#define UAC1_AUDIO_CAPTURE_BUF_SIZE 	2048
+#define UAC1_CAPTURE_SAMPLE_RATE		16000
+#define UAC1_CAPTURE_CHANNEL_COUNT		1
+#define UAC1_IN_EP_MAX_PACKET_SIZE		32//512
+#define UAC1_IN_REQ_COUNT        		16
+#define UAC1_AUDIO_CAPTURE_BUF_SIZE		    4096
+#define UAC1_AUDIO_PTN_PER_FRAME_SIZE		1024
+
+#define UAC1_PLAYBACK_SAMPLE_RATE		16000
+#define UAC1_PLAYBACK_CHANNEL_COUNT		1
 #endif
+#define UAC1_OUT_EP_MAX_PACKET_SIZE		512
+#define UAC1_OUT_REQ_COUNT        		8
+#define UAC1_AUDIO_PLAYBACK_BUF_SIZE 	2048
+
+/**
+ *  mixer control info
+ *
+ *  AMIC: (-6, 57)db, value(0, 21)
+ **/
+#define UAC_VOLUME_STEP 256
+#define CAPTURE_VOLUME_ID   0
+#define CAPTURE_VOLUME_MAX  57
+#define CAPTURE_VOLUME_MIN  -6
+#define CAPTURE_VOLUME_STEP 3
+#define CAPTURE_VOLUME_CUR  12
+
+#define UAC_VOLUME_ATTR_TO_DB(attr) ((s8)((attr / UAC_VOLUME_STEP)))
+#define DB_TO_UAC_VOLUME_ATTR(db) ((u16)(db * UAC_VOLUME_STEP))
+#define DB_TO_MIXER_VALUE(db) (db/CAPTURE_VOLUME_STEP + 2)
+#define UAC_VOLUME_ATTR_TO_MIXER_VALUE(attr) DB_TO_MIXER_VALUE(UAC_VOLUME_ATTR_TO_DB(attr))
 
 /*
  * This represents the USB side of an audio card device, managed by a USB
@@ -76,12 +98,18 @@ typedef enum audio_mode {
 struct f_uac1_opts {
 	struct usb_function_instance	func_inst;
 	int				out_req_buf_size;
-	int				in_req_buf_size;
 	int				out_req_count;
-	int				in_req_count;
 	int				audio_playback_buf_size;
-	int				audio_capture_buf_size;
 #if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)
+	int				playback_channel_count;
+	int				playback_sample_rate;
+
+	int				capture_channel_count;
+	int				capture_sample_rate;
+	int				in_req_buf_size;
+	int				in_req_count;
+	int				audio_capture_period_size;
+	int				audio_capture_buf_size;
 	audio_mode_e			audio_play_mode;
 #endif
 	char				*fn_play;
@@ -105,4 +133,5 @@ int u_audio_get_playback_channels(struct gaudio *card);
 int u_audio_get_playback_rate(struct gaudio *card);
 int u_audio_get_capture_channels(struct gaudio *card);
 int u_audio_get_capture_rate(struct gaudio *card);
+int gaudio_mixer_control(int info_id, int value);
 #endif /* __U_AUDIO_H */

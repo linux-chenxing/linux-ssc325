@@ -99,7 +99,9 @@ static int kernel_init(void *);
 extern void init_IRQ(void);
 extern void fork_init(void);
 extern void radix_tree_init(void);
-
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_MONITOR
+extern void show_mm_time(void);
+#endif
 /*
  * Debug helper: via this flag we know that we are in 'early bootup code'
  * where only the boot processor is running with IRQ disabled.  This means
@@ -965,12 +967,17 @@ static int __ref kernel_init(void *unused)
 	kernel_init_freeable();
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
+#ifndef CONFIG_DEFERRED_INIICALLS
 	free_initmem();
+#endif
 	mark_readonly();
 	system_state = SYSTEM_RUNNING;
 	numa_default_policy();
 
 	rcu_end_inkernel_boot();
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_MONITOR
+	show_mm_time();
+#endif
 #ifdef CONFIG_SS_PROFILING_TIME
     recode_timestamp(__LINE__, "ramdisk_execute_command+");
 #endif
@@ -1069,3 +1076,33 @@ static noinline void __init kernel_init_freeable(void)
 	integrity_load_keys();
 	load_default_modules();
 }
+
+#ifdef CONFIG_DEFERRED_INIICALLS
+extern initcall_t __deferred_initcall_start[], __deferred_initcall_end[];
+/* call deferred init routines */
+void do_deferred_initcalls(void)
+{
+       initcall_t *call;
+       static int already_run=0;
+
+       if (already_run) {
+               printk("do_deferred_initcalls() has already run\n");
+               return;
+       }
+
+       already_run=1;
+
+       printk("Running do_deferred_initcalls()\n");
+
+//     lock_kernel();  /* make environment similar to early boot */
+
+       for(call = __deferred_initcall_start;
+           call < __deferred_initcall_end; call++)
+               do_one_initcall(*call);
+
+       flush_scheduled_work();
+
+       free_initmem();
+//     unlock_kernel();
+}
+#endif

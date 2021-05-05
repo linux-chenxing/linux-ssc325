@@ -1,1 +1,0 @@
-../../../../cedric/eMMCDrv/src/common/cmd_mstar_emmc_bootloader.txt

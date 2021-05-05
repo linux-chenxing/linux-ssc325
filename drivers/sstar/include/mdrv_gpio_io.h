@@ -1,9 +1,8 @@
 /*
 * mdrv_gpio_io.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,12 +11,12 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <asm/types.h>
 #include "mdrv_types.h"
-
+#include <linux/gpio.h>
 //-------------------------------------------------------------------------------------------------
 //  Driver Capability
 //-------------------------------------------------------------------------------------------------
@@ -60,9 +59,17 @@ typedef struct GPIO_Reg GPIO_Reg_t;
 
 #define GPIO_IOC_MAXNR               9
 
+//for rename use
 //-------------------------------------------------------------------------------------------------
 //  Function and Variable
 //-------------------------------------------------------------------------------------------------
+void camdriver_gpio_set(struct gpio_chip *chip, unsigned offset, int value);
+int camdriver_gpio_get(struct gpio_chip *chip, unsigned offset);
+int camdriver_gpio_direction_input(struct gpio_chip *chip, unsigned offset);
+int camdriver_gpio_request(struct gpio_chip *chip, unsigned offset);
+void camdriver_gpio_free(struct gpio_chip *chip, unsigned offset);
+int camdriver_gpio_direction_output(struct gpio_chip *chip, unsigned offset,
+                    int value);
+int camdriver_gpio_to_irq(struct gpio_chip *chip, unsigned offset);
 
 void __mod_gpio_init(void);
-

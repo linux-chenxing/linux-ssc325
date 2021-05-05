@@ -1,9 +1,8 @@
 /*
 * irqs.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 /*------------------------------------------------------------------------------
@@ -169,11 +168,11 @@ GIC_SGI_NR+GIC_PPI_NR+GIC_SPI_ARM_INTERNAL_NR+GIC_SPI_MS_IRQ_NR+GIC_SPI_MS_FIQ_N
 #define INT_PMSLEEP_GPIO_8        (PMSLEEP_FIQ_START + 10)
 #define INT_PMSLEEP_GPIO_9        (PMSLEEP_FIQ_START + 11)
 #define INT_PMSLEEP_GPIO_10       (PMSLEEP_FIQ_START + 12)
-#define INT_PMSLEEP_DUMMY_13      (PMSLEEP_FIQ_START + 13)
-#define INT_PMSLEEP_DUMMY_14      (PMSLEEP_FIQ_START + 14)
-#define INT_PMSLEEP_DUMMY_15      (PMSLEEP_FIQ_START + 15)
-#define INT_PMSLEEP_DUMMY_16      (PMSLEEP_FIQ_START + 16)
-#define INT_PMSLEEP_DUMMY_17      (PMSLEEP_FIQ_START + 17)
+#define INT_PMSLEEP_GPIO_11       (PMSLEEP_FIQ_START + 13)
+#define INT_PMSLEEP_GPIO_12       (PMSLEEP_FIQ_START + 14)
+#define INT_PMSLEEP_GPIO_13       (PMSLEEP_FIQ_START + 15)
+#define INT_PMSLEEP_GPIO_14       (PMSLEEP_FIQ_START + 16)
+#define INT_PMSLEEP_GPIO_15       (PMSLEEP_FIQ_START + 17)
 #define INT_PMSLEEP_DUMMY_18      (PMSLEEP_FIQ_START + 18)
 #define INT_PMSLEEP_DUMMY_19      (PMSLEEP_FIQ_START + 19)
 #define INT_PMSLEEP_DUMMY_20      (PMSLEEP_FIQ_START + 20)

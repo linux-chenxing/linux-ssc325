@@ -1,9 +1,8 @@
 /*
 * eMMC_reg.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: joe.su <joe.su@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,9 +11,10 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
+
 #ifndef __eMMC_FCIE_REG_H__
 #define __eMMC_FCIE_REG_H__
 
@@ -124,7 +124,7 @@
 #define FCIE_MMA_PRI_REG        GET_REG_ADDR(FCIE_REG_BASE_ADDR, 0x02)
 #define FCIE_MIU_DMA_26_16      GET_REG_ADDR(FCIE_REG_BASE_ADDR, 0x03)
 #define FCIE_MIU_DMA_15_0       GET_REG_ADDR(FCIE_REG_BASE_ADDR, 0x04)
-#define FCIE_CARD_INT_EN		GET_REG_ADDR(FCIE_REG_BASE_ADDR, 0x06)
+#define FCIE_CARD_INT_EN        GET_REG_ADDR(FCIE_REG_BASE_ADDR, 0x06)
 #define FCIE_CARD_POWER         GET_REG_ADDR(FCIE_REG_BASE_ADDR, 0x08)
 #define FCIE_FORCE_INT          GET_REG_ADDR(FCIE_REG_BASE_ADDR, 0x09)
 #define FCIE_PATH_CTRL          GET_REG_ADDR(FCIE_REG_BASE_ADDR, 0x0A)
@@ -167,10 +167,10 @@
 #define BIT_SD_CMD_END             BIT1
 #define BIT_SD_DATA_END            BIT2
 #define BIT_CARD_DMA_END           BIT11
-#define BIT_MIU_LAST_DONE		   BIT14
-#define BIT_CARD_BOOT_DONE		   BIT15
+#define BIT_MIU_LAST_DONE          BIT14
+#define BIT_CARD_BOOT_DONE         BIT15
 #define BIT_ALL_CARD_INT_EVENTS    (BIT_MMA_DATA_END|BIT_SD_CMD_END|BIT_SD_DATA_END\
-	                               |BIT_CARD_DMA_END|BIT_MIU_LAST_DONE|BIT_CARD_BOOT_DONE)
+                                   |BIT_CARD_DMA_END|BIT_MIU_LAST_DONE|BIT_CARD_BOOT_DONE)
 /* FCIE_MMA_PRI_REG 0x02 */
 #define BIT_DMA_DIR_W              BIT2
 #define BIT_MIU_REQUEST_RST        BIT4
@@ -263,14 +263,14 @@
 #define BIT_DQS_MODE_2_5T          (2 << BIT_DQS_MODE_SHIFT)
 #define BIT_DQS_MODE_1T            (3 << BIT_DQS_MODE_SHIFT)
 
-#define BIT_SKEW1_INV 		BIT8
-#define BIT_SKEW2_INV 		BIT9
-#define BIT_SKEW3_INV 		BIT10
-#define BIT_SKEW4_INV 		BIT11
+#define BIT_SKEW1_INV       BIT8
+#define BIT_SKEW2_INV       BIT9
+#define BIT_SKEW3_INV       BIT10
+#define BIT_SKEW4_INV       BIT11
 
-#define BITS_SKEW_SET_MSK	0x0F00
-#define BITS_SKEW_SET0		0x0700
-#define BITS_SKEW_SET1		0x0000
+#define BITS_SKEW_SET_MSK   0x0F00
+#define BITS_SKEW_SET0      0x0700
+#define BITS_SKEW_SET1      0x0000
 
 /* FCIE_REG_2Dh 0x2D */
 #define BIT_ddr_timing_patch        BIT0
@@ -294,23 +294,23 @@
 #define BIT_FCIE_SOFT_RST_n         BIT12
 #define BIT_FCIE_PPFIFO_CLK         BIT14
 /* FCIE_MACRO_REDNT 0x32 */
-#define BIT_CRC_STATUS_4_HS200		BIT0
-#define BIT_LATE_DATA0_W_IP_CLK		BIT1
+#define BIT_CRC_STATUS_4_HS200      BIT0
+#define BIT_LATE_DATA0_W_IP_CLK     BIT1
 #define BIT_DQS_DELAY_CELL_SEL_MASK (BIT0|BIT1|BIT2|BIT3)
 #define BIT_MACRO_TEST_MODE_MASK    (BIT4|BIT5)
 #define BIT_MACRO_DIR               BIT6
 #define BIT_TOGGLE_CNT_RST          BIT7
 /* FCIE_TOGGLE_CNT */
-#define BITS_8_R_TOGGLE_CNT            0x0111 // 256 data clock + 17 bits CRC
-#define BITS_4_R_TOGGLE_CNT            0x0211 // 512 data clcok + 17 bits CRC
-#define BITS_8_W_TOGGLE_CNT            0x011A // 256 data clcok + 26 bits CRC + CRC status
-#define BITS_4_W_TOGGLE_CNT            0x021A // 512 data clcok + 26 bits CRC + CRC status
+#define BITS_8_R_TOGGLE_CNT         0x0111 // 256 data clock + 17 bits CRC
+#define BITS_4_R_TOGGLE_CNT         0x0211 // 512 data clcok + 17 bits CRC
+#define BITS_8_W_TOGGLE_CNT         0x011A // 256 data clcok + 26 bits CRC + CRC status
+#define BITS_4_W_TOGGLE_CNT         0x021A // 512 data clcok + 26 bits CRC + CRC status
 
-#define TOGGLE_CNT_128_CLK_R           0x0091 // 128 data clcok + 17 bits CRC
-#define TOGGLE_CNT_256_CLK_R           0x0111 // 256 data clcok + 17 bits CRC
-#define TOGGLE_CNT_512_CLK_R           0x0211 // 512 data clcok + 17 bits CRC
-#define TOGGLE_CNT_256_CLK_W           0x011A // 256 data clcok + 26 bits CRC + CRC status
-#define TOGGLE_CNT_512_CLK_W           0x021A // 512 data clcok + 26 bits CRC + CRC status
+#define TOGGLE_CNT_128_CLK_R        0x0091 // 128 data clcok + 17 bits CRC
+#define TOGGLE_CNT_256_CLK_R        0x0111 // 256 data clcok + 17 bits CRC
+#define TOGGLE_CNT_512_CLK_R        0x0211 // 512 data clcok + 17 bits CRC
+#define TOGGLE_CNT_256_CLK_W        0x011A // 256 data clcok + 26 bits CRC + CRC status
+#define TOGGLE_CNT_512_CLK_W        0x021A // 512 data clcok + 26 bits CRC + CRC status
 
 /* FCIE_PWR_SAVE_MODE 0x35 */
 #define BIT_POWER_SAVE_MODE_EN      BIT0      /* Power Save HW enable, high active */
@@ -320,6 +320,7 @@
 #define BIT_RIU_SAVE_EVENT          BIT5      /* RO, RIU emulation power save event */
 #define BIT_RST_SAVE_EVENT          BIT6      /* RO, Hardware reset power save event */
 #define BIT_BAT_SAVE_EVENT          BIT7      /* RO, Battery lost power save event */
+
 /*FCIE_HS200_PATCH 0x3F*/
 #define BIT_HS200_RDDAT_PATCH       BIT8
 #define BIT_HS200_NORSP_PATCH       BIT9

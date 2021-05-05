@@ -99,11 +99,6 @@ config FAT_DEFAULT_IOCHARSET
 
 	  Enable any character sets you need in File Systems/Native Language
 	  Support.
-config MP_KERNEL_COMPAT_PATCH_FIX_INODE_CLUSTER_LIST
-	bool "fix fat mate data"
-	def_bool y
-	help
-	  This options for fix fat mate data
 
 config FAT_DEFAULT_UTF8
 	bool "Enable FAT UTF-8 option by default"
@@ -119,3 +114,12 @@ config FAT_DEFAULT_UTF8
 	  Say Y if you use UTF-8 encoding for file names, N otherwise.
 
 	  See <file:Documentation/filesystems/vfat.txt> for more information.
+
+config FAT_FALLOC_FL_KEEP_SIZE_UPDATE_FILE_SIZE
+	bool "Update file size if user call FALLOC_FL_KEEP_SIZE"
+	depends on FAT_FS
+	default n
+	help
+	  Set this if you want to update file size when user call 
+	  FALLOC_FL_KEEP_SIZE, otherwise FAT only allocate clusters and file
+	  size is zero.

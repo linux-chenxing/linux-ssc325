@@ -221,7 +221,7 @@ VPATH		:= $(srctree)$(if $(KBUILD_EXTMOD),:$(KBUILD_EXTMOD))
 
 export srctree objtree VPATH
 
-SSTAR_CHIP_FILE := 'sstar_chip.txt'
+SSTAR_CHIP_FILE := '.sstar_chip.txt'
 SSTAR_CHIP_MODEL := $(strip $(shell cat $(SSTAR_CHIP_FILE)))
 
 # SUBARCH tells the usermode build what the underlying arch is.  That is set
@@ -822,6 +822,9 @@ KBUILD_CFLAGS   += $(call cc-option,-Wno-sizeof-pointer-memaccess)
 KBUILD_CFLAGS   += $(call cc-option,-Wno-array-bounds)
 KBUILD_CFLAGS   += $(call cc-option,-Wno-packed-not-aligned)
 
+# disable warnings in gcc 9.2
+KBUILD_CFLAGS   += $(call cc-disable-warning, address-of-packed-member)
+
 # disable warnings in gcc 7.2.1
 #KBUILD_CFLAGS   += $(call cc-option,-Wno-switch-unreachable)
 #KBUILD_CFLAGS   += $(call cc-option,-Wno-misleading-indentation)
@@ -1037,6 +1040,13 @@ BRANCH_ID := $(shell git rev-parse --abbrev-ref HEAD 2> /dev/null | sed -e 's/\/
 
 GCCVERISON := $(shell $(CC) -dumpversion)
 
+#COMMITNUMBER := g$(shell git log --format=%h -n 1 2> /dev/null)
+GITVERNUM := $(shell git log --format=%H -n 1 2> /dev/null)
+#BRANCH_ID := $(shell git rev-parse --abbrev-ref HEAD 2> /dev/null | sed -e 's/\//_/g')
+BUILDCODEDATE = $(shell date +"%Y_%m_%d_%H_%M_%S")
+BUILDCODEUSER = $(shell whoami)
+
+
 ifeq ($(COMMITNUMBER),g)
 file := gitInformation.txt
 gitLog := $(shell strings ${file})
@@ -1048,6 +1058,7 @@ endif
 # Store (new) KERNELRELEASE string in include/config/kernel.release
 include/config/kernel.release: include/config/auto.conf FORCE
 	$(call filechk,kernel.release)
+ifneq ($(CONFIG_ARCH_SSTAR),)
 	@echo '  GCC version: $(GCCVERISON)'
 ifeq ($(MS_PLATFORM_ID),)
 	@echo "ERROR!! MS_PLATOFRM_ID is empty!!"; /bin/false
@@ -1059,7 +1070,13 @@ else
 	@python scripts/ms_gen_mvxv_h.py drivers/sstar/include/ms_version.h --comp_id KL_LX409 \
 	--changelist $(COMMITNUMBER) --chip_id $(MS_PLATFORM_ID) --branch $(BRANCH_ID) $(MS_KERNEL_TYPE)
 endif
+endif
 
+ifneq ($(CONFIG_SSTAR_CEVAXM6),)
+	@python scripts/ms_gen_ceva_version_h.py drivers/sstar/include/ms_version.h --comp_id KL_LX409 \
+        --changelist $(COMMITNUMBER) --chip_id $(MS_PLATFORM_ID) --branch $(BRANCH_ID) $(MS_KERNEL_TYPE)\
+        --gitver $(GITVERNUM) --builddate $(BUILDCODEDATE) --buildusr $(BUILDCODEUSER)
+endif
 
 ifneq ($(CONFIG_CAM_DRIVERS),)
 	@mkdir -p drivers/sstar/camdriver/include

@@ -1,9 +1,8 @@
 /*
 * mdrv_miu.h- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: karl.xiao <karl.xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #ifndef __MDRV_MIU_H__
@@ -201,6 +200,17 @@ typedef struct
     unsigned int    uAddress;
 } MIU_PortectInfo;
 
+typedef struct
+{
+    unsigned int    size;           // bytes
+    unsigned int    dram_freq;      // MHz
+    unsigned int    miupll_freq;    // MHz
+    unsigned char   type;           // 2:DDR2, 3:DDR3
+    unsigned char   data_rate;      // 4:4x mode, 8:8x mode,
+    unsigned char   bus_width;      // 16:16bit, 32:32bit, 64:64bit
+    unsigned char   ssc;            // 0:off, 1:on
+} MIU_DramInfo;
+
 //-------------------------------------------------------------------------------------------------
 //  Function and Variable
 //-------------------------------------------------------------------------------------------------
@@ -209,6 +219,8 @@ typedef struct
 
 unsigned char MDrv_MIU_Init(void);
 unsigned short* MDrv_MIU_GetDefaultClientID_KernelProtect(void);
+unsigned short* MDrv_MIU_GetClientID_KernelProtect(unsigned char u8MiuSel);
+
 unsigned char MDrv_MIU_Protect( unsigned char   u8Blockx,
                                 unsigned short  *pu8ProtectId,
                                 phy_addr        u64BusStart,
@@ -221,5 +233,6 @@ unsigned char MDrv_MIU_Slits(unsigned char u8Blockx, phy_addr u64SlitsStart, phy
 unsigned char MDrv_MIU_Get_IDEnables_Value(unsigned char u8MiuDev, unsigned char u8Blockx, unsigned char u8ClientIndex);
 unsigned int MDrv_MIU_ProtectDramSize(void);
 int MDrv_MIU_ClientIdToName(unsigned short clientId, char *clientName);
+int MDrv_MIU_Info(MIU_DramInfo *pDramInfo);
 
 #endif // __MDRV_MIU_H__

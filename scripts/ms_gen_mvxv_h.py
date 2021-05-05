@@ -16,22 +16,22 @@ if __name__ == '__main__':
     args=parser.parse_args()
 
     #print args
-    
+
     if args.file is None :
-        print 'ERROR: must specify output header file!!'
+        print ('ERROR: must specify output header file!!')
         sys.exit(-1)
 
     version_file=open(args.file,'w')
-    
+
 #    if args.p4_change is not None:
 #        version_file.write("// $Change: %s $\n" % args.changelist[1:])
 
-    while len(args.comp_id) < 12 :
+    while len(args.comp_id) < 10 :
         args.comp_id += '#'
-        
-    while len(args.chip_id) < 2 :
+
+    while len(args.chip_id) < 4 :
         args.chip_id += '#'
-        
+
     while len(args.changelist) < 8 :
         args.changelist += '#'
 
@@ -58,7 +58,7 @@ if __name__ == '__main__':
 #    version_file.write('#define MVXV_CHIP_ID    ' + str(list(args.chip_id)).replace('[','{').replace(']','}') + '\n')
 #    version_file.write('#define MVXV_CHANGELIST ' + str(list(args.changelist)).replace('[','{').replace(']','}') + '\n')
 #    version_file.write('#define MVXV_COMP_ID    ' + str(list(args.comp_id)).replace('[','{').replace(']','}') + '\n')
-    version_file.write('#define MVXV_HEAD_VER   "' + '2'+'"\n')
+    version_file.write('#define MVXV_HEAD_VER   "' + '4'+'"\n')
     version_file.write('#define MVXV_LIB_TYPE   "' + args.lib_type + '"\n')
     version_file.write('#define MVXV_CHIP_ID    "' + args.chip_id + '"\n')
     version_file.write('#define MVXV_CHANGELIST "' + args.changelist + '"\n')

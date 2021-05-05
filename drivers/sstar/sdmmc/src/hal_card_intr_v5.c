@@ -1,9 +1,8 @@
 /*
 * hal_card_intr_v5.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: joe.su <joe.su@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -86,6 +85,8 @@ static volatile U16_T   gu16_MIEINT_Mode[3] = {0};
 static volatile U16_T   gu16_MIEEvent_ForInt[3] = {0};   //MIEEvent for Interrupt
 static volatile U16_T   gu16_MIEIntEN_ForSDIO[3] = {0};
 static volatile BOOL_T  gb_StopWaitMIE[3] = {0};
+volatile U16_T MIEEvent = 0;        //for debug
+volatile U16_T Trig_MIE_INTR = 0;   //for debug
 
 // Trace Funcion
 //-----------------------------------------------------------------------------------------------------------
@@ -95,9 +96,7 @@ static volatile BOOL_T  gb_StopWaitMIE[3] = {0};
     #define TR_INT(p)
 #endif
 
-
-
-BOOL_T _CARD_INT_SaveMIEEvent(IPEmType eIP)
+BOOL_T _CARD_INT_SaveMIEEvent(IpOrder eIP)
 {
     U16_T u16Reg = CARD_REG(A_MIE_EVENT_REG(eIP));
 
@@ -119,9 +118,9 @@ BOOL_T _CARD_INT_SaveMIEEvent(IPEmType eIP)
     }
 
 #if 0 // For Debug whether event clear or not
-    prtstring("Debug: [MIE_EVENT_REG]=       ");
-    prtU16Hex(CARD_REG(A_MIE_EVENT_REG(eIP)));
-    prtstring("\r\n");
+    sdmmc_print("Debug: [MIE_EVENT_REG]=       ");
+    sdmmc_print("0x%04X", CARD_REG(A_MIE_EVENT_REG(eIP)));
+    sdmmc_print("\r\n");
 
     while(1)
     {
@@ -131,8 +130,7 @@ BOOL_T _CARD_INT_SaveMIEEvent(IPEmType eIP)
     return (TRUE);
 }
 
-
-static BOOL_T _CARD_INT_DetectSDIOInt(IPEmType eIP)
+static BOOL_T _CARD_INT_DetectSDIOInt(IpOrder eIP)
 {
     U16_T u16Reg = CARD_REG(A_MIE_EVENT_REG(eIP));
 
@@ -148,128 +146,54 @@ static BOOL_T _CARD_INT_DetectSDIOInt(IPEmType eIP)
 
 }
 
-
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_INT_MIEIntCtrl
- *     @author jeremy.wang (2015/11/4)
- * Desc: Enable Card MIE Interrupt Mode
- *
- * @param eIP : FCIE1/FCIE2/...
- * @param eCardInt : SD/MS/CF/XD...
- * @param bEnable : Enable (TRUE) or Disable (FALSE)
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_INT_MIEIntCtrl(IPEmType eIP, IntCardEmType eCardInt, BOOL_T bEnable)
+void Hal_CARD_INT_MIEIntCtrl(IpOrder eIP, BOOL_T bEnable)
 {
-    if(bEnable)
-        gu16_MIEINT_Mode[eIP] |= eCardInt;
-    else
-        gu16_MIEINT_Mode[eIP]  &= (~eCardInt);
+    gu16_MIEINT_Mode[eIP] = bEnable;
 }
 
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_INT_MIEIntRunning
- *     @author jeremy.wang (2011/9/7)
- * Desc: Check Int Mode Running or Not
- *
- * @param eIP :  FCIE1/FCIE2/...
- * @param eCardInt : SD/MS/CF/XD...
- *
- * @return BOOL_T  : Interrupt Running or Not
- ----------------------------------------------------------------------------------------------------------*/
-BOOL_T Hal_CARD_INT_MIEIntRunning(IPEmType eIP, IntCardEmType eCardInt)
+BOOL_T Hal_CARD_INT_MIEIntRunning(IpOrder eIP)
 {
-    if(gu16_MIEINT_Mode[eIP] & eCardInt )
-        return (TRUE);
-    else
-        return (FALSE);
+    return gu16_MIEINT_Mode[eIP];
 }
 
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_INT_SetMIEIntEn
- *     @author jeremy.wang (2011/12/20)
- * Desc: Set MIE_Int_En to Trig Interrupt
- *
- * @param eIP : FCIE1/FCIE2/...
- * @param eCardInt : SD/MS/CF/XD...
- * @param u16RegMIEIntEN : MIE_Int_En Reg Setting
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_INT_SetMIEIntEn(IPEmType eIP, IntCardEmType eCardInt, U16_T u16RegMIEIntEN)
+void Hal_CARD_INT_SetMIEIntEn(IpOrder eIP, U16_T u16RegMIEIntEN)
 {
-    /****** Set SD MIE Int Event ******/
-    if(eCardInt == EV_INT_SD)
+    if (gu16_MIEINT_Mode[eIP])
     {
-        if(gu16_MIEINT_Mode[eIP] & EV_INT_SD)
-        {
-            CARD_REG(A_MIE_INT_EN_REG(eIP)) = (u16RegMIEIntEN | gu16_MIEIntEN_ForSDIO[eIP]) ;  //Enable MIE_INT_EN
-        }
-        else
-            CARD_REG(A_MIE_INT_EN_REG(eIP)) = 0;                //Clear MIE_INT_EN to Avoid Interrupt
+        //Enable MIE_INT_EN
+        CARD_REG(A_MIE_INT_EN_REG(eIP)) = (u16RegMIEIntEN | gu16_MIEIntEN_ForSDIO[eIP]);
     }
-
-}
-
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_INT_SetMIEIntEn_ForSDIO
- *     @author jeremy.wang (2014/5/28)
- * Desc:
- *
- * @param eIP :
- * @param eCardInt :
- * @param bEnable :
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_INT_SetMIEIntEn_ForSDIO(IPEmType eIP, IntCardEmType eCardInt, BOOL_T bEnable)
-{
-    if(eCardInt == EV_INT_SD)
+    else
     {
-        if(gu16_MIEINT_Mode[eIP] & EV_INT_SD)
-        {
-            if(bEnable)
-            {
-                /****** Specail Process: Clear SDIO Int to avoid trig Int after SDIO Int Enable ******/
-                CARD_REG(A_MIE_EVENT_REG(eIP)) = R_SDIO_INT;
-
-                gu16_MIEIntEN_ForSDIO[eIP] = R_SDIO_INT_IEN;
-                CARD_REG_SETBIT(A_MIE_INT_EN_REG(eIP), R_SDIO_INT_IEN);
-            }
-            else
-            {
-                gu16_MIEIntEN_ForSDIO[eIP] = 0;
-                CARD_REG_CLRBIT(A_MIE_INT_EN_REG(eIP), R_SDIO_INT_IEN);
-            }
-        }
+        //Clear MIE_INT_EN to Avoid Interrupt
+        CARD_REG(A_MIE_INT_EN_REG(eIP)) = 0;
     }
 }
 
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_INT_ClearMIEEvent
- *     @author jeremy.wang (2011/9/7)
- * Desc: Clear MIE Event That We Have Saved in Interrupt Mode
- *
- * @param eIP : FCIE1/FCIE2/...
- ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_INT_ClearMIEEvent(IPEmType eIP)
+void Hal_CARD_INT_SetMIEIntEn_ForSDIO(IpOrder eIP, BOOL_T bEnable)
+{
+    if (bEnable)
+    {
+        //Clear SDIO Int to avoid trig Int after SDIO Int Enable
+        CARD_REG(A_MIE_EVENT_REG(eIP)) = R_SDIO_INT;
+
+        gu16_MIEIntEN_ForSDIO[eIP] = R_SDIO_INT_IEN;
+        CARD_REG_SETBIT(A_MIE_INT_EN_REG(eIP), R_SDIO_INT_IEN);
+    }
+    else
+    {
+        gu16_MIEIntEN_ForSDIO[eIP] = 0;
+        CARD_REG_CLRBIT(A_MIE_INT_EN_REG(eIP), R_SDIO_INT_IEN);
+    }
+}
+
+void Hal_CARD_INT_ClearMIEEvent(IpOrder eIP)
 {
     gu16_MIEEvent_ForInt[eIP] = 0;
+    MIEEvent = 0;
 }
 
-/*----------------------------------------------------------------------------------------------------------
- *
- * Function: Hal_CARD_INT_GetMIEEvent
- *     @author jeremy.wang (2011/9/7)
- * Desc: Get Current MIE Event That We Have Saved in Interrupt Mode
- *
- * @param eIP : FCIE1/FCIE2/...
-
- * @return U16_T  : Current MIE Event
- ----------------------------------------------------------------------------------------------------------*/
-U16_T Hal_CARD_INT_GetMIEEvent(IPEmType eIP)
+U16_T Hal_CARD_INT_GetMIEEvent(IpOrder eIP)
 {
     return gu16_MIEEvent_ForInt[eIP];
 }
@@ -302,25 +226,25 @@ static DECLARE_WAIT_QUEUE_HEAD(fcie3_mieint_wait);
  *
  * @return BOOL_T  : TRUE (Success), FALSE (Timeout)
  ----------------------------------------------------------------------------------------------------------*/
-BOOL_T Hal_CARD_INT_WaitMIEEvent(IPEmType eIP, U16_T u16ReqEvent, U32_T u32WaitMs)
+BOOL_T Hal_CARD_INT_WaitMIEEvent(IpOrder eIP, U16_T u16ReqEvent, U32_T u32WaitMs)
 {
 //###########################################################################################################
 #if (D_OS == D_OS__LINUX)
 //###########################################################################################################
     long ret;
-    if(eIP==EV_IP_FCIE1)
+    if (eIP == IP_ORDER_0)
         ret = wait_event_timeout(fcie1_mieint_wait, ((gu16_MIEEvent_ForInt[eIP]& u16ReqEvent) == u16ReqEvent) || gb_StopWaitMIE[eIP], msecs_to_jiffies(u32WaitMs+WT_INT_RISKTIME));
-    else if((eIP==EV_IP_FCIE2))
+    else if (eIP == IP_ORDER_1)
         ret = wait_event_timeout(fcie2_mieint_wait, ((gu16_MIEEvent_ForInt[eIP]& u16ReqEvent) == u16ReqEvent) || gb_StopWaitMIE[eIP], msecs_to_jiffies(u32WaitMs+WT_INT_RISKTIME));
-    else if((eIP==EV_IP_FCIE3))
+    else if (eIP == IP_ORDER_2)
         ret = wait_event_timeout(fcie3_mieint_wait, ((gu16_MIEEvent_ForInt[eIP]& u16ReqEvent) == u16ReqEvent) || gb_StopWaitMIE[eIP], msecs_to_jiffies(u32WaitMs+WT_INT_RISKTIME));
 
-    if(ret == 0)
-    {//reserved for futher debugging
-        //printk("Unable to wait ip%d, evt:%X var:%X timeout\n", eIP, u16ReqEvent, gu16_MIEEvent_ForInt[eIP]);
+    if (ret == 0)
+    {
+        // It "may" be time out.
     }
 
-    if((gu16_MIEEvent_ForInt[eIP] & u16ReqEvent) != u16ReqEvent)
+    if ((gu16_MIEEvent_ForInt[eIP] & u16ReqEvent) != u16ReqEvent)
         return FALSE;
 
     return TRUE;
@@ -340,7 +264,7 @@ BOOL_T Hal_CARD_INT_WaitMIEEvent(IPEmType eIP, U16_T u16ReqEvent, U32_T u32WaitM
  * @param eIP : FCIE1/FCIE2/...
  * @param bEnable : Enable (TRUE) or Disable (FALSE)
  ----------------------------------------------------------------------------------------------------------*/
-void Hal_CARD_INT_StopWaitMIEEventCtrl(IPEmType eIP, BOOL_T bEnable)
+void Hal_CARD_INT_StopWaitMIEEventCtrl(IpOrder eIP, BOOL_T bEnable)
 {
     gb_StopWaitMIE[eIP] = bEnable;
 
@@ -350,11 +274,11 @@ void Hal_CARD_INT_StopWaitMIEEventCtrl(IPEmType eIP, BOOL_T bEnable)
     if(gb_StopWaitMIE[eIP])
     {
          /****** Break Current Wait Event *******/
-        if(eIP==EV_IP_FCIE1)
+        if (eIP == IP_ORDER_0)
             wake_up(&fcie1_mieint_wait);
-        else if((eIP==EV_IP_FCIE2))
+        else if (eIP == IP_ORDER_1)
             wake_up(&fcie2_mieint_wait);
-        else if((eIP==EV_IP_FCIE3))
+        else if (eIP == IP_ORDER_2)
             wake_up(&fcie3_mieint_wait);
     }
 #endif
@@ -393,11 +317,12 @@ irqreturn_t Hal_CARD_INT_MIE(int irq, void *p_dev_id)
 {
     irqreturn_t irq_t = IRQ_NONE;
     IntSourceStruct* pstIntSource = p_dev_id;
-    IPEmType eIP  = pstIntSource->eIP;
-    //IntCardEmType eCardInt = pstIntSource->eCardInt;
+    IpOrder eIP  = pstIntSource->eIP;
     struct ms_sdmmc_slot  *p_sdmmc_slot = pstIntSource->p_data;
 
     gu32_sd_irq_count++;
+    MIEEvent = 1;
+    Trig_MIE_INTR = 1;
 
     if(_CARD_INT_DetectSDIOInt(eIP))
     {
@@ -408,11 +333,11 @@ irqreturn_t Hal_CARD_INT_MIE(int irq, void *p_dev_id)
 
     if(_CARD_INT_SaveMIEEvent(eIP))
     {
-        if(eIP == EV_IP_FCIE1)
+        if (eIP == IP_ORDER_0)
             wake_up(&fcie1_mieint_wait);
-        else if((eIP==EV_IP_FCIE2))
+        else if (eIP == IP_ORDER_1)
             wake_up(&fcie2_mieint_wait);
-        else if((eIP==EV_IP_FCIE3))
+        else if (eIP == IP_ORDER_2)
             wake_up(&fcie3_mieint_wait);
 
         irq_t = IRQ_HANDLED;

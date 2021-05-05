@@ -3,15 +3,33 @@ menuconfig ARCH_SSTAR
 
 if ARCH_SSTAR
 
-config LH_RTOS
-    bool "Enable Hypervisor" if ARCH_MULTI_V7
-    help
-      Enable LH + RTOS.
+config SS_DUALOS
+    bool "SStar Dual-OS"
+
+choice
+    prompt "Select types of SStar Dual-OS"
+    depends on SS_DUALOS
+
+    config LH_RTOS
+        bool "Enable Hypervisor" if ARCH_MULTI_V7
+        help
+            Enable LH + RTOS.
+
+    config SS_AMP
+        bool "Enable SStar AMP" if ARCH_MULTI_V7
+        help
+            Enable SStar AMP.
+endchoice
 
 comment "Options"
-config MS_BUILTIN_DTB
-    string "Builtin DTB"
+config SS_DTB_NAME
+    string "Sstar DTB NAME"
     default ""
+    depends on SS_BUILTIN_DTB
+
+config SS_BUILTIN_DTB
+    bool "Sstar Builtin DTB"
+    default y
 
 config MS_L2X0_PATCH
     bool "L2X0 patch"
@@ -19,13 +37,13 @@ config MS_L2X0_PATCH
     default y
 
 config MS_KERNEL_TYPE
-	string 
-	default ""
-	
+    string
+    default ""
+
 config MS_ARMV7_XIP
     bool
     default y
-	depends on XIP_KERNEL
+    depends on XIP_KERNEL
 
 
 config SSTAR_CHIP_FOLDER
@@ -35,11 +53,124 @@ config SSTAR_CHIP_FOLDER
 config SSTAR_CHIP_NAME
     string
     default SSTAR_CHIP_FOLDER
-    
+
+config SSTAR_SHORT_NAME
+    string "Short Name"
+    default ""
+
+config MP_IRQ_TRACE
+    bool "MP_IRQ_TRACE"
+    default n
+
 config SKIP_SQUASHFS_BAD_BLOCK
     bool "Skip squashfs bad block"
     depends on MTD
     default y
+
+menu "Fast boot"
+config SS_BUILTIN_UNFDT
+    bool "FB_DTS: Builtin unflatted device tree"
+    depends on SS_BUILTIN_DTB
+    default n
+
+config FB_DTS_SKIP_CRC
+    bool "FB_DTS: Skip check DTB CRC "
+    default n
+
+config FB_DTS_SCAN_MEMORY_ONCE
+    bool "FB_DTS: Only search once for memory node"
+    default n
+
+config FB_DTS_SKIP_ATAGS_TO_FDT
+    bool "FB_DTS: Search ATAG_INITRD2 and ATAG_CMDLINE from atags instead of early_atags_to_fdt"
+    default n
+
+config DISABLE_CLK_DEBUGFS_SUPPORT
+    bool "Do not create the debugfs clk directory"
+    default y
+
+config DEFERRED_INIICALLS
+    bool "Support deferred initcalls"
+    default y
+
+config DEFERRED_INIICALLS_SLAB_SYSFS
+    bool "defer slab_sysfs_init"
+    depends on DEFERRED_INIICALLS
+    default n
+
+config DEFERRED_INIICALLS_PARAM_SYSFS
+    bool "defer param_sysfs_init"
+    depends on DEFERRED_INIICALLS
+    default n
+
+config DEFERRED_INIICALLS_PPERF_SYSFS
+    bool "defer perf_event_sysfs_init"
+    depends on DEFERRED_INIICALLS
+    default n
+
+config DEFERRED_INIICALLS_MORE_SYSFS
+    bool "defer irq_sysfs_init, init_clocksource_sysfs,clockevents_init_sysfs"
+    depends on DEFERRED_INIICALLS
+    default n
+
+config DEFERRED_CREATE_DTS_SYSNODE
+    bool "defer of_core_init"
+    depends on DEFERRED_INIICALLS
+    default n
+
+config DEFERRED_LINUX_ADAPTOR_INIT
+    bool "defer linux_adaptor_init"
+    depends on (DEFERRED_INIICALLS && SS_RTK_MI_ADAPTOR)
+    default n
+
+config DEFERRED_CRYPTIO_WQ_INIT
+    bool "defer crypto_wq_init"
+    depends on DEFERRED_INIICALLS
+    default n
+
+config DEFERRED_RTC_HCTOSYS
+    bool "defer rtc_hctosys"
+    depends on DEFERRED_INIICALLS
+    default n
+
+config CRYPTO_MANAGER_NO_TESTS_THREAD
+    bool "Do not create cryto test thread"
+    depends on CRYPTO_MANAGER_DISABLE_TESTS
+    default n
+
+config WAIT_TASK_INACTIVE_SPEED_UP
+    bool "WAIT_TASK_INACTIVE speed up"
+    depends on SMP
+    default y
+endmenu
+
+config MP_DEBUG_TOOL_MEMORY_USAGE_MONITOR
+    bool "To monitor the order and migratetype of buddy system pages, and the page_alloc time cose"
+    default n
+
+config MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+    bool "Tools to trace all page allocation, we can used it to analysis mem leak, or trace migration failed pages"
+    default n
+
+if MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+choice
+	prompt "MAX_STACK_COUNT"
+	default MAX_STACK_COUNT_2048
+config MAX_STACK_COUNT_1024
+	bool "1024 count"
+config MAX_STACK_COUNT_2048
+	bool "2048 count"
+config MAX_STACK_COUNT_4096
+	bool "4096 count"
+config MAX_STACK_COUNT_6144
+	bool "6144 count"
+config MAX_STACK_COUNT_8192
+	bool "8192 count"
+endchoice
+
+
+endif
+
 
 source "arch/arm/mach-sstar/$SSTAR_CHIP_NAME/Kconfig"
 

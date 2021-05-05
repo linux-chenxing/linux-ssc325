@@ -1,9 +1,8 @@
 /*
 * mdrv_ive.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: chris.luo <chris.luo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include "mdrv_ive.h"
@@ -36,12 +35,17 @@
 #include "mdrv_ive_io.h"
 #include "mdrv_ive_io_st.h"
 #include "drv_ive.h"
+#include "drv_camclk_Api.h"
+#if defined(CONFIG_CHIP_INFINITY2)
+#include "hal_clk.h"
+#endif
 
 #define MDRV_IVE_DEVICE_COUNT                   (1) // How many device will be installed
 #define MDRV_IVE_NAME           "mstar_ive"
 #define MDRV_IVE_MINOR                          (0)
 #define MDRV_IVE_CLASS_NAME     "mstar_ive_class"
 
+#if !defined(CONFIG_CHIP_INFINITY2)  //Only used by I5, I6E, except infinity 2
 //-------------------------------------------------------------------------------------------------
 // Driver Data Structure
 //-------------------------------------------------------------------------------------------------
@@ -62,6 +66,49 @@
  */
 static int mdrv_ive_clock_init(ive_dev_data *dev_data)
 {
+#ifdef CONFIG_CAM_CLK
+    u32 u32clknum;
+    u32 IveClk,ret = 0;
+    u8 str[8];
+    CAMCLK_Set_Attribute stSetCfg;
+    CAMCLK_Get_Attribute stGetCfg;
+
+    if(of_find_property(dev_data->pdev->dev.of_node,"camclk",&dev_data->IveParentCnt))
+    {
+        dev_data->IveParentCnt /= sizeof(int);
+        //printk( "[%s] Number : %d\n", __func__, num_parents);
+        if(dev_data->IveParentCnt < 0)
+        {
+            printk( "[%s] Fail to get parent count! Error Number : %d\n", __func__, dev_data->IveParentCnt);
+            return 0;
+        }
+        dev_data->pvclk = devm_kcalloc(&dev_data->pdev->dev, 1, (sizeof(void *) * dev_data->IveParentCnt), GFP_KERNEL);
+        if(!dev_data->pvclk){
+            return 0;
+        }
+        for(u32clknum = 0; u32clknum < dev_data->IveParentCnt; u32clknum++)
+        {
+            IveClk = 0;
+            of_property_read_u32_index(dev_data->pdev->dev.of_node,"camclk", u32clknum,&(IveClk));
+            if (!IveClk)
+            {
+                printk( "[%s] Fail to get clk!\n", __func__);
+            }
+            else
+            {
+                CamOsSnprintf(str, 8, "Ive_%d ",u32clknum);
+                CamClkRegister(str,IveClk,&(dev_data->pvclk[u32clknum]));
+                CamClkAttrGet(dev_data->pvclk[u32clknum],&stGetCfg);
+                CAMCLK_SETPARENT(stSetCfg,stGetCfg.u32Parent[0]);
+                CamClkAttrSet(dev_data->pvclk[u32clknum],&stSetCfg);
+            }
+        }
+    }
+    else
+    {
+        printk( "[%s] W/O Camclk \n", __func__);
+    }
+#else
     int i, ret = 0;
     struct clk *clk_parent;
 
@@ -116,7 +163,7 @@ ERROR:
     devm_kfree(&dev_data->pdev->dev, dev_data->clk);
     dev_data->clk = NULL;
     dev_data->clk_num = 0;
-
+#endif
     return ret;
 }
 
@@ -132,6 +179,20 @@ ERROR:
  */
 static void mdrv_ive_clock_release(ive_dev_data *dev_data)
 {
+#ifdef CONFIG_CAM_CLK
+    u32 u32clknum;
+
+    for(u32clknum=0;u32clknum<dev_data->IveParentCnt;u32clknum++)
+    {
+        if(dev_data->pvclk[u32clknum])
+        {
+            printk(KERN_DEBUG "[%s] %p\n", __func__,dev_data->pvclk[u32clknum]);
+            CamClkUnregister(dev_data->pvclk[u32clknum]);
+            dev_data->pvclk[u32clknum] = NULL;
+        }
+    }
+    devm_kfree(&dev_data->pdev->dev, dev_data->pvclk);
+#else
     int i;
 
     IVE_MSG(IVE_MSG_DBG, "release clock\n");
@@ -142,6 +203,7 @@ static void mdrv_ive_clock_release(ive_dev_data *dev_data)
     }
 
     devm_kfree(&dev_data->pdev->dev, dev_data->clk);
+#endif
 }
 
 /*******************************************************************************************************************
@@ -156,6 +218,18 @@ static void mdrv_ive_clock_release(ive_dev_data *dev_data)
  */
 static int mdrv_ive_clock_en(ive_dev_data *dev_data)
 {
+#ifdef CONFIG_CAM_CLK
+    u32 u32clknum = 0;
+
+    for(u32clknum = 0; u32clknum < dev_data->IveParentCnt; u32clknum++)
+    {
+        if (dev_data->pvclk[u32clknum])
+        {
+            CamClkSetOnOff(dev_data->pvclk[u32clknum],1);
+        }
+    }
+
+#else
     int i, ret = 0;
 
     IVE_MSG(IVE_MSG_DBG, "enable clock\n");
@@ -167,7 +241,7 @@ static int mdrv_ive_clock_en(ive_dev_data *dev_data)
             return -1;
         }
     }
-
+#endif
     return 0;
 }
 
@@ -183,6 +257,17 @@ static int mdrv_ive_clock_en(ive_dev_data *dev_data)
  */
 static void mdrv_ive_clock_dis(ive_dev_data *dev_data)
 {
+#ifdef CONFIG_CAM_CLK
+    u32 u32clknum = 0;
+
+    for(u32clknum = 0; u32clknum < dev_data->IveParentCnt; u32clknum++)
+    {
+        if (dev_data->pvclk[u32clknum])
+        {
+            CamClkSetOnOff(dev_data->pvclk[u32clknum],0);
+        }
+    }
+#else
     int i = 0;
 
     IVE_MSG(IVE_MSG_DBG, "disable clock\n");
@@ -190,7 +275,9 @@ static void mdrv_ive_clock_dis(ive_dev_data *dev_data)
     for (i=0; i<dev_data->clk_num; i++) {
         clk_disable_unprepare(dev_data->clk[i]);
     }
+#endif
 }
+#endif  //#if !defined(CONFIG_CHIAO_INFINITY2)  //Only used by I5, I6E, except infinity 2
 
 //-------------------------------------------------------------------------------------------------
 // File operations
@@ -206,7 +293,9 @@ void mdrv_ive_drv_isr_post_proc(struct work_struct *wq)
 
     file_data = ive_drv_post_process(&dev_data->drv_handle);
 
+#if !defined(CONFIG_CHIP_INFINITY2)  //Only used by I5, I6E, except infinity 2
     mdrv_ive_clock_dis(dev_data);
+#endif
 
     // Leave critical section
     mutex_unlock(&dev_data->mutex);
@@ -269,7 +358,6 @@ int mdrv_ive_drv_open(struct inode *inode, struct file *filp)
 {
     ive_dev_data    *dev_data = container_of(inode->i_cdev, ive_dev_data, cdev);
     ive_file_data  *file_data;
-    int err;
 
     // allocate buffer
     file_data = devm_kcalloc(&dev_data->pdev->dev, 1, sizeof(ive_file_data), GFP_KERNEL);
@@ -288,20 +376,7 @@ int mdrv_ive_drv_open(struct inode *inode, struct file *filp)
     // Init wait queue
     init_waitqueue_head(&file_data->wait_queue);
 
-    // Enable clock
-    err = mdrv_ive_clock_en(dev_data);
-    if (err != 0) {
-        err = -EIO;
-        goto ERROR_1;
-    }
-
     return 0;
-
-ERROR_1:
-    devm_kfree(&dev_data->pdev->dev, file_data);
-
-    return err;
-
 }
 
 
@@ -381,10 +456,12 @@ long mdrv_ive_drv_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
     // Enter cirtical section
     mutex_lock(&dev_data->mutex);
 
+#if !defined(CONFIG_CHIP_INFINITY2)  //Only used by I5, I6E, except infinity 2
     if (mdrv_ive_clock_en(dev_data)) {
         err = IVE_IOC_ERROR_CLK;
         goto RETURN;
     }
+#endif
 
     switch(cmd) {
         case IVE_IOC_PROCESS:
@@ -396,7 +473,9 @@ long mdrv_ive_drv_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             break;
     }
 
+#if !defined(CONFIG_CHIP_INFINITY2)  //Only used by I5, I6E, except infinity 2
 RETURN:
+#endif
 
     // Leave critical section
     mutex_unlock(&dev_data->mutex);
@@ -509,11 +588,19 @@ static int mdrv_ive_drv_probe(struct platform_device *pdev)
     }
 
     // Init clock
+#if !defined(CONFIG_CHIP_INFINITY2)  //Only used by I5, I6E, except infinity 2
     if (mdrv_ive_clock_init(dev_data)) {
         IVE_MSG(IVE_MSG_ERR, "can't init clock\n");
         err = -ENODEV;
         goto ERROR_1;
     }
+#else  //Only for infinity 2
+    if (ive_clk_hal_init()) {
+        IVE_MSG(IVE_MSG_ERR, "can't init clock - I2\n");
+        err = -ENODEV;
+        goto ERROR_1;
+    }
+#endif
 
     // Retrieve IRQ
     dev_data->irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
@@ -565,7 +652,9 @@ ERROR_3:
     free_irq(dev_data->irq, dev_data);
 
 ERROR_2:
+#if !defined(CONFIG_CHIP_INFINITY2)  //Only used by I5, I6E, except infinity 2
     mdrv_ive_clock_release(dev_data);
+#endif
 
 ERROR_1:
     devm_kfree(&dev_data->pdev->dev, dev_data);
@@ -589,7 +678,9 @@ static int mdrv_ive_drv_remove(struct platform_device *pdev)
 
     IVE_MSG(IVE_MSG_DBG, "dev_data: 0x%p\n", dev_data);
 
+#if !defined(CONFIG_CHIP_INFINITY2)  //Only used by I5, I6E, except infinity 2
     mdrv_ive_clock_release(dev_data);
+#endif
 
     free_irq(dev_data->irq, dev_data);
 
@@ -649,7 +740,7 @@ static int mdrv_ive_drv_resume(struct platform_device *pdev)
 //-------------------------------------------------------------------------------------------------
 static const struct of_device_id mdrv_iveg_match[] = {
     {
-        .compatible = "sstar,infinity5-ive",
+        .compatible = "sstar,infinity-ive",
         /*.data = NULL,*/
     },
     {},

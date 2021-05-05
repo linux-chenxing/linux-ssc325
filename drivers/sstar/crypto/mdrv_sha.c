@@ -1,9 +1,8 @@
 /*
 * mdrv_sha.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: edie.chen <edie.chen@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 
@@ -112,7 +111,7 @@ static int infinity_sha256_init(struct shash_desc *desc)
     struct sha256_state *sctx = shash_desc_ctx(desc);
 
 
-    SHA_DBG(" %s %d \n",__FUNCTION__,__LINE__);
+    SHA_DBG(" %s,#%d \n",__FUNCTION__,__LINE__);
  
     HAL_SHA_Reset();
 
@@ -138,56 +137,54 @@ static int infinity_sha256_update(struct shash_desc *desc, const u8 *data, unsig
     u64 leftover = 0;
     u32 u32InputCopied = 0;
     u32 u32loopCnt;
-    //U32 msg_cnt = 0;
 
-    SHA_DBG(" %s %d sctx->count:%llu len:%d\n", __FUNCTION__, __LINE__, sctx->count, len);
-
+    SHA_DBG("\t %s,#%d sctx->count:%llu len:%d\n", __FUNCTION__, __LINE__, sctx->count, len);
 
     leftover = infinity_ctx->u32Bufcnt + len;
     while(leftover >= SHA256_BLOCK_SIZE)
     {
-        SHA_DBG(" %s %d leftover:%llu \n",__FUNCTION__, __LINE__, leftover);
+        int estimate_size = leftover - leftover%SHA256_BLOCK_SIZE;
+        SHA_DBG("\t\t %s,#%d leftover:%llu infinity_ctx->u32Bufcnt(%d) \n",__FUNCTION__, __LINE__, leftover, infinity_ctx->u32Bufcnt);
 
-        memcpy(ALLOC_DMEM.aesdma_vir_SHABuf_addr + infinity_ctx->u32Bufcnt, data+u32InputCopied, SHA256_BLOCK_SIZE-infinity_ctx->u32Bufcnt);
-
-        //hexdump(ALLOC_DMEM.aesdma_vir_SHABuf_addr, SHA256_BLOCK_SIZE);
+        memcpy(ALLOC_DMEM.aesdma_vir_SHABuf_addr + infinity_ctx->u32Bufcnt, data+u32InputCopied, estimate_size-infinity_ctx->u32Bufcnt);
 
         if (sctx->count)
         {
-            SHA_DBG(" ----%s set init vt\n",__FUNCTION__ );
             HAL_SHA_Write_InitValue_BE((U32)sctx->state);
             HAL_SHA_SetInitHashMode(1);
         }
         else
         {
-            
             HAL_SHA_SetInitHashMode(0);
         }
+
         Chip_Flush_MIU_Pipe();
         HAL_SHA_SetAddress(Chip_Phys_to_MIU(ALLOC_DMEM.aesdma_phy_SHABuf_addr));
-        HAL_SHA_SetLength(SHA256_BLOCK_SIZE);
+        HAL_SHA_SetLength(estimate_size);
         HAL_SHA_ManualMode(1);
         
         HAL_SHA_Start();
 
+        udelay(1);  //sha256 cost about 1~1.4us
         u32loopCnt = 0;
         while(((HAL_SHA_GetStatus() & SHARNG_CTRL_SHA_READY) != SHARNG_CTRL_SHA_READY) )
         {
             u32loopCnt++;
-            mdelay(1);
+
             if(u32loopCnt>LOOP_CNT)
             {
-                printk("ERROR!! %s %d %d \n",__FUNCTION__, __LINE__, SHA256_BLOCK_SIZE);
+                printk("ERROR!! %s %d %d \n",__FUNCTION__, __LINE__, estimate_size);
                 break;
             }
         }
-        HAL_SHA_Out((U32)sctx->state);
-        HAL_SHA_Clear();
-        u32InputCopied += SHA256_BLOCK_SIZE;
-        leftover -= SHA256_BLOCK_SIZE;
-        infinity_ctx->u32Bufcnt = 0;
-        sctx->count += SHA256_BLOCK_SIZE;
 
+        HAL_SHA_Out((U32)sctx->state);
+
+        HAL_SHA_Clear();
+        u32InputCopied += estimate_size;
+        leftover -= estimate_size;
+        infinity_ctx->u32Bufcnt = 0;
+        sctx->count += estimate_size;
     }
 
     if (leftover)
@@ -208,7 +205,7 @@ static int infinity_sha256_final(struct shash_desc *desc, u8 *out)
     int index, padlen;
     __be64 bits;
 
-    SHA_DBG(" %s %d %llu \n", __FUNCTION__, __LINE__, sctx->count );
+    SHA_DBG("\t %s,#%d %llu \n", __FUNCTION__, __LINE__, sctx->count );
     bits = cpu_to_be64((sctx->count+infinity_ctx->u32Bufcnt) << 3);
 
     /* Pad out to 56 mod 64 */
@@ -310,11 +307,12 @@ int infinity_sha_update(u32 *in, u32 len, u32 *state, u32 count, u8 once)
     }
 
     HAL_SHA_Start();
+    udelay(1);  //sha256 cost about 1~1.4us
 
     while(((HAL_SHA_GetStatus() & SHARNG_CTRL_SHA_READY) != SHARNG_CTRL_SHA_READY) && (loop < LOOP_CNT))
     {
         loop++;
-        udelay(10);
+        //usleep_range(20, 80);
     }
     HAL_SHA_ReadOut((U32)state);
     msg_cnt = HAL_SHA_ReadWordCnt() << 2;
@@ -343,7 +341,7 @@ struct shash_alg infinity_shash_sha256_alg = {
 	.base       = {
 		.cra_name        = "sha256",
 		.cra_driver_name = "sha256-infinity",
-		.cra_priority    = 00,
+		.cra_priority    = 400,
 		.cra_flags       = CRYPTO_ALG_TYPE_SHASH |
 						CRYPTO_ALG_NEED_FALLBACK,
 		.cra_blocksize   = SHA256_BLOCK_SIZE,

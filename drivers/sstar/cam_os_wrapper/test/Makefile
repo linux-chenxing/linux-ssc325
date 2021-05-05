@@ -7,14 +7,16 @@ export CROSS_COMPILE=arm-linux-gnueabihf-
 KERNEL = $(PWD)/../../../../
 CC  = $(CROSS_COMPILE)gcc
 APP = cam_os_wrapper_test
-EXTRA_CFLAGS := -I$(KERNEL)/drivers/sstar/include/
-USER_CFLAGS := -Wall -Werror -Wno-sync-nand -g -O2 -ffunction-sections -funwind-tables -fstack-protector -I../pub/ -I$(KERNEL)/drivers/sstar/include/
-USER_LDFLAGS := -L$(PWD)/../.build/lib -lcam_os_wrapper
-
+CONFIG_SSTAR_CHIP_NAME := $(subst ",,$(CONFIG_SSTAR_CHIP_NAME))
+EXTRA_CFLAGS := -I$(KERNEL)drivers/sstar/include/ -I$(KERNEL)/drivers/sstar/include/$(CONFIG_SSTAR_CHIP_NAME)
+USER_CFLAGS := -Wall -Werror -Wno-sync-nand -g -O2 -ffunction-sections -funwind-tables -fstack-protector -I../pub/
+USER_SHARE_LDFLAGS := -L$(PWD)/../.build/lib -lcam_os_wrapper
+USER_STATIC_LDFLAGS := ../.build/lib/libcam_os_wrapper.a -ldl -lpthread
 all:
 	make modules -C $(KERNEL)  M=`pwd`
 	#$(CROSS_COMPILE)strip -g cam_os_wrapper_linux_ktest.ko
-	$(CC) $(USER_CFLAGS) $(USER_LDFLAGS) $(APP).c -o $(APP)
+	$(CC) $(USER_CFLAGS) $(APP).c $(USER_SHARE_LDFLAGS) -o $(APP)_share
+	$(CC) $(USER_CFLAGS) $(APP).c $(USER_STATIC_LDFLAGS) -o $(APP)_static
 
 clean:
 	make modules clean -C $(KERNEL)  M=`pwd`

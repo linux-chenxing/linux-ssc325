@@ -335,11 +335,13 @@ $(INSTALL_TARGETS):
 
 %.dtb: | scripts
 	$(Q)$(MAKE) $(build)=$(boot)/dts MACHINE=$(MACHINE) $(boot)/dts/$@
-	@if [ -e arch/arm/boot/Image ]; then \
-	    echo "  BNDTB $@"; \
-	    python scripts/ms_builtin_dtb_update.py arch/arm/boot/Image arch/arm/boot/dts/$@; \
-	    echo; \
-	fi;
+	ifeq ($(CONFIG_SS_BUILTIN_DTB), y)
+		@if [ -e arch/arm/boot/Image ]; then \
+			echo "  BNDTB $@"; \
+			python scripts/ms_builtin_dtb_update.py arch/arm/boot/Image arch/arm/boot/dts/$@; \
+			echo; \
+		fi;
+	endif
 
 PHONY += dtbs dtbs_install
 

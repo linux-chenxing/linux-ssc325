@@ -12,6 +12,7 @@
 #define UVC_MAX_FRAME_SIZE	(16*1024*1024)
 /* Maximum number of video buffers. */
 #define UVC_MAX_VIDEO_BUFFERS	32
+#define UVC_MAX_REQ_SG_LIST_NUM 12
 
 /* ------------------------------------------------------------------------
  * Structures.
@@ -31,6 +32,9 @@ struct uvc_buffer {
 
 	enum uvc_buffer_state state;
 	void *mem;
+#ifdef CONFIG_USB_WEBCAM_UVC_SUPPORT_SG_TABLE
+	struct sg_table sgt;
+#endif
 	unsigned int length;
 	unsigned int bytesused;
 #if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)
@@ -49,6 +53,9 @@ struct uvc_video_queue {
 	__u32 sequence;
 
 	unsigned int buf_used;
+#ifdef CONFIG_USB_WEBCAM_UVC_SUPPORT_SG_TABLE
+	struct scatterlist *cur_sg;
+#endif
 #if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)
 	bool bFrameEnd;
 #endif

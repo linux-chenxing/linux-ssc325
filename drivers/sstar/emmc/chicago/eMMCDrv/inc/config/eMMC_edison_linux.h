@@ -1,1 +1,0 @@
-../../../../cedric/eMMCDrv/inc/config/eMMC_edison_linux.h

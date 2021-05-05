@@ -1,9 +1,8 @@
 /*
 * soc.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: Karl.Xiao <Karl.Xiao@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/kernel.h>
@@ -44,6 +43,12 @@
 #include "ms_types.h"
 #include "_ms_private.h"
 
+//#define CONFIG_SS_MCM
+#define CONFIG_CHIP_FUNC_USB_VBUS_CONTROL
+//#define CONFIG_CHIP_FUNC_IR_ENABLE
+//#define CONFIG_CHIP_FUNC_UART_LINE
+
+
 /* IO tables */
 static struct map_desc mstar_io_desc[] __initdata =
 {
@@ -73,15 +78,17 @@ extern void __init ms_chip_init_default(void);
 
 //extern struct timecounter *arch_timer_get_timecounter(void);
 
+#ifdef CONFIG_SS_MCM
 
 static int mcm_rw(int index, int ratio, int write);
-
+#endif
 
 /*************************************
 *        Sstar chip flush function
 *************************************/
 static DEFINE_SPINLOCK(mstar_l2prefetch_lock);
 
+#ifdef CONFIG_CHIP_FUNC_UART_LINE
 static void mstar_uart_disable_line(int line)
 {
     if(line == 0)  //for debug, do not change
@@ -120,7 +127,7 @@ static void mstar_uart_enable_line(int line)
         SETREG16(BASE_REG_CHIPTOP_PA + REG_ID_03, BIT0);
     }
 }
-
+#endif
 static int mstar_get_device_id(void)
 {
     return (int)(INREG16(BASE_REG_PMTOP_PA) & 0x00FF);;
@@ -135,11 +142,10 @@ static int mstar_get_revision(void)
     return (tmp+1);
 }
 
-
 static void mstar_chip_flush_miu_pipe(void)
 {
-    unsigned long   dwLockFlag = 0;
-    unsigned short dwReadData = 0;
+    volatile unsigned long dwLockFlag = 0;
+    volatile unsigned short dwReadData = 0;
 
     spin_lock_irqsave(&mstar_l2prefetch_lock, dwLockFlag);
     //toggle the flush miu pipe fire bit
@@ -155,6 +161,12 @@ static void mstar_chip_flush_miu_pipe(void)
 
     spin_unlock_irqrestore(&mstar_l2prefetch_lock, dwLockFlag);
 
+}
+
+static void mstar_chip_flush_STB_and_miu_pipe(void)
+{
+    dsb();
+    mstar_chip_flush_miu_pipe();
 }
 
 static u64 mstar_phys_to_MIU(u64 x)
@@ -227,14 +239,14 @@ static int mstar_chip_get_riu_size(void)
     return IO_SIZE;
 }
 
-
+#ifdef CONFIG_CHIP_FUNC_IR_ENABLE
 static int mstar_ir_enable(int param)
 {
     printk(KERN_ERR "NOT YET IMPLEMENTED!![%s]",__FUNCTION__);
     return 0;
 }
-
-
+#endif
+#ifdef CONFIG_CHIP_FUNC_USB_VBUS_CONTROL
 static int mstar_usb_vbus_control(int param)
 {
 
@@ -262,7 +274,7 @@ static int mstar_usb_vbus_control(int param)
         {
             np = of_find_node_by_path("/soc/Sstar-ehci-2");
         }
-            
+
         if(!of_property_read_u32(np, "power-enable-pad", &pin_data))
         {
             printk(KERN_ERR "Get power-enable-pad from DTS GPIO(%d)\n", pin_data);
@@ -284,15 +296,16 @@ static int mstar_usb_vbus_control(int param)
     if(0 == vbus_enable) //disable vbus
     {
         gpio_direction_output(power_en_gpio, 0);
-        printk(KERN_INFO "[%s] Disable USB VBUS GPIO(%d)\n", __FUNCTION__,power_en_gpio);
+        //printk(KERN_INFO "[%s] Disable USB VBUS GPIO(%d)\n", __FUNCTION__,power_en_gpio);
     }
     else if(1 == vbus_enable)
     {
         gpio_direction_output(power_en_gpio, 1);
-        printk(KERN_INFO "[%s] Enable USB VBUS GPIO(%d)\n", __FUNCTION__,power_en_gpio);
+        //printk(KERN_INFO "[%s] Enable USB VBUS GPIO(%d)\n", __FUNCTION__,power_en_gpio);
     }
     return 0;
 }
+#endif
 static cycle_t us_ticks_cycle_offset=0;
 static u64 us_ticks_factor=1;
 
@@ -316,26 +329,34 @@ static int mstar_chip_function_set(int function_id, int param)
     printk("CHIP_FUNCTION SET. ID=%d, param=%d\n",function_id,param);
     switch (function_id)
     {
+#ifdef CONFIG_CHIP_FUNC_UART_LINE
             case CHIP_FUNC_UART_ENABLE_LINE:
                 mstar_uart_enable_line(param);
                 break;
             case CHIP_FUNC_UART_DISABLE_LINE:
                 mstar_uart_disable_line(param);
                 break;
+#endif
+#ifdef CONFIG_CHIP_FUNC_IR_ENABLE
             case CHIP_FUNC_IR_ENABLE:
                 mstar_ir_enable(param);
                 break;
+#endif
+#ifdef CONFIG_CHIP_FUNC_USB_VBUS_CONTROL
             case CHIP_FUNC_USB_VBUS_CONTROL:
                 mstar_usb_vbus_control(param);
                 break;
+#endif
+#ifdef CONFIG_SS_MCM
             case CHIP_FUNC_MCM_DISABLE_ID:
                 mcm_rw(param, 0, 1);
                 break;
             case CHIP_FUNC_MCM_ENABLE_ID:
                 mcm_rw(param, 15, 1);
                 break;
+#endif
         default:
-            printk(KERN_ERR "Unsupport CHIP_FUNCTION!! ID=%d\n",function_id);
+            BUG();
 
     }
 
@@ -355,7 +376,8 @@ static void __init mstar_init_early(void)
     //enable axi exclusive access
     *(volatile unsigned short *)(0xFD204414) = 0x10;
 
-    chip->chip_flush_miu_pipe=mstar_chip_flush_miu_pipe;
+    chip->chip_flush_miu_pipe=mstar_chip_flush_STB_and_miu_pipe;//dsb
+    chip->chip_flush_miu_pipe_nodsb=mstar_chip_flush_miu_pipe;//nodsbchip->phys_to_miu=mstar_phys_to_MIU;
     chip->phys_to_miu=mstar_phys_to_MIU;
     chip->miu_to_phys=mstar_MIU_to_phys;
     chip->chip_get_device_id=mstar_get_device_id;
@@ -411,6 +433,7 @@ out:
     OUTREG16(BASE_REG_MAILBOX_PA+BK_REG(0x09), ((int)log_buf_addr_get() >> 16 )& 0xFFFF);
 }
 
+#ifdef CONFIG_SS_MCM
 struct mcm_client{
     char* name;
     short index;
@@ -549,7 +572,7 @@ static void __init mstar_create_MCM_node(void)
     device_create_file(&mcm_dev, &dev_attr_mcm_slow_ratio);
 }
 
-
+#endif
 
 
 extern void mstar_create_MIU_node(void);
@@ -561,7 +584,9 @@ static inline void __init mstar_init_late(void)
     mstar_pm_init();
 #endif
     mstar_create_MIU_node();
+#ifdef CONFIG_SS_MCM
     mstar_create_MCM_node();
+#endif
 }
 
 static void global_reset(enum reboot_mode mode, const char * cmd)

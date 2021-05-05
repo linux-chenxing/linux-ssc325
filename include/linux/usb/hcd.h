@@ -237,7 +237,7 @@ struct usb_hcd {
 		u8		startup_conn_flag;	//120210, for port reset when connected at startup
 		u8		bc_enable_flag;
 		u8		bc_apple_enable_flag;
-
+        u8      reduce_wait_reset_time_flag;  //190802, for some 3.0 device can't wait so long during bus reset
 		/* lock for usb reset */
 		spinlock_t usb_reset_lock;
 		spinlock_t lock_usbreset;

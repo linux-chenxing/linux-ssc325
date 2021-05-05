@@ -1,9 +1,8 @@
 /*
 * ms_uart.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 #include <linux/module.h>
@@ -39,13 +38,21 @@
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/gpio.h>
+#include <linux/timer.h>
+#include <linux/sched.h>
+#include <linux/kthread.h>
 
 #include "ms_platform.h"
 #include "mdrv_types.h"
 #include "gpio.h"
 #include "ms_uart.h"
+#include "drv_camclk_Api.h"
+#define CONSOLE_DMA             1
+#define DEBUG_PAD_MUX           0
 
 #define UART_DEBUG 0
+#define MS_UART_8250_BUG_THRE 0
+#define UART_BUG_THRE	(1 << 3)	/* UART has buggy THRE reassertion */
 
 #if UART_DEBUG
 #define UART_DBG(fmt, arg...) printk(KERN_INFO fmt, ##arg)
@@ -54,16 +61,20 @@
 #endif
 #define UART_ERR(fmt, arg...) printk(KERN_ERR fmt, ##arg)
 
-#define REG_UART_MODE          0x1F203C0C
-#define REG_UART_SEL           0x1F203D4C
-#define REG_UART_SEL4          0x1F203D50
+//#define REG_UART_MODE          0x1F203C0C
+//#define REG_UART_SEL           0x1F203D4C
+//#define REG_UART_SEL4          0x1F203D50
 #define REG_FORCE_RX_DISABLE   0x1F203D5C
 
 #define UART_TX_TASK        0    /* use tasklet to send TX char */
 #define UART_USE_LOOPBACK   0    /* use UART loopback mode to avoid external input */
 #define UART_USE_SPINLOCK   0    /* set IER use spinlock to ensure atomic */
 
+#if CONSOLE_DMA
+#define NR_CONSOLE_PORTS 4
+#else
 #define NR_CONSOLE_PORTS 1
+#endif
 #define MS_CONSOLE_DEV "ttyS"
 
 #define REG_DLL_THR_RBR(p)       GET_REG_ADDR((u32)p->membase, (0x00))
@@ -144,6 +155,7 @@
 
 
 #define UR2DMA_TX_BUF_LENGTH 0x1000 //must be 8 byte aligned, linux should better be PAGE_ALIGN
+#define UR2DMA_TX_BUF_MASK   0x0FFF
 #define UR2DMA_RX_BUF_LENGTH 0x1000 //must be 8 byte aligned, linux should better be PAGE_ALIGN
 
 #define URDMA_RX_TIMEOUT 0x0F
@@ -333,7 +345,6 @@ typedef struct reg_urdma
     } ;
 } reg_urdma;
 
-
 struct ms_urdma
 {
     reg_urdma *reg_base;
@@ -353,6 +364,10 @@ struct ms_uart_port {
     struct ms_urdma    *urdma;
     struct device      *dev;
     struct clk         *clk;
+#ifdef CONFIG_CAM_CLK
+    CAMCLK_Get_Attribute stCfg;
+    void *pvclk;
+#endif
     int use_dma;
 #if UART_TX_TASK
     struct tasklet_struct xmit_tasklet;
@@ -364,16 +379,64 @@ struct ms_uart_port {
     u16 backupDivisor;
     u8 padmux;
     u8 pad_mode;
+    struct timer_list	timer;		/* "no irq" timer */
+    u16 bugs;		/* port bugs */
+    struct task_struct *urdma_task;
 };
 
+static u32 ms_uart_tx_empty(struct uart_port *p);
+static void ms_uart_set_mctrl(struct uart_port *pPort_st, u32 mctrl);
+static u32 ms_uart_get_mctrl(struct uart_port *pPort_st);
+static void ms_uart_stop_tx(struct uart_port *p);
+static void ms_uart_start_tx(struct uart_port *p);
+static void ms_uart_stop_rx(struct uart_port *p);
+static void ms_uart_enable_ms(struct uart_port *pPort_st);
+static void ms_uart_break_ctl(struct uart_port *pPort_st, s32 break_state);
+static s32 ms_uart_startup(struct uart_port *p);
+static void ms_uart_shutdown(struct uart_port *p);
+static void ms_uart_set_termios(struct uart_port *p, struct ktermios *pTermios_st, struct ktermios *pOld_st);
+static const char * ms_uart_type(struct uart_port *pPort_st);
+static void ms_uart_release_port(struct uart_port *pPort_st);
+static void ms_uart_release_port(struct uart_port *pPort_st);
+static s32 ms_uart_request_port(struct uart_port *pPort_st);
+static void ms_uart_config_port(struct uart_port *pPort_st, s32 flags);
+static s32 ms_uart_verify_port(struct uart_port *pPort_st, struct serial_struct *ser);
+
+/* UART Operations */
+static struct uart_ops ms_uart_ops =
+{
+    .tx_empty     = ms_uart_tx_empty,
+    .set_mctrl    = ms_uart_set_mctrl,     /* Not supported in MSB2501 */
+    .get_mctrl    = ms_uart_get_mctrl,     /* Not supported in MSB2501 */
+    .stop_tx      = ms_uart_stop_tx,
+    .start_tx     = ms_uart_start_tx,
+    .stop_rx      = ms_uart_stop_rx,
+    .enable_ms    = ms_uart_enable_ms,     /* Not supported in MSB2501 */
+    .break_ctl    = ms_uart_break_ctl,     /* Not supported in MSB2501 */
+    .startup      = ms_uart_startup,
+    .shutdown     = ms_uart_shutdown,
+    .set_termios  = ms_uart_set_termios,
+    .type         = ms_uart_type,          /* Not supported in MSB2501 */
+    .release_port = ms_uart_release_port,  /* Not supported in MSB2501 */
+    .request_port = ms_uart_request_port,  /* Not supported in MSB2501 */
+    .config_port  = ms_uart_config_port,   /* Not supported in MSB2501 */
+    .verify_port  = ms_uart_verify_port,   /* Not supported in MSB2501 */
+};
 
 static void ms_uart_console_write(struct console *co, const char *str, u32 count);
 static s32 ms_uart_console_setup(struct console *co, char *options);
-
+#if CONSOLE_DMA
+static s32 _ms_uart_console_prepare(int idx);
+static int ms_uart_console_match(struct console *co, char *name, int idx, char *options);
+static int urdma_tx_thread(void * arg);
+static int _urdma_tx(struct ms_uart_port *mp, unsigned char* buf, int buf_size);
+static DEFINE_SPINLOCK(mutex_console_2_dma);
+#else
+static void ms_uart_add_console_port(struct ms_uart_port *ur);
 static struct ms_uart_port *console_ports[NR_CONSOLE_PORTS];
+#endif
 static struct ms_uart_port  console_port;
 static struct uart_driver ms_uart_driver;
-
 
 /* Serial Console Structure Definition */
 static struct console ms_uart_console =
@@ -385,6 +448,9 @@ static struct console ms_uart_console =
 	.device = uart_console_device,
 	.data   = &ms_uart_driver,
     .index  = -1,
+#if CONSOLE_DMA
+    .match = ms_uart_console_match,
+#endif
 };
 
 
@@ -396,27 +462,27 @@ static struct uart_driver ms_uart_driver = {
     .cons        = &ms_uart_console,
 };
 
+static DECLARE_WAIT_QUEUE_HEAD(urdma_wait);
+static volatile int urdma_conditions = 0;
 
+// extern void Chip_UART_Disable_Line(int line);
+// extern void Chip_UART_Enable_Line(int line);
 
-extern void Chip_UART_Disable_Line(int line);
-extern void Chip_UART_Enable_Line(int line);
-
-void URDMA_Reset(struct uart_port *p);
-void URDMA_Activate(struct uart_port *p,BOOL bEnable);
-void URDMA_TxEnable(struct uart_port *p,BOOL bEnable);
-void URDMA_RxEnable(struct uart_port *p,BOOL bEnable);
-U8 URDMA_GetInterruptStatus(struct uart_port *p);
-void URDMA_TxInit(struct uart_port *p);
-void URDMA_RxInit(struct uart_port *p);
-void URDMA_TxSetupTimeoutInterrupt(struct uart_port *p,BOOL bEnable);
-void URDMA_TxClearInterrupt(struct uart_port *p);
-void URDMA_RxSetupTimeoutInterrupt(struct uart_port *p,BOOL bEnableTimeout);
-void URDMA_RxSetupThresholdInterrupt(struct uart_port *p,BOOL bEnableThreshold);
-U8 URDMA_RxGetInterrupt(struct uart_port *p);
-void URDMA_RxClearInterrupt(struct uart_port *p);
-U32 URDMA_GetWritableSize(struct uart_port *p);
-void URDMA_StartTx(struct uart_port *p);
-void URDMA_StartRx(struct uart_port *p);
+static void URDMA_Reset(struct uart_port *p);
+static void URDMA_Activate(struct uart_port *p,BOOL bEnable);
+static void URDMA_TxEnable(struct uart_port *p,BOOL bEnable);
+static void URDMA_RxEnable(struct uart_port *p,BOOL bEnable);
+static U8 URDMA_GetInterruptStatus(struct uart_port *p);
+static void URDMA_TxInit(struct uart_port *p);
+static void URDMA_RxInit(struct uart_port *p);
+static void URDMA_TxSetupTimeoutInterrupt(struct uart_port *p,BOOL bEnable);
+static void URDMA_TxClearInterrupt(struct uart_port *p);
+static void URDMA_RxSetupTimeoutInterrupt(struct uart_port *p,BOOL bEnableTimeout);
+static void URDMA_RxSetupThresholdInterrupt(struct uart_port *p,BOOL bEnableThreshold);
+static U8 URDMA_RxGetInterrupt(struct uart_port *p);
+static void URDMA_RxClearInterrupt(struct uart_port *p);
+static void URDMA_StartTx(struct uart_port *p);
+static void URDMA_StartRx(struct uart_port *p);
 
 
 void inline ms_uart_clear_fifos(struct uart_port *p)
@@ -430,8 +496,10 @@ void inline ms_uart_clear_fifos(struct uart_port *p)
     OUTREG8(REG_IIR_FCR(p), 0);
 }
 
+static u8 u8SelectPad[] = { 2, 3, 1, 4 };
 void ms_select_pad(struct uart_port *p, u8 padmux, u8 pad_mode)
 {
+#if 0
     u8 select=0;
 
     if(p->line == 0)
@@ -444,37 +512,14 @@ void ms_select_pad(struct uart_port *p, u8 padmux, u8 pad_mode)
         select=4;
     else
     {
-        UART_ERR("[%s] port line %d is not supported\n", __func__, p->line);
+        // UART_ERR("[%s] port line %d is not supported\n", __func__, p->line);
         return;
     }
 
-    switch(padmux)
-    {
-        case MUX_PM_UART:
-            OUTREGMSK16(REG_UART_SEL, select << 0, 0xF << 0);     //reg_uart_sel0[3:0]
-            break;
-        case MUX_FUART:
-            OUTREGMSK16(REG_UART_MODE, pad_mode << 0, 0x7 << 0);  //reg_uart_mode[2:0]
-            OUTREGMSK16(REG_UART_SEL, select << 4, 0xF << 4);     //reg_uart_sel0[7:4]
-            break;
-        case MUX_UART0:
-            OUTREGMSK16(REG_UART_MODE, pad_mode << 4, 0x7 << 4);  //reg_uart_mode[6:4]
-            OUTREGMSK16(REG_UART_SEL, select << 8, 0xF << 8);     //reg_uart_sel0[11:8]
-            break;
-        case MUX_UART1:
-            OUTREGMSK16(REG_UART_MODE, pad_mode << 8, 0x7 << 8);  //reg_uart_mode[10:8]
-            OUTREGMSK16(REG_UART_SEL, select << 12, 0xF << 12);   //reg_uart_sel0[15:12]
-            break;
-#ifdef CONFIG_MS_SUPPORT_UART2
-        case MUX_UART2:
-            OUTREGMSK16(REG_UART_MODE, pad_mode << 12, 0x7 << 12);//reg_uart_mode[14:12]
-            OUTREGMSK16(REG_UART_SEL4, select << 0, 0xF << 0);    //reg_uart_sel4[3:0]
-            break;
+    ms_uart_select_pad(select, padmux, pad_mode);
+#else
+    ms_uart_select_pad(u8SelectPad[p->line], padmux, pad_mode);
 #endif
-        default:
-            UART_ERR("[%s] Padmux %d not defined\n", __func__, padmux);
-            break;
-    }
 }
 
 void ms_force_rx_disable(u8 padmux, BOOL status)
@@ -499,19 +544,22 @@ void ms_force_rx_disable(u8 padmux, BOOL status)
             break;
 #endif
         default:
-            UART_ERR("[%s] Padmux %d not defined\n", __func__, padmux);
+            // UART_ERR("[%s] Padmux %d not defined\n", __func__, padmux);
             break;
     }
 }
 
 U16 ms_uart_set_clk(struct uart_port *p, u32 request_baud)
 {
-    //struct clk *clk;
     unsigned int num_parents;
-    struct clk **clk_parents;
-    unsigned int tolerance, rate, divisor, real_baud;
+    unsigned int tolerance, rate, divisor = 0, real_baud;
     struct ms_uart_port *mp;
     int i;
+    //int pm_uart = 0;
+#ifndef CONFIG_CAM_CLK
+    //struct clk *clk;
+    struct clk **clk_parents;
+    int pm_uart = 0;
 
     if(!p->dev)
     {
@@ -522,7 +570,7 @@ U16 ms_uart_set_clk(struct uart_port *p, u32 request_baud)
     {
         mp = (struct ms_uart_port*)(p->dev->driver_data);
         if (IS_ERR(mp->clk)) {
-            UART_ERR("%s: of_clk_get failed\n", p->dev->of_node->full_name);
+            // UART_ERR("%s: of_clk_get failed\n", p->dev->of_node->full_name);
             p->uartclk=172800000;
             return 0;
         }
@@ -532,6 +580,24 @@ U16 ms_uart_set_clk(struct uart_port *p, u32 request_baud)
             tolerance = 3;
         }
 
+        of_property_read_u32(p->dev->of_node, "pm_uart", &pm_uart);
+        if(pm_uart)
+        {
+            rate = 108000000;
+            divisor = (rate + (8*request_baud)) / (16*request_baud);
+            real_baud = rate / (16 * divisor);
+            if( (abs(real_baud - request_baud)*100/request_baud) < tolerance)
+            {
+                p->uartclk=rate;
+                // UART_ERR("[uart%d] uartclk=%d, request_baud=%d, real_baud=%d, divisor=0x%X\n", p->line, p->uartclk, request_baud, real_baud, divisor);
+            }
+            else
+            {
+                divisor = 0;
+            }
+            return divisor;
+        }
+
         num_parents = clk_hw_get_num_parents(__clk_get_hw(mp->clk));
 
         if(!num_parents)
@@ -539,11 +605,11 @@ U16 ms_uart_set_clk(struct uart_port *p, u32 request_baud)
             rate=clk_get_rate(mp->clk);
             divisor = (rate + (8*request_baud)) / (16*request_baud);
             real_baud = rate / (16 * divisor);
-            UART_ERR("[uart%d]divisor0x%02X, real_baud%d,uart_clk%d\n", p->line, divisor, real_baud,rate);
+            // UART_ERR("[uart%d]divisor=0x%02X, real_baud=%d,uart_clk=%d\n", p->line, divisor, real_baud,rate);
             if( (abs(real_baud - request_baud)*100/request_baud) < tolerance)
             {
                 p->uartclk=rate;
-                UART_ERR("[uart%d] uartclk=%d, request_baud=%d, real_baud=%d, divisor=0x%X\n", p->line, p->uartclk, request_baud, real_baud, divisor);
+                // UART_ERR("[uart%d] uartclk=%d, request_baud=%d, real_baud=%d, divisor=0x%X\n", p->line, p->uartclk, request_baud, real_baud, divisor);
             }
             return divisor;
         }
@@ -552,7 +618,7 @@ U16 ms_uart_set_clk(struct uart_port *p, u32 request_baud)
             clk_parents = kzalloc((sizeof(*clk_parents) * num_parents), GFP_KERNEL);
             if(!clk_parents)
             {
-                UART_ERR("%s: failed to allocate memory\n", __func__);
+                // UART_ERR("%s: failed to allocate memory\n", __func__);
                 kfree(clk_parents);
                 p->uartclk=clk_get_rate(mp->clk);
                 return 0;
@@ -565,7 +631,7 @@ U16 ms_uart_set_clk(struct uart_port *p, u32 request_baud)
                 divisor = (rate + (8*request_baud)) / (16*request_baud);
                 real_baud = rate / (16 * divisor);
 
-                UART_DBG("[uart%d]foreach parent divisor0x%02X, real_baud%d,uart_clk%d\n", p->line, divisor, real_baud,rate);
+                UART_DBG("[uart%d]foreach parent divisor=0x%02X, real_baud=%d,uart_clk=%d\n", p->line, divisor, real_baud,rate);
                 if( (abs(real_baud - request_baud)*100/request_baud) < tolerance)
                 {
                     clk_set_parent(mp->clk, clk_parents[i]);
@@ -577,13 +643,72 @@ U16 ms_uart_set_clk(struct uart_port *p, u32 request_baud)
 
             if(i >= num_parents)
             {
-                UART_ERR("[uart%d] can't find suitable clk for baud=%d tolerance=%d%%, will not changed\n", p->line, request_baud, tolerance);
+                // UART_ERR("[uart%d] can't find suitable clk for baud=%d tolerance=%d%%, will not changed\n", p->line, request_baud, tolerance);
                 divisor = 0;
             }
             kfree(clk_parents);
             return divisor;
         }
     }
+#else
+    CAMCLK_Set_Attribute stCfg;
+    if(!p->dev)
+    {
+        //do nothing because clk and device node not ready
+        return 0;
+    }
+    else
+    {
+        mp = (struct ms_uart_port*)(p->dev->driver_data);
+        if (!mp->pvclk) {
+            // UART_ERR("%s: of_clk_get failed\n", p->dev->of_node->full_name);
+            p->uartclk=172800000;
+            return 0;
+        }
+        if(of_property_read_u32(p->dev->of_node, "tolerance", &tolerance))
+        {
+            UART_DBG("%s: use default tolerance 3%%\n", __func__);
+            tolerance = 3;
+        }
+        num_parents = mp->stCfg.u32NodeCount;
+        if(num_parents==1)
+        {
+            rate=mp->stCfg.u32Rate;
+            divisor = (rate + (8*request_baud)) / (16*request_baud);
+            real_baud = rate / (16 * divisor);
+            // UART_ERR("[uart%d]divisor=0x%02X, real_baud=%d,uart_clk=%d\n", p->line, divisor, real_baud,rate);
+            if( (abs(real_baud - request_baud)*100/request_baud) < tolerance)
+            {
+                p->uartclk=rate;
+                // UART_ERR("[uart%d] uartclk=%d, request_baud=%d, real_baud=%d, divisor=0x%X\n", p->line, p->uartclk, request_baud, real_baud, divisor);
+            }
+            return divisor;
+        }
+        else
+        {
+            for(i = 0; i < num_parents; i++)
+            {
+                if(mp->stCfg.u32Parent[i])
+                {
+                    rate = CamClkRateGet(mp->stCfg.u32Parent[i]);
+                    divisor = (rate + (8*request_baud)) / (16*request_baud);
+                    real_baud = rate / (16 * divisor);
+
+                    UART_DBG("[uart%d]foreach parent divisor=0x%02X, real_baud=%d,uart_clk=%d\n", p->line, divisor, real_baud,rate);
+                    if( (abs(real_baud - request_baud)*100/request_baud) < tolerance)
+                    {
+                        CAMCLK_SETPARENT(stCfg,mp->stCfg.u32Parent[i]);
+                        CamClkAttrSet(mp->pvclk,&stCfg);
+                        p->uartclk=rate;
+                        UART_DBG("[uart%d] uartclk=%d, request_baud=%d, real_baud=%d, divisor=0x%X\n", p->line, p->uartclk, request_baud, real_baud, divisor);
+                        break;
+                    }
+                }
+            }
+            return divisor;
+        }
+    }
+#endif
 }
 
 void ms_uart_set_divisor(struct uart_port *p, u16 divisor)
@@ -592,7 +717,7 @@ void ms_uart_set_divisor(struct uart_port *p, u16 divisor)
 
     // enable Divisor Latch Access, so Divisor Latch register can be accessed
     OUTREG8(REG_LCR(p), INREG8(REG_LCR(p)) | UART_LCR_DLAB);
-    OUTREG8(REG_DLH_IER(p), (u8 )((divisor >> 8) & 0xff));
+    OUTREG8(REG_DLH_IER(p), (u8 )((divisor >> 8) & 0xff));  // CAUTION: this causes IER being overwritten also
     OUTREG8(REG_DLL_THR_RBR(p), (u8 )(divisor & 0xff));
     // disable Divisor Latch Access
     OUTREG8(REG_LCR(p), INREG8(REG_LCR(p)) & ~UART_LCR_DLAB);
@@ -621,6 +746,216 @@ static void ms_uart_console_putchar(struct uart_port *p, s32 ch)
     //}
 }
 
+#if CONSOLE_DMA
+static void __maybe_unused ms_uart_console_putchar_dma(struct uart_port *p, s32 ch)
+{
+    unsigned char c = (unsigned char)(ch & 0xFF);
+
+    while (1 != _urdma_tx(&console_port, &c, 1));
+}
+
+static int ms_uart_console_match(struct console *co, char *name, int idx, char *options)
+{
+    co->index = idx;
+    return -ENODEV;
+}
+#endif
+
+#if CONSOLE_DMA
+static s32 _ms_uart_console_prepare(int idx)
+{
+    struct device_node *console_np;
+    struct resource res;
+
+    char* uart_name[] =
+        {
+            "/soc/uart0@1F221000",
+            "/soc/uart1@1F221200",
+            "/soc/uart2@1F220400",
+            "/soc/uart2@1F221400",
+        };
+    if ((0 > idx) || (NR_CONSOLE_PORTS <= idx))
+        return -ENODEV;
+    console_np=of_find_node_by_path(uart_name[idx]);
+    if(!console_np)
+    {
+        console_np =of_find_node_by_path("console");
+        idx = 0;
+    }
+    if(!console_np)
+        return -ENODEV;
+
+    BUG_ON( of_address_to_resource(console_np,0,&res) );
+
+    console_port.port.membase = (void *)res.start;
+
+    console_port.port.type = PORT_8250;
+
+    console_port.port.ops=&ms_uart_ops;
+    console_port.port.regshift = 0;
+    console_port.port.fifosize = 16;
+    console_port.port.cons=&ms_uart_console;
+
+    console_port.port.line= idx;
+    ms_uart_console.index = console_port.port.line;
+
+    return 0;
+}
+
+#define UART_RX        (0 * 2)  // In:  Receive buffer (DLAB=0)
+#define UART_TX        (0 * 2)  // Out: Transmit buffer (DLAB=0)
+#define UART_DLL       (0 * 2)  // Out: Divisor Latch Low (DLAB=1)
+#define UART_DLM       (1 * 2)  // Out: Divisor Latch High (DLAB=1)
+#define UART_IER       (1 * 2)  // Out: Interrupt Enable Register
+#define UART_IIR       (2 * 2)  // In:  Interrupt ID Register
+#define UART_FCR       (2 * 2)  // Out: FIFO Control Register
+#define UART_LCR       (3 * 2)  // Out: Line Control Register
+#define UART_MCR       (4 * 2)  // Out: Modem Control Register
+#define UART_LSR       (5 * 2)  // In:  Line Status Register
+#define UART_MSR       (6 * 2)  // In:  Modem Status Register
+#define UART_USR       (7 * 2)  // Out: USER Status Register
+#define UART_RST      (14 * 2)  // Out: SW rstz
+
+// #define REG_ADDR_BASE_UART1 0xFD221200
+// #define REG_ADDR_BASE_FUART 0xFD220400
+#define UART_BASE        IO_ADDRESS(console_port.port.membase)
+#define UART_REG8(_x_)  ((U8 volatile *)(UART_BASE))[((_x_) * 4) - ((_x_) & 1)]
+
+    #define UART_BAUDRATE       115200
+    #define UART_CLK            172800000
+
+#define UART_LCR_PARITY             0x08
+#define UART_FCR_ENABLE_FIFO        0x01
+
+// #define REG_UART_SEL3210    GET_REG16_ADDR(REG_ADDR_BASE_CHIPTOP, 0x53)
+// #define REG_RX_ENABLE       GET_REG16_ADDR(REG_ADDR_BASE_PM_SLEEP, 0x09)
+// #define REG_UART0_CLK       GET_REG16_ADDR(REG_ADDR_BASE_CLKGEN, 0x31)
+
+void uart_init(void)
+{
+    U8 count=0;
+
+#if 0
+    // Enable uart0 clock
+    OUTREG8(REG_UART0_CLK, 0x09);  //clk_xtal and gating
+    CLRREG8(REG_UART0_CLK, 0x01);  //clear gating
+
+    // Reset RX_enable
+    CLRREG16(REG_RX_ENABLE, BIT11);
+
+    // Reset PM uart pad digmux
+    OUTREG16(REG_UART_SEL3210, 0x3210);
+#endif
+
+    // Toggle SW reset
+    UART_REG8(UART_RST) &= ~0x01;
+    UART_REG8(UART_RST) |= 0x01;
+
+    // Disable all interrupts
+    UART_REG8(UART_IER) = 0x00;
+
+    // Set "reg_mcr_loopback";
+    UART_REG8(UART_MCR) |= 0x10;
+
+    // Poll "reg_usr_busy" till 0; (10 times)
+    while(UART_REG8(UART_USR) & 0x01 && count++ < 10)
+        ;
+
+    if(count == 10)
+    {
+        // SetDebugFlag(FLAG_INIT_UART_BUSY); /* 0x0BF1 */
+    }
+    else // Set divisor
+    {
+        U16 DLR = ((UART_CLK+(8*UART_BAUDRATE)) / (16 * UART_BAUDRATE));
+        UART_REG8(UART_LCR) |= UART_LCR_DLAB;
+        UART_REG8(UART_DLL) = DLR & 0xFF;
+        UART_REG8(UART_DLM) = (DLR >> 8) & 0xFF;
+        UART_REG8(UART_LCR) &= ~(UART_LCR_DLAB);
+    }
+
+    // Set 8 bit char, 1 stop bit, no parity
+    UART_REG8(UART_LCR) = UART_LCR_WLEN8 & ~(UART_LCR_STOP2 | UART_LCR_PARITY);
+
+    // Unset loopback
+    UART_REG8(UART_MCR) &= ~0x10;
+
+    // Enable TX/RX fifo
+    UART_REG8(UART_FCR) = UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RCVR | UART_FCR_CLEAR_XMIT;;
+#if 0
+    // Set PM uart pad digmux to UART0
+    OUTREG16(REG_UART_SEL3210, 0x3012);
+
+    // Set RX_enable
+    SETREG16(REG_RX_ENABLE, BIT11);
+#endif
+}
+#endif
+
+
+#if CONSOLE_DMA
+static void ms_uart_console_write(struct console *co, const char *str, u32 count)
+{
+    struct ms_uart_port *mp;
+    struct uart_port *p;
+    unsigned long flags;
+    int locked = 1;
+
+    if( (!str )|| co->index>=NR_CONSOLE_PORTS || co->index < 0)
+    {
+        return;
+    }
+
+    mp = &console_port;
+    p = &(mp->port);
+
+    if (p->sysrq || oops_in_progress)
+        locked = spin_trylock_irqsave(&p->lock, flags);
+    else
+        spin_lock_irqsave(&p->lock, flags);
+
+    if(!mp->use_dma)
+        uart_console_write(p, str, count, ms_uart_console_putchar);
+    else if (mp->urdma)
+    {
+        uart_console_write(p, str, count, ms_uart_console_putchar_dma);
+    }
+
+    if (locked)
+        spin_unlock_irqrestore(&p->lock, flags);
+
+    return;
+}
+
+static s32 __init ms_uart_console_setup(struct console *co, char *options)
+{
+    /* Define Local Variables */
+    s32 baud =115200;
+    s32 bits = 8;
+    s32 parity = 'n';
+    s32 flow = 'n';
+
+    if(!options)
+    {
+        options = "115200n8r"; /* Set default baudrate for console*/
+    }
+
+    /* parsing the command line arguments */
+    uart_parse_options(options, &baud, &parity, &bits, &flow);
+    _ms_uart_console_prepare(co->index);
+    if (co->index)
+        uart_init();
+#if DEBUG_PAD_MUX
+    {
+        *((volatile int*)(0xFD203D4C)) &= 0xFFF0;
+        // *((volatile int*)(0xFD203D4C)) |= 0x0003;
+        *((volatile int*)(0xFD203D4C)) |= (u8SelectPad[co->index] & 0xF);
+    }
+#endif
+
+    return uart_set_options(&(console_port.port), co, baud, parity, bits, flow);
+}
+#else // #if CONSOLE_DMA
 
 static void ms_uart_console_write(struct console *co, const char *str, u32 count)
 {
@@ -645,13 +980,11 @@ static void ms_uart_console_write(struct console *co, const char *str, u32 count
     if(!mp->use_dma)
         uart_console_write(p, str, count, ms_uart_console_putchar);
 
-
     if (locked)
         spin_unlock_irqrestore(&p->lock, flags);
 
     return;
 }
-
 
 static s32 __init ms_uart_console_setup(struct console *co, char *options)
 {
@@ -671,9 +1004,9 @@ static s32 __init ms_uart_console_setup(struct console *co, char *options)
     {
         co->index = 0;
     }
-
     /* parsing the command line arguments */
     uart_parse_options(options, &baud, &parity, &bits, &flow);
+
     if(console_ports[co->index]==NULL){
         return -ENODEV;
     }
@@ -688,6 +1021,7 @@ static void ms_uart_add_console_port(struct ms_uart_port *ur)
         console_ports[ur->port.line] = ur;
     }
 }
+#endif // #if CONSOLE_DMA
 
 static const char * ms_uart_type(struct uart_port *pPort_st)
 {
@@ -844,7 +1178,7 @@ static void ms_do_xmit_task(unsigned long port_address)
     /* Parameter out-of-bound check */
     if (!p)
     {
-        UART_ERR("ms_do_xmit_task: port is NULL\n");
+        // UART_ERR("ms_do_xmit_task: port is NULL\n");
         return;
     }
 
@@ -917,6 +1251,7 @@ static void ms_do_xmit_task(unsigned long port_address)
 #else  // UART_TX_TASK = 0
 static void ms_putchar(struct uart_port *p)
 {
+
      /* Define Local Variables */
     int count;
     struct circ_buf *xmit;
@@ -925,7 +1260,7 @@ static void ms_putchar(struct uart_port *p)
     /* Parameter out-of-bound check */
     if (!p)
     {
-        UART_ERR("ms_putchar: port is NULL\n");
+        // UART_ERR("ms_putchar: port is NULL\n");
         return;
     }
 
@@ -985,7 +1320,7 @@ static void ms_putchar(struct uart_port *p)
 }
 #endif
 
-
+static int silent_state = 0;
 static void ms_getchar(struct uart_port *p)
 {
     u8  lsr = 0;    /* Line Status Register (LSR) */
@@ -995,6 +1330,7 @@ static void ms_getchar(struct uart_port *p)
     struct ms_uart_port *mp = (struct ms_uart_port*)p->dev->driver_data;
     static u8 rx_disable = 0, pad_disable = 0;
     unsigned long flags;
+    char isConsole = (console_port.port.line == mp->port.line) ? 1 : 0;
 
     spin_lock_irqsave(&p->lock, flags);
 
@@ -1069,35 +1405,56 @@ static void ms_getchar(struct uart_port *p)
                 flag = TTY_FRAME;
             }
         }
-        #ifdef SUPPORT_SYSRQ
-        if (uart_handle_sysrq_char(p, ch))
+        if (silent_state==0)
         {
-            goto IGNORE_CHAR;
+            #ifdef SUPPORT_SYSRQ
+            if (uart_handle_sysrq_char(p, ch))
+            {
+                goto IGNORE_CHAR;
+            }
+            #endif
+            uart_insert_char(p, lsr, UART_LSR_OE, ch, flag);
         }
-        #endif
-        uart_insert_char(p, lsr, UART_LSR_OE, ch, flag);
-
-        //when receive '11111', disable UART RX to use TV tool
-        if(ch == '1')
-            rx_disable++;
-        else
-            rx_disable=0;
-
-        if(rx_disable == 5)
+        if (isConsole)
         {
-            CLRREG16(0x1F001C24, 0x1<<11);
-            rx_disable=0;
-        }
-        //when receive '22222', disable UART PAD to use TV tool
-        if(ch == '2')
-            pad_disable++;
-        else
-            pad_disable=0;
+            //when receive '11111', disable UART RX to use TV tool
+            if(ch == '1')
+                rx_disable++;
+            else
+                rx_disable=0;
 
-        if(pad_disable == 5)
-        {
-            CLRREG16(0x1F203D4C, 0x000F);
-            pad_disable=0;
+            if(rx_disable == 5)
+            {
+                silent_state = 1 - silent_state;
+
+                if (silent_state)
+                {
+                    printk("disable uart\n");
+                    ch = 0;
+                }
+                else
+                {
+                    printk("enable uart\n");
+                }
+
+                //CLRREG16(0x1F001C24, 0x1<<11);
+                rx_disable=0;
+            }
+            //when receive '22222', disable UART PAD to use TV tool
+            if(ch == '2')
+                pad_disable++;
+            else
+                pad_disable=0;
+
+            if(pad_disable == 5)
+            {
+#if defined(CONFIG_ARCH_INFINITY2)
+				CLRREG16(0x1F001C24, 0x1<<11);
+#else
+                CLRREG16(0x1F203D4C, 0x000F);
+#endif
+			pad_disable=0;
+            }
         }
 
 IGNORE_CHAR:
@@ -1115,7 +1472,7 @@ static irqreturn_t ms_uart_interrupt(s32 irq, void *dev_id)
     struct uart_port *p = dev_id;
     struct ms_uart_port *mp = (struct ms_uart_port*)p->dev->driver_data;
     u8 count=0, retry=100;
-
+    local_fiq_disable();
     if(mp->use_dma)
     {
         u8 status = URDMA_GetInterruptStatus(p);
@@ -1140,8 +1497,14 @@ static irqreturn_t ms_uart_interrupt(s32 irq, void *dev_id)
         }
         else if(status & URDMA_INTR_STATUS_TX)
         {
+#if CONSOLE_DMA
+            URDMA_TxClearInterrupt(p);
+            urdma_conditions = 1;
+            wake_up_interruptible(&urdma_wait);
+#else
             URDMA_TxClearInterrupt(p);
             //do nothing
+#endif
         }
         else
             UART_ERR("URDMA dummy interrupt!\n");
@@ -1169,12 +1532,14 @@ static irqreturn_t ms_uart_interrupt(s32 irq, void *dev_id)
 
             tasklet_schedule(&mp->xmit_tasklet);
     #else
-            ms_putchar(p);
+
+            if (silent_state==0)
+                ms_putchar(p);
     #endif
         }
         else if( iir_fcr == UART_IIR_MSI ) /* Modem Status */
         {
-            UART_ERR("UART Interrupt: Modem status\n");
+            // UART_ERR("UART Interrupt: Modem status\n");
             // Read MSR to clear
             INREG8(REG_MSR(p));
         }
@@ -1204,16 +1569,53 @@ static irqreturn_t ms_uart_interrupt(s32 irq, void *dev_id)
             {
                 count++;
             }
-            if (count == retry)
-                UART_ERR("UART%d Interrupt: No IRQ rasied by UART, but come in to UART ISR. IIR:0x%02X USR:0x%02X\n", p->line, iir_fcr, INREG8(REG_USR(p)));
+//            if (count == retry)
+//                UART_ERR("UART%d Interrupt: No IRQ rasied by UART, but come in to UART ISR. IIR:0x%02X USR:0x%02X\n", p->line, iir_fcr, INREG8(REG_USR(p)));
         }
         else /* Unknown Status */
         {
             UART_ERR("UART Unknown Interrupt, IIR:0x%02X\n", iir_fcr);
         }
     }
-
+        local_fiq_enable();
     return IRQ_HANDLED;
+}
+
+u32 gu32_console_bug_thre_hits = 0;
+module_param(gu32_console_bug_thre_hits, uint, S_IRUGO);
+
+static void serial8250_backup_timeout(unsigned long data)
+{
+    struct ms_uart_port *up = (struct ms_uart_port *)data;
+    u16 iir, ier = 0, lsr;
+    unsigned long flags;
+
+    spin_lock_irqsave(&up->port.lock, flags);
+
+    iir = INREG8(REG_IIR_FCR((&up->port)));
+    ier = INREG8(REG_DLH_IER((&up->port)));
+
+    /*
+     * This should be a safe test for anyone who doesn't trust the
+     * IIR bits on their UART, but it's specifically designed for
+     * the "Diva" UART used on the management processor on many HP
+     * ia64 and parisc boxes.
+     */
+    lsr = INREG8(REG_LSR((&up->port)));;
+    if ((iir & UART_IIR_NO_INT) && (ier & UART_IER_THRI) &&
+            (!uart_circ_empty(&up->port.state->xmit) || up->port.x_char) &&
+            (lsr & UART_LSR_THRE)) {
+        CLRREG8(REG_DLH_IER((&up->port)), UART_IER_THRI);
+        SETREG8(REG_DLH_IER((&up->port)), UART_IER_THRI);
+        gu32_console_bug_thre_hits++;
+        ms_putchar((&up->port));
+    }
+
+    spin_unlock_irqrestore(&up->port.lock, flags);
+
+    /* Standard timer interval plus 0.2s to keep the port running */
+    mod_timer(&up->timer,
+            jiffies + uart_poll_timeout(&up->port) + HZ / 5);
 }
 
 static s32 ms_uart_startup(struct uart_port *p)
@@ -1243,16 +1645,16 @@ static s32 ms_uart_startup(struct uart_port *p)
         INREG8(REG_DLL_THR_RBR(p));
         INREG8(REG_IIR_FCR(p));
         INREG8(REG_MSR(p));
-        rc = request_irq(p->irq, ms_uart_interrupt, IRQF_SHARED, "ms_serial",p);
+        rc = request_irq(p->irq, ms_uart_interrupt, IRQF_SHARED, "ms_serial", p);
     }
 
     /* Print UART interrupt request status */
     if (rc) {
         /* UART interrupt request failed */
-        UART_ERR("ms_startup(): UART%d request_irq()is failed. return code=%d\n", p->line, rc);
+        //UART_ERR("ms_startup(): UART%d request_irq()is failed. return code=%d\n", p->line, rc);
     } else {
         /* UART interrupt request passed */
-        UART_DBG("ms_startup(): UART%d request_irq() is passed.\n", p->line);
+        //UART_ERR("ms_startup(): UART%d request_irq() is passed.\n", p->line);
     }
 
     mp->rx_guard=0;
@@ -1260,6 +1662,14 @@ static s32 ms_uart_startup(struct uart_port *p)
 
     if(mp->use_dma)
     {
+#if CONSOLE_DMA
+        unsigned char bConsole = (mp->port.membase == console_port.port.membase) ? 1 : 0;
+
+        if (bConsole)
+        {
+            console_lock();
+        }
+#endif
         URDMA_Reset(p);
         URDMA_Activate(p,TRUE);
         URDMA_TxInit(p);
@@ -1268,6 +1678,13 @@ static s32 ms_uart_startup(struct uart_port *p)
         URDMA_RxSetupTimeoutInterrupt(p,TRUE);
         URDMA_RxSetupThresholdInterrupt(p,TRUE);
         URDMA_RxEnable(p,TRUE);
+#if CONSOLE_DMA
+        if (bConsole)
+        {
+            console_port.use_dma = 1;
+            console_unlock();
+        }
+#endif
     }
     else
     {
@@ -1282,8 +1699,25 @@ static s32 ms_uart_startup(struct uart_port *p)
     }
 
     ms_force_rx_disable(mp->padmux, ENABLE);
+#ifndef CONFIG_MS_SUPPORT_EXT_PADMUX
     ms_select_pad(p, mp->padmux, mp->pad_mode);
-
+#endif
+#if MS_UART_8250_BUG_THRE
+    mp->bugs = UART_BUG_THRE;
+#endif
+    /*
+     * [PATCH] from drivers/tty/serial/8250/8250_core.c
+     * The above check will only give an accurate result the first time
+     * the port is opened so this value needs to be preserved.
+     */
+    if (mp->bugs & UART_BUG_THRE) {
+        UART_ERR("ms_startup(): enable UART_BUG_THRE\n");
+        init_timer(&mp->timer);
+        mp->timer.function = serial8250_backup_timeout;
+        mp->timer.data = (unsigned long)mp;
+        mod_timer(&mp->timer, jiffies +
+                uart_poll_timeout(&mp->port) + HZ / 5);
+    }
     return rc;
 }
 
@@ -1324,16 +1758,21 @@ static void ms_uart_shutdown(struct uart_port *p)
         free_irq(p->irq, p);
     }
 
+    if (mp->bugs & UART_BUG_THRE) {
+        del_timer_sync(&mp->timer);
+    }
+
     ms_force_rx_disable(mp->padmux, DISABLE);
 }
 
 static void ms_uart_set_termios(struct uart_port *p, struct ktermios *pTermios_st, struct ktermios *pOld_st)
 {
     /* Define Local Variables */
-    struct ms_uart_port *mp;
+    struct ms_uart_port *mp = NULL;
     u8 uartflag = 0;
     u16 divisor = 0;
     u32 baudrate = 0;
+    u32 sctp_enable = 0;
 
     //OUTREG8(REG_DLH_IER(p), 0);
 
@@ -1403,13 +1842,34 @@ static void ms_uart_set_termios(struct uart_port *p, struct ktermios *pTermios_s
     OUTREG8(REG_LCR(p), uartflag);
 
     //NOTE: we are going to set LCR, be carefully here
-    baudrate = uart_get_baud_rate(p, pTermios_st, pOld_st, 0, 115200 * 8);
-    divisor = ms_uart_set_clk(p, baudrate);
-    if(divisor)
-        ms_uart_set_divisor(p, divisor);
+    if (!pOld_st || (tty_termios_baud_rate(pOld_st) != tty_termios_baud_rate(pTermios_st))) {
+        baudrate = uart_get_baud_rate(p, pTermios_st, pOld_st, 0, 115200 * 14);
+        divisor = ms_uart_set_clk(p, baudrate);
+        if(divisor) {
+            ms_uart_set_divisor(p, divisor);
+        }
+    }
 
-    OUTREG8(REG_IIR_FCR(p), UART_FCR_FIFO_ENABLE | UART_FCR_TRIGGER_TX_L0 | UART_FCR_TRIGGER_RX_L3);
+    OUTREG8(REG_IIR_FCR(p), UART_FCR_FIFO_ENABLE | UART_FCR_TRIGGER_TX_L0 | UART_FCR_TRIGGER_RX_L0);
     INREG8(REG_DLL_THR_RBR(p));
+
+    if(p->dev != NULL){
+        of_property_read_u32(p->dev->of_node, "sctp_enable", &sctp_enable);
+        if(sctp_enable == 1)
+        {
+            if(pTermios_st->c_cflag & CRTSCTS)
+            {
+                //rts cts enable
+                OUTREG8(REG_MCR(p), UART_MCR_AFCE | UART_MCR_RTS);
+                OUTREG8(REG_IIR_FCR(p), UART_FCR_FIFO_ENABLE | UART_FCR_TRIGGER_TX_L0 | UART_FCR_TRIGGER_RX_L3);
+            }
+            else
+            {
+                //rts cts disable
+                OUTREG8(REG_MCR(p), INREG8(REG_MCR(p)) & ~ (UART_LCR_DLAB| UART_MCR_RTS ) );
+            }
+        }
+    }
 
     if(p->dev)
     {
@@ -1427,27 +1887,6 @@ static void ms_uart_set_termios(struct uart_port *p, struct ktermios *pTermios_s
         ms_force_rx_disable(mp->padmux, ENABLE);
     }
 }
-
-/* UART Operations */
-static struct uart_ops ms_uart_ops =
-{
-    .tx_empty     = ms_uart_tx_empty,
-    .set_mctrl    = ms_uart_set_mctrl,     /* Not supported in MSB2501 */
-    .get_mctrl    = ms_uart_get_mctrl,     /* Not supported in MSB2501 */
-    .stop_tx      = ms_uart_stop_tx,
-    .start_tx     = ms_uart_start_tx,
-    .stop_rx      = ms_uart_stop_rx,
-    .enable_ms    = ms_uart_enable_ms,     /* Not supported in MSB2501 */
-    .break_ctl    = ms_uart_break_ctl,     /* Not supported in MSB2501 */
-    .startup      = ms_uart_startup,
-    .shutdown     = ms_uart_shutdown,
-    .set_termios  = ms_uart_set_termios,
-    .type         = ms_uart_type,          /* Not supported in MSB2501 */
-    .release_port = ms_uart_release_port,  /* Not supported in MSB2501 */
-    .request_port = ms_uart_request_port,  /* Not supported in MSB2501 */
-    .config_port  = ms_uart_config_port,   /* Not supported in MSB2501 */
-    .verify_port  = ms_uart_verify_port,   /* Not supported in MSB2501 */
-};
 
 #ifdef CONFIG_PM
 static s32 ms_uart_suspend(struct platform_device *pdev, pm_message_t state)
@@ -1483,12 +1922,20 @@ static s32 ms_uart_suspend(struct platform_device *pdev, pm_message_t state)
     mp->backupDivisor = (INREG8(REG_DLH_IER(p)) << 8);
     mp->backupDivisor |= (INREG8(REG_DLL_THR_RBR(p)) & 0xFF);
 
+#ifndef CONFIG_CAM_CLK
     if (!IS_ERR(mp->clk))
     {
         clk_disable_unprepare(mp->clk);
+#if 0
         clk_put(mp->clk);
+#endif
     }
-
+#else
+    if(mp->pvclk)
+    {
+        CamClkSetOnOff(mp->pvclk,0);
+    }
+#endif
     return 0;
 }
 
@@ -1496,27 +1943,20 @@ static s32 ms_uart_resume(struct platform_device *pdev)
 {
     struct ms_uart_port *mp=platform_get_drvdata(pdev);
     struct uart_port *p=&mp->port;
-
+#ifndef CONFIG_CAM_CLK
     if (!IS_ERR(mp->clk))
         clk_prepare_enable(mp->clk);
-
+#else
+    if(mp->pvclk)
+    {
+        CamClkSetOnOff(mp->pvclk,1);
+    }
+#endif
     ms_uart_set_divisor(p, mp->backupDivisor);
 
     OUTREG8(REG_MCR(p), mp->backupMCR);
     OUTREG8(REG_LCR(p), mp->backupLCR);
     OUTREG8(REG_DLH_IER(p), mp->backupIER);
-
-    if(mp->use_dma)
-    {
-        URDMA_Reset(p);
-        URDMA_Activate(p,TRUE);
-        URDMA_TxInit(p);
-        URDMA_TxEnable(p,TRUE);
-        URDMA_RxInit(p);
-        URDMA_RxSetupTimeoutInterrupt(p,TRUE);
-        URDMA_RxSetupThresholdInterrupt(p,TRUE);
-        URDMA_RxEnable(p,TRUE);
-    }
 
     uart_resume_port(&ms_uart_driver, &mp->port);
 
@@ -1536,13 +1976,23 @@ static s32 ms_uart_remove(struct platform_device *pdev)
     {
         dma_free_coherent(&pdev->dev, PAGE_ALIGN(UR2DMA_RX_BUF_LENGTH), &mp->urdma->rx_urdma_base, GFP_KERNEL);
         dma_free_coherent(&pdev->dev, PAGE_ALIGN(UR2DMA_TX_BUF_LENGTH), &mp->urdma->tx_urdma_base, GFP_KERNEL);
+        kthread_stop(mp->urdma_task);
     }
-
+#ifndef CONFIG_CAM_CLK
     if (!IS_ERR(mp->clk))
     {
         clk_disable_unprepare(mp->clk);
         clk_put(mp->clk);
     }
+#else
+    if(mp->pvclk)
+    {
+        CamClkSetOnOff(mp->pvclk,0);
+        CamClkUnregister(mp->pvclk);
+        mp->pvclk = NULL;
+    }
+#endif
+
 
     return 0;
 }
@@ -1553,11 +2003,14 @@ static s32 ms_uart_probe(struct platform_device *pdev)
     struct ms_uart_port *mp;
     struct ms_urdma *urdma;
     struct resource *res;
+    int pm_uart = 0;
     int tx_pad;
-
+#ifdef CONFIG_CAM_CLK
+    int UartClk;
+#endif
     if(!pdev)
     {
-        UART_ERR("ms_uart_probe() parameter pdev is NULL\n");
+        // UART_ERR("ms_uart_probe() parameter pdev is NULL\n");
         return -ENOMEM;
     }
     mp = devm_kzalloc(&pdev->dev, sizeof(*mp), GFP_KERNEL);
@@ -1572,20 +2025,35 @@ static s32 ms_uart_probe(struct platform_device *pdev)
         return -EINVAL;
     }*/
     pdev->id=mp->port.line;
-
+#ifndef CONFIG_CAM_CLK
     mp->clk = of_clk_get(pdev->dev.of_node, 0);
     if(IS_ERR(mp->clk))
     {
-        UART_ERR("[%s] of_clk_get failed\n", __func__);
+         //UART_ERR("[%s] of_clk_get failed\n", __func__);
         return -EINVAL;
     }
     //enable clk in probe, because if UART no clk, it can not be accessed.
     clk_prepare_enable(mp->clk);
     mp->port.uartclk = clk_get_rate(mp->clk);
-
+#else
+    UartClk = 0;
+    of_property_read_u32_index(pdev->dev.of_node,"camclk", 0,&UartClk);
+    if (!UartClk)
+    {
+        printk( "[%s] Fail to get clk!\n", __func__);
+        ret = -ENOENT;
+    }
+    else
+    {
+        CamClkRegister((u8 *)pdev->name,UartClk,&mp->pvclk);
+        CamClkSetOnOff(mp->pvclk,1);
+        CamClkAttrGet(mp->pvclk,&mp->stCfg);
+        mp->port.uartclk = mp->stCfg.u32Rate;
+    }
+#endif
     res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
     if (res == NULL) {
-        UART_ERR("no memory resource defined\n");
+        // UART_ERR("no memory resource defined\n");
         ret = -ENODEV;
         goto out;
     }
@@ -1593,16 +2061,42 @@ static s32 ms_uart_probe(struct platform_device *pdev)
 
     res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
     if (res == NULL) {
-        UART_ERR("no irq resource defined\n");
+        // UART_ERR("no irq resource defined\n");
         ret = -ENODEV;
         goto out;
     }
     mp->port.irq = res->start;
 
+    of_property_read_u32(pdev->dev.of_node, "pm_uart", &pm_uart);
+
+    if(pm_uart )
+    {
+        res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+        if (res == NULL) {
+            ret = -ENODEV;
+            goto out;
+        }
+        mp->port.membase = (void *)res->start;
+
+        res = platform_get_resource(pdev, IORESOURCE_IRQ, 1);
+        if (res == NULL) {
+            ret = -ENODEV;
+            goto out;
+        }
+        mp->port.irq = res->start;
+    }
+
     of_property_read_u32(pdev->dev.of_node, "dma", &mp->use_dma);
 
-    if(mp->use_dma)
+    if (mp->use_dma)
     {
+#if CONSOLE_DMA
+        unsigned char bConsole = (mp->port.membase == console_port.port.membase) ? 1 : 0;
+        if (bConsole)
+        {
+            console_lock();
+        }
+#endif
         mp->urdma = devm_kzalloc(&pdev->dev, sizeof(*urdma), GFP_KERNEL);
         if (!mp->urdma)
         {
@@ -1614,7 +2108,7 @@ static s32 ms_uart_probe(struct platform_device *pdev)
         if (res == NULL)
         {
             mp->use_dma = 0;
-            UART_ERR("no urdma memory resource defined...\n");
+            // UART_ERR("no urdma memory resource defined...\n");
             goto dma_err;
         }
         mp->urdma->reg_base = (reg_urdma *)IO_ADDRESS(res->start);
@@ -1623,7 +2117,7 @@ static s32 ms_uart_probe(struct platform_device *pdev)
         if (res == NULL)
         {
             mp->use_dma = 0;
-            UART_ERR("no urdma irq resource defined\n");
+            // UART_ERR("no urdma irq resource defined\n");
             goto dma_err;
         }
         mp->urdma->urdma_irq = res->start;
@@ -1636,15 +2130,32 @@ static s32 ms_uart_probe(struct platform_device *pdev)
         if(!mp->urdma->rx_buf || !mp->urdma->tx_buf)
         {
             mp->use_dma = 0;
-            UART_ERR("Allocate urdma rx_buffer/tx_buffer failed, use UART mode\n");
+            // UART_ERR("Allocate urdma rx_buffer/tx_buffer failed, use UART mode\n");
             goto dma_err;
         }
         mp->urdma->rx_urdma_size = PAGE_ALIGN(UR2DMA_RX_BUF_LENGTH);
         mp->urdma->tx_urdma_size = PAGE_ALIGN(UR2DMA_TX_BUF_LENGTH);
         UART_DBG("[%s] URDMA mode enable, reg_base=0x%08X, irq=%d\n", __func__, (unsigned int)(mp->urdma->reg_base), mp->urdma->urdma_irq);
-        UART_ERR("URDMA rx_buf=0x%08X(phy:0x%08X) tx_buf=0x%08X(phy:0x%08X) size=0x%X\n", (unsigned int)mp->urdma->rx_buf, (unsigned int)mp->urdma->rx_urdma_base, (unsigned int)mp->urdma->tx_buf, (unsigned int)mp->urdma->tx_urdma_base, mp->urdma->rx_urdma_size);
-    }
+        // UART_ERR("URDMA rx_buf=0x%08X(phy:0x%08X) tx_buf=0x%08X(phy:0x%08X) size=0x%X\n", (unsigned int)mp->urdma->rx_buf, (unsigned int)mp->urdma->rx_urdma_base, (unsigned int)mp->urdma->tx_buf, (unsigned int)mp->urdma->tx_urdma_base, mp->urdma->rx_urdma_size);
+#if CONSOLE_DMA
 dma_err:
+        if (bConsole)
+        {
+            // console_port.use_dma = mp->use_dma;
+            if ((!mp->use_dma) && (mp->urdma))
+            {
+                devm_kfree(&pdev->dev, mp->urdma);
+                mp->urdma = NULL;
+            }
+            console_port.urdma= mp->urdma;
+            console_unlock();
+        }
+#endif
+        mp->urdma_task = kthread_run(urdma_tx_thread,(void *)&mp->port,"urdma_tx_thread");
+    }
+#if !CONSOLE_DMA
+dma_err:
+#endif
     mp->port.type = PORT_8250;
     mp->port.dev = &pdev->dev;
     mp->port.ops=&ms_uart_ops;
@@ -1654,6 +2165,7 @@ dma_err:
     mp->port.iotype=UPIO_MEM;
 
     UART_DBG("[%s] line=%d name=%s\n", __func__, mp->port.line, pdev->name);
+
 
     //[2016.11.15] Add padmux select from DTB by Spade
     if(of_property_read_u32(pdev->dev.of_node, "pad", &tx_pad))  //read property failed
@@ -1702,7 +2214,7 @@ dma_err:
     {
         if (ms_uart_get_padmux(tx_pad, &(mp->padmux), &(mp->pad_mode)) != 0)
         {
-            UART_ERR("[%s] Use undefined pad number %d\n", __func__, tx_pad);
+            // UART_ERR("[%s] Use undefined pad number %d\n", __func__, tx_pad);
             ret = -EINVAL;
             goto out;
         }
@@ -1725,10 +2237,15 @@ dma_err:
 
     return 0;
 out:
-    UART_ERR("[UART%d]: failure [%s]: %d\n", mp->port.line, __func__, ret);
+    // UART_ERR("[UART%d]: failure [%s]: %d\n", mp->port.line, __func__, ret);
+#ifndef CONFIG_CAM_CLK
     clk_disable_unprepare(mp->clk);
     clk_put(mp->clk);
-
+#else
+    CamClkSetOnOff(mp->pvclk,0);
+    CamClkUnregister(mp->pvclk);
+    mp->pvclk = NULL;
+#endif
     return ret;
 }
 
@@ -1762,7 +2279,7 @@ static s32 __init ms_uart_module_init(void)
     ret = platform_driver_register(&ms_uart_platform_driver);
     if (ret != 0)
     {
-        UART_ERR("[ms_uart]platform_driver_register failed!!\n");
+        // UART_ERR("[ms_uart]platform_driver_register failed!!\n");
         uart_unregister_driver(&ms_uart_driver);
     }
     return ret;
@@ -1781,9 +2298,9 @@ module_exit(ms_uart_module_exit);
 
 static int __init ms_early_console_init(void)
 {
+#if !CONSOLE_DMA
     struct device_node *console_np;
     struct resource res;
-
 
     console_np=of_find_node_by_path("console");
     if(!console_np)
@@ -1801,11 +2318,9 @@ static int __init ms_early_console_init(void)
     console_port.port.fifosize = 16;
     console_port.port.line=0;
     console_port.port.cons=&ms_uart_console;
-
     ms_uart_add_console_port(&console_port);
+#endif
     register_console(&ms_uart_console);
-
-
     return 0;
 }
 
@@ -1842,8 +2357,9 @@ void URDMA_Reset(struct uart_port *p)
         }
     }
 
+#if !CONSOLE_DMA
     mdelay(10);
-
+#endif
     mp->urdma->reg_base->sw_rst = 0;
 
     mp->urdma->reg_base->urdma_mode=0;
@@ -2030,13 +2546,113 @@ void URDMA_RxClearInterrupt(struct uart_port *p)
     mp->urdma->reg_base->rx_intr_clr = 1; /* clear int status */
 }
 
+/*
 U32 URDMA_GetWritableSize(struct uart_port *p)
 {
     struct ms_uart_port *mp=(struct ms_uart_port*)p->dev->driver_data;
 
     return (U32)((mp->urdma->reg_base->tx_buf_rptr - mp->urdma->reg_base->tx_buf_wptr - 1) & (mp->urdma->rx_urdma_size - 1));
 }
+*/
 
+#if CONSOLE_DMA
+static int urdma_tx_thread(void *arg)
+{
+    struct uart_port *p = (struct uart_port *)arg;
+    struct circ_buf *xmit;
+    while(!kthread_should_stop()){
+        wait_event_interruptible(urdma_wait, urdma_conditions);
+        urdma_conditions = 0;
+        xmit = &p->state->xmit;
+        if (uart_circ_empty(xmit) || uart_tx_stopped(p))
+        {
+            ms_uart_stop_tx(p);
+        }
+
+        if (uart_circ_chars_pending(xmit))
+       {
+            URDMA_StartTx(p);
+       }else
+       {
+            uart_write_wakeup(p);
+       }
+    }
+    return 0;
+}
+
+static int _urdma_tx(struct ms_uart_port *mp, unsigned char* buf, int buf_size)
+{
+    int complete_size = 0;
+    int size_cp;
+    U16 sw_tx_wptr = mp->urdma->reg_base->tx_buf_wptr;
+    U16 sw_tx_rptr = mp->urdma->reg_base->tx_buf_rptr;
+    unsigned long flags1;
+
+    spin_lock_irqsave(&mutex_console_2_dma, flags1);
+    if(mp->urdma->reg_base->tx_buf_wptr == 0 && mp->urdma->reg_base->tx_buf_rptr == 0){
+        sw_tx_wptr = (sw_tx_wptr) & UR2DMA_TX_BUF_MASK;
+    }
+    else
+    {
+        sw_tx_wptr = (sw_tx_wptr +1) & UR2DMA_TX_BUF_MASK;
+    }
+    if (sw_tx_wptr >= sw_tx_rptr)
+    {
+        size_cp = min_t(int, (mp->urdma->tx_urdma_size - sw_tx_wptr), buf_size);
+        if (size_cp)
+        {
+            memcpy((void *)(&mp->urdma->tx_buf[sw_tx_wptr]), buf, size_cp);
+            buf += size_cp;
+            buf_size -= size_cp;
+            complete_size += size_cp;
+            sw_tx_wptr = (sw_tx_wptr + size_cp) & UR2DMA_TX_BUF_MASK;
+        }
+    }
+    if (buf_size)
+    {
+        size_cp = min_t(int, (sw_tx_rptr - sw_tx_wptr), buf_size);
+        if (size_cp)
+        {
+            memcpy((void *)(&mp->urdma->tx_buf[sw_tx_wptr]), buf, size_cp);
+            complete_size += size_cp;
+        }
+    }
+    if (complete_size)
+    {
+        Chip_Flush_MIU_Pipe();
+        if(mp->urdma->reg_base->tx_buf_wptr == 0 && mp->urdma->reg_base->tx_buf_rptr == 0)
+        {
+            mp->urdma->reg_base->tx_buf_wptr = ((mp->urdma->reg_base->tx_buf_wptr + complete_size -1 ) & UR2DMA_TX_BUF_MASK);
+        }
+        else
+        {
+            mp->urdma->reg_base->tx_buf_wptr = ((mp->urdma->reg_base->tx_buf_wptr + complete_size) & UR2DMA_TX_BUF_MASK);
+        }
+    }
+    spin_unlock_irqrestore(&mutex_console_2_dma, flags1);
+    return complete_size;
+}
+
+void URDMA_StartTx(struct uart_port *p)
+{
+    struct ms_uart_port *mp=(struct ms_uart_port*)p->dev->driver_data;
+    struct circ_buf *xmit = &p->state->xmit;
+    U16 circ_buf_out_size = CIRC_CNT_TO_END(xmit->head, xmit->tail, UART_XMIT_SIZE);
+    int complete_size = 0;
+    U16 sw_tx_wptr = mp->urdma->reg_base->tx_buf_wptr;
+    U16 sw_tx_rptr = mp->urdma->reg_base->tx_buf_rptr;
+    int space = (sw_tx_rptr > sw_tx_wptr) ? (sw_tx_rptr - sw_tx_wptr) : (mp->urdma->tx_urdma_size - sw_tx_wptr + sw_tx_rptr);
+
+    if (circ_buf_out_size && (space > circ_buf_out_size))
+    {
+        complete_size = _urdma_tx(mp, &xmit->buf[xmit->tail], circ_buf_out_size);
+        p->icount.tx += complete_size;
+        xmit->tail = (xmit->tail + complete_size) & (UART_XMIT_SIZE - 1);
+    }
+
+    return;
+}
+#else // #if CONSOLE_DMA
 void URDMA_StartTx(struct uart_port *p)
 {
     struct ms_uart_port *mp=(struct ms_uart_port*)p->dev->driver_data;
@@ -2111,6 +2727,7 @@ void URDMA_StartTx(struct uart_port *p)
     }
     return;
 }
+#endif
 
 void URDMA_StartRx(struct uart_port *p)
 {

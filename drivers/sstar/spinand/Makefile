@@ -13,6 +13,13 @@ EXTRA_CFLAGS      +=  -Idrivers/mtd
 # specific options
 EXTRA_CFLAGS      +=  -DMSOS_TYPE_LINUX
 
+ifeq ($(CONFIG_SSTAR_CHIP_NAME), infinity2)
+	MHAL_SOURCE = hal/$(CONFIG_SSTAR_CHIP_NAME)/mhal_spinand.o
+else
+	MHAL_SOURCE = hal/mhal_spinand.o
+endif
+
 kdrv_spinand-objs := drv/mdrv_spinand.o \
                      drv/mdrv_spinand_hal.o \
-                     hal/mhal_spinand.o
+                     $(MHAL_SOURCE) \
+                     hal/$(CONFIG_SSTAR_CHIP_NAME)/mhal_spinand_chip_config.o

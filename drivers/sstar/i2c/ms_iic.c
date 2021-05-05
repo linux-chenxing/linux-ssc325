@@ -1,9 +1,8 @@
 /*
 * ms_iic.c- Sigmastar
 *
-* Copyright (C) 2018 Sigmastar Technology Corp.
+* Copyright (c) [2019~2020] SigmaStar Technology.
 *
-* Author: richard.guo <richard.guo@sigmastar.com.tw>
 *
 * This software is licensed under the terms of the GNU General Public
 * License version 2, as published by the Free Software Foundation, and
@@ -12,7 +11,7 @@
 * This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* GNU General Public License version 2 for more details.
 *
 */
 //#include "MsCommon.h"
@@ -50,11 +49,15 @@
 //#include "mst_devid.h"
 #include <linux/dma-mapping.h>
 #include <linux/dmapool.h>
+#include <linux/miscdevice.h>
 
 #include "ms_iic.h"
 #include "mhal_iic_reg.h"
 #include "mhal_iic.h"
 #include "ms_platform.h"
+#include "cam_sysfs.h"
+#include "drv_camclk_Api.h"
+#include <ms_iic_io.h>
 #define I2C_ACCESS_DUMMY_TIME   5//3
 ///////////////////////////////////////////&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&////////////////////////////////////////////////
 ///////////////////////////////////////////&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&////////////////////////////////////////////////
@@ -80,17 +83,25 @@ I2C_DMA HWI2C_DMA[HWI2C_PORTM];
 #define MsOS_DelayTaskUs(x)				udelay(x)
 #define MS_DEBUG_MSG(x)       x
 
+#define I2CNAME "i2c-"
+
+#ifdef CONFIG_MS_PADMUX
+#include "mdrv_padmux.h"
+#include "mdrv_puse.h"
+#include "gpio.h"
+#endif
+
 //static MS_S32 g_s32HWI2CMutex[HWI2C_PORTM] = {-1,-1,-1,-1};
 //static char gu8HWI2CMutexName[HWI2C_PORTM][13] = {"HWI2CMUTEXP0","HWI2CMUTEXP1","HWI2CMUTEXP2","HWI2CMUTEXP3"};
 
-#if 0
+//#define EN_I2C_LOG
+#ifdef EN_I2C_LOG
 #define HWI2C_DBG_FUNC()               if (_geDbgLv >= E_HWI2C_DBGLV_ALL) \
                                             {MS_DEBUG_MSG(printk("\t====   %s   ====\n", __FUNCTION__);)}
 #define HWI2C_DBG_INFO(x, args...)     if (_geDbgLv >= E_HWI2C_DBGLV_INFO ) \
                                             {MS_DEBUG_MSG(printk(x, ##args);)}
 #define HWI2C_DBG_ERR(x, args...)      if (_geDbgLv >= E_HWI2C_DBGLV_ERR_ONLY) \
                                             {MS_DEBUG_MSG(printk(x, ##args);)}
-                                            {MS_DEBUG_MSG(printf(x, ##args);)}
 #else
 #define HWI2C_DBG_FUNC()               //printk("\t##########################   %s   ################################\n", __FUNCTION__)
 #define HWI2C_DBG_INFO(x, args...)     //printk(x, ##args)
@@ -124,17 +135,47 @@ struct mstar_i2c_dev {
 	u32 bus_clk_rate;
 	bool is_suspended;
 	int i2cgroup;
-	int i2cpadmux;
+    int i2cpadmux;
+    int i2c_speed;
+    int i2c_en_dma;
+};
+typedef struct _i2c_dev_data{
+	u32 i2cirq;
+	int i2cgroup;
+	struct miscdevice i2c_miscdev;
+}i2c_dev_data;
+
+static int  i2c_open(struct inode *inode, struct file *fp);
+static long i2c_ioctl(struct file *fp, unsigned int cmd, unsigned long arg);
+static int  i2c_set_srcclk(struct platform_device *pdev, HWI2C_SRC_CLK i2c_src_clk);
+static int  i2c_remove_srcclk(struct platform_device *pdev);
+static BOOL _MDrv_HWI2C_SetClk(U8 u8Port, HWI2C_CLK_SEL eClk, void* pdev);
+
+static const struct file_operations i2c_fops =
+{
+    .open     = i2c_open,
+    .unlocked_ioctl = i2c_ioctl,
+
 };
 
 static BOOL _gbInit = FALSE;
-//static HWI2C_DbgLv _geDbgLv = E_HWI2C_DBGLV_ERR_ONLY;
+
+#ifdef EN_I2C_LOG
+static HWI2C_DbgLv _geDbgLv = E_HWI2C_DBGLV_INFO; //E_HWI2C_DBGLV_ERR_ONLY;
+#endif
+
 static HWI2C_State _geState = E_HWI2C_IDLE;
 static U32 g_u32StartDelay = HWI2C_STARTDLY, g_u32StopDelay = HWI2C_STOPDLY;
 static HWI2C_ReadMode g_HWI2CReadMode[HWI2C_PORTS];
 //static HWI2C_PORT g_HWI2CPort[HWI2C_PORTS];
 static U16 g_u16DelayFactor[HWI2C_PORTS];
 static BOOL g_bDMAEnable[HWI2C_PORTS];
+static HAL_HWI2C_ClkCntCfg g_HWI2CClkCnt[HWI2C_PORTS];
+static struct platform_device *g_pdev[HWI2C_PORTS];
+
+#ifdef CONFIG_CAM_CLK
+void **pvhandler;
+#endif
 //static U8 g_HWI2CPortIdx = HWI2C_PORT0;
 ////////////////////////////////////////////////////////////////////////////////
 // Local Function
@@ -164,6 +205,41 @@ BOOL MDrv_MMIO_GetBASE(U32 *u32Baseaddr, U32 *u32Basesize, U32 u32Module)
 }
 #endif
 
+static int i2c_open(struct inode *inode, struct file *fp)
+{
+    return 0;
+}
+static long i2c_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
+{
+    int ret = 0;
+    I2C_IOCTL_CMD I2cCmd;
+    printk("=======================i2c_ioctl=======================\n");
+    if (_IOC_TYPE(cmd) != I2C_IOCTL_MAGIC) return -ENOTTY;
+    switch(cmd)
+    {
+        case IOCTL_I2C_SET_SPEED:
+        {
+            mutex_lock(&i2cMutex);
+            memset(&I2cCmd,0,sizeof(I2C_IOCTL_CMD));
+            if(copy_from_user(&I2cCmd, (I2C_IOCTL_CMD *)arg, sizeof(I2C_IOCTL_CMD))){
+	            mutex_unlock(&i2cMutex);
+	            return -EFAULT;
+            }
+
+            ret = i2c_remove_srcclk(g_pdev[I2cCmd.Clk_Cfg.u8Port]);
+            if(ret){
+	            mutex_unlock(&i2cMutex);
+	            return -EFAULT;
+            }
+
+            ret = _MDrv_HWI2C_SetClk(I2cCmd.Clk_Cfg.u8Port, I2cCmd.Clk_Cfg.eClk , g_pdev[I2cCmd.Clk_Cfg.u8Port]);
+            mutex_unlock(&i2cMutex);
+            return ret;
+        }
+        break;
+    }
+    return ret;
+}
 
 BOOL MDrv_HWI2C_Send_Byte(U16 u16PortOffset, U8 u8Data)
 {
@@ -194,7 +270,7 @@ BOOL _MDrv_HWI2C_GetPortRegOffset(U8 u8Port, U16 *pu16Offset)
 
     if(u8Port>=HWI2C_PORTS)
     {
-        HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
+        // HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
         return FALSE;
     }
     return HAL_HWI2C_SetPortRegOffset(u8Port,pu16Offset);
@@ -220,20 +296,20 @@ BOOL _MDrv_HWI2C_ReadBytes(U8 u8Port, U16 u16SlaveCfg, U32 uAddrCnt, U8 *pRegAdd
     //check support port index
     if(u8Port>=HWI2C_PORTS)
     {
-        HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
+        // HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
         return FALSE;
     }
     //no meaning operation
     if (!uSize)
     {
-        HWI2C_DBG_ERR("Read bytes error!\n");
+        // HWI2C_DBG_ERR("Read bytes error!\n");
         return FALSE;
     }
 
     //configure port register offset ==> important
     if(!_MDrv_HWI2C_GetPortRegOffset(u8Port,&u16Offset))
     {
-        HWI2C_DBG_ERR("Port index error!\n");
+        // HWI2C_DBG_ERR("Port index error!\n");
         return FALSE;
     }
 
@@ -348,20 +424,20 @@ BOOL _MDrv_HWI2C_WriteBytes(U8 u8Port, U16 u16SlaveCfg, U32 uAddrCnt, U8 *pRegAd
     //check support port index
     if(u8Port>=HWI2C_PORTS)
     {
-        HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
+        // HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
         return FALSE;
     }
     //no meaning operation
     if (!uSize)
     {
-        HWI2C_DBG_ERR("Write bytes error!\n");
+        // HWI2C_DBG_ERR("Write bytes error!\n");
         return FALSE;
     }
 
     //configure port register offset ==> important
     if(!_MDrv_HWI2C_GetPortRegOffset(u8Port,&u16Offset))
     {
-        HWI2C_DBG_ERR("Port index error!\n");
+        // HWI2C_DBG_ERR("Port index error!\n");
         return FALSE;
     }
 
@@ -426,6 +502,20 @@ BOOL _MDrv_HWI2C_WriteBytes(U8 u8Port, U16 u16SlaveCfg, U32 uAddrCnt, U8 *pRegAd
     return bComplete;
 }
 
+#if defined(CONFIG_MS_PADMUX)
+static int _MDrv_HWI2C_IsPadSet(HWI2C_PORT ePort)
+{
+    // important: need to modify if more MDRV_PUSE_I2C? defined
+    if ((ePort < E_HWI2C_PORT_1 && PAD_UNKNOWN != mdrv_padmux_getpad(MDRV_PUSE_I2C0_SCL)) ||
+        (ePort < E_HWI2C_PORT_2 && PAD_UNKNOWN != mdrv_padmux_getpad(MDRV_PUSE_I2C1_SCL)) )
+    {
+        return TRUE;
+    }
+    else
+        return FALSE;
+}
+#endif
+
 static BOOL _MDrv_HWI2C_SelectPort(HWI2C_PORT ePort)
 {
     U16 u16Offset = 0x00;
@@ -439,7 +529,13 @@ static BOOL _MDrv_HWI2C_SelectPort(HWI2C_PORT ePort)
         return FALSE;
 
     //(2) Set pad mux for port number
-    bRet &= HAL_HWI2C_SelectPort((HAL_HWI2C_PORT)ePort);
+#if defined(CONFIG_MS_PADMUX)
+    if (0 == mdrv_padmux_active() ||
+        FALSE == _MDrv_HWI2C_IsPadSet(ePort) )
+#endif
+    {
+        bRet &= HAL_HWI2C_SelectPort((HAL_HWI2C_PORT)ePort);
+    }
 
     //(3) configure port register offset ==> important
     bRet &= _MDrv_HWI2C_GetPortRegOffset(u8Port,&u16Offset);
@@ -449,38 +545,139 @@ static BOOL _MDrv_HWI2C_SelectPort(HWI2C_PORT ePort)
 
     return bRet;
 }
-
-static BOOL _MDrv_HWI2C_SetClk(U8 u8Port, HWI2C_CLKSEL eClk)
+static BOOL _MDrv_HWI2C_SetDelayFactor(U8 u8Port, HWI2C_CLK_SEL eClk)
 {
-    U16 u16Offset = 0x00;
+    switch(eClk) 
+    {
+        case E_HWI2C_CLK_25KHZ:
+            g_u16DelayFactor[u8Port] = (U16)(1<<5);
+        break;
+        case E_HWI2C_CLK_50KHZ:
+            g_u16DelayFactor[u8Port] = (U16)(1<<4);
+        break;
+        case E_HWI2C_CLK_100KHZ:
+            g_u16DelayFactor[u8Port] = (U16)(1<<3);
+        break;
+        case E_HWI2C_CLK_200KHZ:
+            g_u16DelayFactor[u8Port] = (U16)(1<<2);
+        break;
+        case E_HWI2C_CLK_300KHZ:
+            g_u16DelayFactor[u8Port] = (U16)(1<<1);
+        break;
+        case E_HWI2C_CLK_400KHZ:
+        case E_HWI2C_CLK_600KHZ:
+        case E_HWI2C_CLK_800KHZ:
+        case E_HWI2C_CLK_1000KHZ:
+        case E_HWI2C_CLK_1500KHZ:
+            g_u16DelayFactor[u8Port] = (U16)(1<<0);
+        break;
+        default:
+            HWI2C_DBG_ERR("[%s]Port%d clk: %u failed\n",__func__, u8Port, eClk);
+            return FALSE;
+        break;
+    }
+    return TRUE;
+}
+static BOOL _MDrv_HWI2C_SetClk(U8 u8Port, HWI2C_CLK_SEL eClk, void* pdev)
+{
+    U16           u16Offset = 0x00;
+    int           ret;     
+    HWI2C_SRC_CLK i2c_src_clk = E_HWI2C_SRC_CLK_12M;
 
     HWI2C_DBG_FUNC();
     HWI2C_DBG_INFO("Port%d clk: %u\n", u8Port, eClk);
 
     //check support port index
-    if(u8Port>=HWI2C_PORTS)
+    if(u8Port >= HWI2C_PORTS)
     {
-        HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
+        // HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
         return FALSE;
     }
     //check support clock speed
-    if (eClk >= E_HWI2C_NOSUP)
+    if (eClk >= E_HWI2C_CLK_NOSUP)
     {
-        HWI2C_DBG_ERR("Clock [%u] is not supported!\n",eClk);
-        return FALSE;
+        // HWI2C_DBG_ERR("Clock [%u] is not supported!\n",eClk);
+    return FALSE;
     }
 
     //configure port register offset ==> important
     if(!_MDrv_HWI2C_GetPortRegOffset(u8Port,&u16Offset))
     {
-        HWI2C_DBG_ERR("Port index error!\n");
+        // HWI2C_DBG_ERR("Port index error!\n");
+        return FALSE;
+    }
+    if(!_MDrv_HWI2C_SetDelayFactor(u8Port, eClk)){
+        return FALSE;
+    }
+    HWI2C_DBG_INFO("Port%d clk: %u offset:%d\n", u8Port, eClk, u16Offset);
+    //switch case speed -> srcclk, clk cnt
+    switch(eClk)
+    {
+        case E_HWI2C_CLK_25KHZ:
+            i2c_src_clk = E_HWI2C_SRC_CLK_12M; 
+            g_HWI2CClkCnt[u8Port].u16ClkHCnt = 235; 
+            g_HWI2CClkCnt[u8Port].u16ClkLCnt = 237;
+        break;
+        case E_HWI2C_CLK_50KHZ:
+            i2c_src_clk = E_HWI2C_SRC_CLK_12M; 
+            g_HWI2CClkCnt[u8Port].u16ClkHCnt = 115; 
+            g_HWI2CClkCnt[u8Port].u16ClkLCnt = 117;
+        break;
+        case E_HWI2C_CLK_100KHZ:
+            i2c_src_clk = E_HWI2C_SRC_CLK_12M; 
+            g_HWI2CClkCnt[u8Port].u16ClkHCnt = 55; 
+            g_HWI2CClkCnt[u8Port].u16ClkLCnt = 57;
+        break;
+        case E_HWI2C_CLK_200KHZ:
+            i2c_src_clk = E_HWI2C_SRC_CLK_12M; 
+            g_HWI2CClkCnt[u8Port].u16ClkHCnt = 25; 
+            g_HWI2CClkCnt[u8Port].u16ClkLCnt = 27;
+        break;
+        case E_HWI2C_CLK_300KHZ:
+            i2c_src_clk = E_HWI2C_SRC_CLK_54M; 
+            g_HWI2CClkCnt[u8Port].u16ClkHCnt = 87; 
+            g_HWI2CClkCnt[u8Port].u16ClkLCnt = 89;
+        break;
+        case E_HWI2C_CLK_400KHZ:
+            i2c_src_clk = E_HWI2C_SRC_CLK_54M; 
+            g_HWI2CClkCnt[u8Port].u16ClkHCnt = 64; 
+            g_HWI2CClkCnt[u8Port].u16ClkLCnt = 66;
+        break;
+        case E_HWI2C_CLK_600KHZ:
+            i2c_src_clk = E_HWI2C_SRC_CLK_54M; 
+            g_HWI2CClkCnt[u8Port].u16ClkHCnt = 42; 
+            g_HWI2CClkCnt[u8Port].u16ClkLCnt = 44;
+        break;
+        case E_HWI2C_CLK_800KHZ:
+            i2c_src_clk = E_HWI2C_SRC_CLK_54M; 
+            g_HWI2CClkCnt[u8Port].u16ClkHCnt = 30; 
+            g_HWI2CClkCnt[u8Port].u16ClkLCnt = 32;
+        break;
+        case E_HWI2C_CLK_1000KHZ:
+            i2c_src_clk = E_HWI2C_SRC_CLK_72M; 
+            g_HWI2CClkCnt[u8Port].u16ClkHCnt = 33; 
+            g_HWI2CClkCnt[u8Port].u16ClkLCnt = 35;
+        break;
+        case E_HWI2C_CLK_1500KHZ:
+            i2c_src_clk = E_HWI2C_SRC_CLK_72M; 
+            g_HWI2CClkCnt[u8Port].u16ClkHCnt = 21; 
+            g_HWI2CClkCnt[u8Port].u16ClkLCnt = 23;
+        break;
+        default:
+            HWI2C_DBG_ERR("[%s]Port%d eClk%d failed\n", __func__, u8Port, eClk);
+            return FALSE;
+        break;
+    }
+    //HWI2C_DBG_ERR("[%s]Port%d eClk%d src%d\n", __func__, u8Port, eClk, i2c_src_clk);
+    //HWI2C_DBG_ERR("[%s]g_HWI2CClkCnt[%d].u16ClkHCnt %d\n", __func__, u8Port, g_HWI2CClkCnt[u8Port].u16ClkHCnt);
+    //HWI2C_DBG_ERR("[%s]g_HWI2CClkCnt[%d].u16ClkLCnt %d\n", __func__, u8Port, g_HWI2CClkCnt[u8Port].u16ClkLCnt);
+    ret = i2c_set_srcclk((struct platform_device *)pdev, i2c_src_clk);
+    if(!ret){
+        HWI2C_DBG_ERR("[%s]Failed\n", __func__);
         return FALSE;
     }
 
-    g_u16DelayFactor[u8Port] = (U16)(1<<(eClk));
-    HWI2C_DBG_INFO("Port%d clk: %u offset:%d\n", u8Port, eClk, u16Offset);
-
-    return HAL_HWI2C_SetClk(u16Offset,(HAL_HWI2C_CLKSEL)eClk);
+    return HAL_HWI2C_SetClkCnt(u16Offset, &g_HWI2CClkCnt[u8Port]);
 }
 
 static BOOL _MDrv_HWI2C_SetReadMode(U8 u8Port, HWI2C_ReadMode eReadMode)
@@ -490,7 +687,7 @@ static BOOL _MDrv_HWI2C_SetReadMode(U8 u8Port, HWI2C_ReadMode eReadMode)
     //check support port index
     if(u8Port>=HWI2C_PORTS)
     {
-        HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
+        // HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
         return FALSE;
     }
     if(eReadMode>=E_HWI2C_READ_MODE_MAX)
@@ -516,8 +713,15 @@ static BOOL _MDrv_HWI2C_InitPort(HWI2C_UnitCfg *psCfg)
         {
             if(HAL_HWI2C_GetPortIdxByPort(stPortCfg.ePort,&u8Port) && _MDrv_HWI2C_SelectPort(stPortCfg.ePort))
             {
+            	//set default clkcnt
+                g_HWI2CClkCnt[u8Port].u16ClkHCnt = 25; 
+                g_HWI2CClkCnt[u8Port].u16ClkLCnt = 27;
+                g_HWI2CClkCnt[u8Port].u16SttCnt  = 38;
+                g_HWI2CClkCnt[u8Port].u16StpCnt  = 38; 
+                g_HWI2CClkCnt[u8Port].u16SdaCnt  =  5; 
+                g_HWI2CClkCnt[u8Port].u16LchCnt  =  5;
                 //set clock speed
-                bRet &= _MDrv_HWI2C_SetClk(u8Port, stPortCfg.eSpeed);
+                bRet &= _MDrv_HWI2C_SetClk(u8Port, stPortCfg.eSpeed, psCfg->pdev);
                 //set read mode
                 bRet &= _MDrv_HWI2C_SetReadMode(u8Port, stPortCfg.eReadMode);
                 //get port index
@@ -544,8 +748,16 @@ static BOOL _MDrv_HWI2C_InitPort(HWI2C_UnitCfg *psCfg)
     //(2) check initialized port : override above port configuration
     if(HAL_HWI2C_GetPortIdxByPort(psCfg->ePort,&u8Port) && _MDrv_HWI2C_SelectPort(psCfg->ePort))
     {
+    	//set default clkcnt
+        g_HWI2CClkCnt[u8Port].u16ClkHCnt = 25; 
+        g_HWI2CClkCnt[u8Port].u16ClkLCnt = 27;
+        g_HWI2CClkCnt[u8Port].u16SttCnt  = 38;
+        g_HWI2CClkCnt[u8Port].u16StpCnt  = 38; 
+        g_HWI2CClkCnt[u8Port].u16SdaCnt  =  5; 
+        g_HWI2CClkCnt[u8Port].u16LchCnt  =  5;
         //set clock speed
-        bRet &=_MDrv_HWI2C_SetClk(u8Port,psCfg->eSpeed);
+        i2c_remove_srcclk(psCfg->pdev);
+        bRet &=_MDrv_HWI2C_SetClk(u8Port,psCfg->eSpeed, psCfg->pdev);
         //set read mode
         bRet &=_MDrv_HWI2C_SetReadMode(u8Port,psCfg->eReadMode);
         //get port index
@@ -560,7 +772,8 @@ static BOOL _MDrv_HWI2C_InitPort(HWI2C_UnitCfg *psCfg)
     {
         HWI2C_DBG_INFO("HWI2C Allocated Port[%d] = 0x%02X\n",u8PortIdx,g_HWI2CPort[u8PortIdx]);
     }*/
-
+    //backup pdev for ioctl
+    g_pdev[u8Port] = psCfg->pdev;
     return bRet;
 }
 
@@ -612,13 +825,12 @@ BOOL MDrv_HWI2C_Init(HWI2C_UnitCfg *psCfg)
     return bRet;
 }
 
-void MDrv_HW_IIC_Init(void *base,void *chipbase,int i2cgroup,void *clkbase, int i2cpadmux)
+void MDrv_HW_IIC_Init(void *base,void *chipbase,int i2cgroup,void *clkbase, int i2cpadmux, int i2cspeed, int i2c_enDma, void* pdev)
 {
 	HWI2C_UnitCfg pHwbuscfg[1];
 	U8 j;
 
 	memset(pHwbuscfg, 0, sizeof(HWI2C_UnitCfg));
-
 
 	HWI2C_DMA[i2cgroup].i2c_virt_addr = dma_alloc_coherent(NULL, 4096, &HWI2C_DMA[i2cgroup].i2c_dma_addr, GFP_KERNEL);
     //We only initialze sCfgPort[0]
@@ -634,6 +846,10 @@ void MDrv_HW_IIC_Init(void *base,void *chipbase,int i2cgroup,void *clkbase, int 
                 pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT0_2;
             else if(i2cpadmux == 3)
                 pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT0_3;
+            else if(i2cpadmux == 4)
+                pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT0_4;
+			else if(i2cpadmux == 5)
+                pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT0_5;
         }else if(i2cgroup==1) {
             if(i2cpadmux == 1)
                 pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT1_1;
@@ -643,13 +859,19 @@ void MDrv_HW_IIC_Init(void *base,void *chipbase,int i2cgroup,void *clkbase, int 
                 pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT1_3;
             else if(i2cpadmux == 4)
                 pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT1_4;
+            else if(i2cpadmux == 5)
+                pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT1_5;
         }else if(i2cgroup==2) {
             if(i2cpadmux == 1)
                 pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT2_1;
             else if(i2cpadmux == 2)
                 pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT2_2;
             else if(i2cpadmux == 3)
-                pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT2_2;
+                pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT2_3;
+			else if(i2cpadmux == 4)
+                pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT2_4;
+            else if(i2cpadmux == 5)
+                pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT2_5;
         }
         else if(i2cgroup==3) {
             if(i2cpadmux == 1)
@@ -663,12 +885,19 @@ void MDrv_HW_IIC_Init(void *base,void *chipbase,int i2cgroup,void *clkbase, int 
             else if(i2cpadmux == 5)
                 pHwbuscfg[0].sCfgPort[j].ePort = E_HAL_HWI2C_PORT3_5;
         }
-        pHwbuscfg[0].sCfgPort[j].eSpeed= E_HWI2C_NORMAL; //E_HAL_HWI2C_CLKSEL_VSLOW;//pIIC_Param->u8ClockIIC;//
+        pHwbuscfg[0].sCfgPort[j].eSpeed= i2cspeed; //E_HWI2C_NORMAL; //E_HAL_HWI2C_CLKSEL_VSLOW;//pIIC_Param->u8ClockIIC;//
         pHwbuscfg[0].sCfgPort[j].eReadMode = E_HWI2C_READ_MODE_DIRECT;//pIIC_Param->u8IICReadMode;//
-        if(i2cgroup==0)
-            pHwbuscfg[0].sCfgPort[j].bDmaEnable = FALSE;  //Use default setting
+        if (i2c_enDma == -1)
+        {
+            if(i2cgroup==0)
+                pHwbuscfg[0].sCfgPort[j].bDmaEnable = FALSE;  //Use default setting
+            else
+                pHwbuscfg[0].sCfgPort[j].bDmaEnable = TRUE;  //Use default setting */
+        }
         else
-            pHwbuscfg[0].sCfgPort[j].bDmaEnable = TRUE;  //Use default setting
+        {
+            pHwbuscfg[0].sCfgPort[j].bDmaEnable = i2c_enDma;
+        }
         pHwbuscfg[0].sCfgPort[j].eDmaAddrMode = E_HWI2C_DMA_ADDR_NORMAL;  //Use default setting
         pHwbuscfg[0].sCfgPort[j].eDmaMiuPri = E_HWI2C_DMA_PRI_LOW;  //Use default setting
         pHwbuscfg[0].sCfgPort[j].eDmaMiuCh = E_HWI2C_DMA_MIU_CH0;  //Use default setting
@@ -679,18 +908,28 @@ void MDrv_HW_IIC_Init(void *base,void *chipbase,int i2cgroup,void *clkbase, int 
 	pHwbuscfg[0].sI2CPin.bEnable = FALSE;
 	pHwbuscfg[0].sI2CPin.u8BitPos = 0;
 	pHwbuscfg[0].sI2CPin.u32Reg = 0;
-	pHwbuscfg[0].eSpeed = E_HWI2C_NORMAL; //E_HAL_HWI2C_CLKSEL_VSLOW;//pIIC_Param->u8ClockIIC;//
+	pHwbuscfg[0].eSpeed = i2cspeed; //E_HWI2C_NORMAL; //E_HAL_HWI2C_CLKSEL_VSLOW;//pIIC_Param->u8ClockIIC;//
     pHwbuscfg[0].ePort = pHwbuscfg[0].sCfgPort[0].ePort; /// port
     pHwbuscfg[0].eReadMode = E_HWI2C_READ_MODE_DIRECT; //pIIC_Param->u8IICReadMode;//
     pHwbuscfg[0].eBaseAddr=(U32)base;
     pHwbuscfg[0].eChipAddr=(U32)chipbase;
     pHwbuscfg[0].eClkAddr=(U32)clkbase;
     pHwbuscfg[0].eGroup=i2cgroup;
+    pHwbuscfg[0].pdev = pdev;
 
     MDrv_HWI2C_Init(&pHwbuscfg[0]);
 }
 EXPORT_SYMBOL(MDrv_HW_IIC_Init);
 
+////////////////////////////////////////////////////////////////////////////////
+/// @brief \b Function  \b Name: MDrv_HW_IIC_DeInit
+/// @brief \b Function  \b Description: de init iic
+////////////////////////////////////////////////////////////////////////////////
+void MDrv_HW_IIC_DeInit(int i2cgroup)
+{
+	//printk( "[%s] dma_free_coherent : %d\n", __func__, i2cgroup);
+	dma_free_coherent(NULL, 4096, HWI2C_DMA[i2cgroup].i2c_virt_addr, HWI2C_DMA[i2cgroup].i2c_dma_addr);
+}
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief \b Function  \b Name: MDrv_HWI2C_Start
 /// @brief \b Function  \b Description: send start bit
@@ -731,6 +970,15 @@ BOOL MDrv_HWI2C_GetPortIndex(HWI2C_PORT ePort, U8* pu8Port)
     HWI2C_DBG_INFO("ePort:0x%02X, u8Port:0x%02X\n",(U8)ePort,(U8)*pu8Port);
 
     return bRet;
+}
+
+BOOL MDrv_HWI2C_CheckAbility(HWI2C_DMA_HW_FEATURE etype,ms_i2c_feature_fp *fp)
+{
+	if(etype >= E_HWI2C_FEATURE_MAX){
+		HWI2C_DBG_ERR("etype invalid %d\n", etype);
+		return FALSE;
+	}
+	return HAL_HWI2C_CheckAbility(etype, fp);
 }
 
 //###################
@@ -822,7 +1070,7 @@ BOOL MDrv_HWI2C_WriteBytes(U16 u16SlaveCfg, U32 uAddrCnt, U8 *pRegAddr, U32 uSiz
 	//u8Port = g_HWI2CPortIdx;
     if(u8Port>=HWI2C_PORTS)
     {
-        HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
+        // HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
         return FALSE;
     }
     //HWI2C_MUTEX_LOCK(u8Port);
@@ -853,7 +1101,7 @@ BOOL MDrv_HWI2C_ReadBytes(U16 u16SlaveCfg, U32 uAddrCnt, U8 *pRegAddr, U32 uSize
 	//u8Port = g_HWI2CPortIdx;
     if(u8Port>=HWI2C_PORTS)
     {
-        HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
+        // HWI2C_DBG_ERR("Port index is %d >= max supported ports %d !\n", u8Port, HWI2C_PORTS);
         return FALSE;
     }
     //HWI2C_MUTEX_LOCK(u8Port);
@@ -924,7 +1172,7 @@ ms_i2c_xfer_read(u8 u8Port, struct i2c_msg *pmsg, u8 *pbuf, int length)
    //configure port register offset ==> important
     if(!_MDrv_HWI2C_GetPortRegOffset(u8Port,&u16Offset))
     {
-        HWI2C_DBG_ERR("Port index error!\n");
+        // HWI2C_DBG_ERR("Port index error!\n");
         return FALSE;
     }
 
@@ -1045,7 +1293,7 @@ ms_i2c_xfer_write(u8 u8Port, struct i2c_msg *pmsg, u8 *pbuf, int length)
     //configure port register offset ==> important
     if(!_MDrv_HWI2C_GetPortRegOffset(u8Port,&u16Offset))
     {
-        HWI2C_DBG_ERR("Port index error!\n");
+        // HWI2C_DBG_ERR("Port index error!\n");
         return FALSE;
     }
 
@@ -1148,7 +1396,11 @@ ms_i2c_xfer(struct i2c_adapter *padap, struct i2c_msg *pmsg, int num)
 {
     int i, err;
     U16 u16Offset = 0x00;
-
+    BOOL bSendStop = 1;
+	ms_i2c_feature_fp ms_i2c_nwrite_fp;
+	struct i2c_msg *ptmpmsg = pmsg;
+	BOOL bDoRead = 0;
+	
     HWI2C_DBG_INFO("ms_i2c_xfer: processing %d messages:\n", num);
 
     i = 0;
@@ -1170,7 +1422,7 @@ ms_i2c_xfer(struct i2c_adapter *padap, struct i2c_msg *pmsg, int num)
     //configure port register offset ==> important
     if(!_MDrv_HWI2C_GetPortRegOffset(padap->nr,&u16Offset))
     {
-        HWI2C_DBG_ERR("Port index error!\n");
+        // HWI2C_DBG_ERR("Port index error!\n");
         return FALSE;
     }
 
@@ -1179,42 +1431,72 @@ ms_i2c_xfer(struct i2c_adapter *padap, struct i2c_msg *pmsg, int num)
 	udelay(1);
     MDrv_HWI2C_Reset(u16Offset,FALSE);
 	udelay(1);
+	
+    //check read cmd 
+    for(i = 0; i < num; i++)
+    {
 
+        if(ptmpmsg->len && ptmpmsg->buf){
+            if(ptmpmsg->flags & I2C_M_RD){
+                bDoRead = 1;
+                break;
+            }
+        }
+        ptmpmsg++;  
+    }
+	//query nwrite mode ability and proc nwrite
+	if(MDrv_HWI2C_CheckAbility(E_HWI2C_FEATURE_NWRITE, &ms_i2c_nwrite_fp) && !bDoRead)
+	{
+		if(ms_i2c_nwrite_fp == NULL){
+			return FALSE;
+		}
+		
+		//HWI2C_DBG_ERR("ms_i2c_nwrite_fp num %d\n", num);
+		ms_i2c_nwrite_fp(u16Offset, ((pmsg->addr & I2C_BYTE_MASK) << 1), pmsg, num);
+	}
+	else{
 /* in i2c-master_send or recv, the num is always 1,  */
 /* but use i2c_transfer() can set multiple message */
 
-    for (i = 0; i < num; i++)
-    {
+	    for (i = 0; i < num; i++)
+	    {
 #if 0
-        printk(KERN_INFO " #%d: %sing %d byte%s %s 0x%02x\n", i,
-                pmsg->flags & I2C_M_RD ? "read" : "writ",
-                pmsg->len, pmsg->len > 1 ? "s" : "",
-                pmsg->flags & I2C_M_RD ? "from" : "to", pmsg->addr);
+	        printk(KERN_INFO " #%d: %sing %d byte%s %s 0x%02x\n", i,
+	                pmsg->flags & I2C_M_RD ? "read" : "writ",
+	                pmsg->len, pmsg->len > 1 ? "s" : "",
+	                pmsg->flags & I2C_M_RD ? "from" : "to", pmsg->addr);
 #endif
-        /* do Read/Write */
-        if (pmsg->len && pmsg->buf) /* sanity check */
-        {
-            if (pmsg->flags & I2C_M_RD)
-                err = ms_i2c_xfer_read(padap->nr, pmsg, pmsg->buf, pmsg->len);
-            else
-                err = ms_i2c_xfer_write(padap->nr, pmsg, pmsg->buf, pmsg->len);
+	        /* do Read/Write */
+	        if (pmsg->len && pmsg->buf) /* sanity check */
+	        {
+	            bSendStop = (pmsg->flags & I2C_CUST_M_NOSTOP) ? 0 : 1;
 
-            //MDrv_HWI2C_Stop(u16Offset);
+	            if (pmsg->flags & I2C_M_RD)
+	                err = ms_i2c_xfer_read(padap->nr, pmsg, pmsg->buf, pmsg->len);
+	            else
+	                err = ms_i2c_xfer_write(padap->nr, pmsg, pmsg->buf, pmsg->len);
 
-            if (err)
-			{
-				mutex_unlock(&i2cMutex);
-                return err;
-			}
-        }
-        pmsg++;        /* next message */
-    }
+	            //MDrv_HWI2C_Stop(u16Offset);
 
+	            if (err)
+				{
+					mutex_unlock(&i2cMutex);
+	                return err;
+				}
+	        }
+	        pmsg++;        /* next message */
+    	}
+	}
     /* ***** 6. Send stop bit ***** */
     /* finish the read/write, then issues the stop condition (P).
      * for repeat start, diposit stop, two start and one stop only
      */
-    MDrv_HWI2C_Stop(u16Offset);
+
+    if(bSendStop)
+    {
+        MDrv_HWI2C_Stop(u16Offset);
+    }
+
 	mutex_unlock(&i2cMutex);
     return i;
 }
@@ -1248,31 +1530,50 @@ static const struct of_device_id mstar_i2c_of_match[] = {
 	{ .compatible = "sstar,i2c", 0},
 	{},
 };
-
-static int mstar_i2c_probe(struct platform_device *pdev)
-{
-	struct mstar_i2c_dev *i2c_dev;
-	struct resource *res;
-	void __iomem *base;
-	void __iomem *chipbase;
-	void __iomem *clkbase;
-	struct device_node	*node = pdev->dev.of_node;
-	int ret = 0;
-	int i2cgroup = 0;
-	int i2cpadmux = 1;
-	int num_parents, i;
+static int i2c_set_srcclk(struct platform_device *pdev, HWI2C_SRC_CLK i2c_src_clk)
+{	
+    int ret = 0;
+    int num_parents;
+    int i;
+    int clk_speed;
+	
+#ifndef CONFIG_CAM_CLK
     struct clk **iic_clks;
+#else
+    int *iic_clks;
+    CAMCLK_Set_Attribute stSetCfg;
+#endif
 
+    switch (i2c_src_clk)
+    {
+        case E_HWI2C_SRC_CLK_12M:
+            clk_speed = 12000000;
+        break;
+        case E_HWI2C_SRC_CLK_54M:
+            clk_speed = 54000000;
+        break;
+        case E_HWI2C_SRC_CLK_72M:
+            clk_speed = 72000000;
+        break;
+        default:
+            printk( "[%s] Fail to get clk!\n", __func__);
+            return FALSE;
+        break;
+    }
+#ifndef CONFIG_CAM_CLK
     num_parents = of_clk_get_parent_count(pdev->dev.of_node);
     if(num_parents < 0)
     {
         printk( "[%s] Fail to get parent count! Error Number : %d\n", __func__, num_parents);
-        return -1;
+        ret = -ENOENT ;
+        goto out;
     }
-    iic_clks = kzalloc((sizeof(struct clk *) * num_parents), GFP_KERNEL);
-    if(!iic_clks)
-        return -ENOMEM;
 
+    iic_clks = kzalloc((sizeof(struct clk *) * num_parents), GFP_KERNEL);
+    if(!iic_clks){
+        ret = -ENOMEM;
+        goto out;
+    }
     //enable all clk
     for(i = 0; i < num_parents; i++)
     {
@@ -1280,119 +1581,88 @@ static int mstar_i2c_probe(struct platform_device *pdev)
         if (IS_ERR(iic_clks[i]))
         {
             printk( "[%s] Fail to get clk!\n", __func__);
-            kfree(iic_clks);
-            return -ENOENT;
+            ret = -ENOENT;
         }
         else
         {
             clk_prepare_enable(iic_clks[i]);
             if(i == 0)
-	            clk_set_rate(iic_clks[i], 12000000);
+                clk_set_rate(iic_clks[i], clk_speed);
             clk_put(iic_clks[i]);
         }
     }
     kfree(iic_clks);
-
-    HWI2C_DBG_INFO(" mstar_i2c_probe\n");
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if(!res)
-	{
-	    return -ENOENT;
-	}
-	base = (void *)(IO_ADDRESS(res->start));
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-    if(!res)
+    if(ret){
+        goto out;
+    }
+#else
+    if(of_find_property(pdev->dev.of_node,"camclk",&num_parents))
     {
-        return -ENOENT;
+        num_parents /= sizeof(int);
+        //printk( "[%s] Number : %d\n", __func__, num_parents);
+        if(num_parents < 0)
+        {
+            printk( "[%s] Fail to get parent count! Error Number : %d\n", __func__, num_parents);
+            ret = -ENOENT ;
+            goto out;
+        }
+        iic_clks = kzalloc((sizeof(int) * num_parents), GFP_KERNEL);
+        pvhandler = kzalloc((sizeof(void *) * num_parents), GFP_KERNEL);
+        if(!iic_clks){
+            ret = -ENOMEM;
+            goto out;
+        }
+        for(i = 0; i < num_parents; i++)
+        {
+            iic_clks[i] = 0;
+            of_property_read_u32_index(pdev->dev.of_node,"camclk", i,&iic_clks[i]);
+            if (!iic_clks[i])
+            {
+                printk( "[%s] Fail to get clk!\n", __func__);
+                ret = -ENOENT;
+            }
+            else
+            {
+                CamClkRegister("iic",iic_clks[i],&pvhandler[i]);
+                CamClkSetOnOff(pvhandler[i],1);
+                if(i == 0)
+                {
+	                CAMCLK_SETRATE_ROUNDUP(stSetCfg,clk_speed);
+	                CamClkAttrSet(pvhandler[i],&stSetCfg);
+                }
+                //CamClkUnregister(pvhandler[i]);
+            }
+        }
+        kfree(iic_clks);
+        //kfree(pvhandler);
+        if(ret){
+            goto out;
+        }
     }
-	chipbase = (void *)(IO_ADDRESS(res->start));
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
-    if(!res)
+    else
     {
-        return -ENOENT;
+        printk( "[%s] W/O Camclk \n", __func__);
     }
-	clkbase = (void *)(IO_ADDRESS(res->start));
-
-	i2c_dev = devm_kzalloc(&pdev->dev, sizeof(*i2c_dev), GFP_KERNEL);
-	if (!i2c_dev)
-		return -ENOMEM;
-
-	i2c_dev->base = base;
-	i2c_dev->chipbase = chipbase;
-	i2c_dev->adapter.algo = &sg_ms_i2c_algorithm;
-	i2c_dev->cont_id = pdev->id;
-	i2c_dev->dev = &pdev->dev;
-	i2c_dev->clkbase = clkbase;
-
-	of_property_read_u32(node, "i2c-group", &i2cgroup);
-	//i2cgroup = of_alias_get_id(pdev->dev.of_node, "iic");
-    HWI2C_DBG_INFO("i2cgroup=%d\n",i2cgroup);
-	i2c_dev->i2cgroup = i2cgroup;
-
-	of_property_read_u32(node, "i2c-padmux", &i2cpadmux);
-    HWI2C_DBG_INFO("i2cpadmux=%d\n",i2cpadmux);
-	i2c_dev->i2cpadmux = i2cpadmux;
-
-	if (pdev->dev.of_node) {
-		const struct of_device_id *match;
-		match = of_match_device(mstar_i2c_of_match, &pdev->dev);
-		//i2c_dev->is_dvc = of_device_is_compatible(pdev->dev.of_node,
-		//				"sstar,cedric-i2c-dvc");
-	} else if (pdev->id == 3) {
-		i2c_dev->is_dvc = 1;
-	}
-	init_completion(&i2c_dev->msg_complete);
-
-	platform_set_drvdata(pdev, i2c_dev);
-
-    MDrv_HW_IIC_Init(i2c_dev->base,i2c_dev->chipbase,i2cgroup,clkbase, i2cpadmux);
-
-	//i2c_set_adapdata(&i2c_dev->adapter, i2c_dev);
-	i2c_dev->adapter.owner = THIS_MODULE;
-	i2c_dev->adapter.class = I2C_CLASS_DEPRECATED;
-	//strlcpy(i2c_dev->adapter.name, "Sstar I2C adapter",
-	//	sizeof(i2c_dev->adapter.name));
-	scnprintf(i2c_dev->adapter.name, sizeof(i2c_dev->adapter.name),
-		 "Sstar I2C adapter %d", i2cgroup);
-	i2c_dev->adapter.algo = &sg_ms_i2c_algorithm;
-
-	i2c_dev->adapter.dev.parent = &pdev->dev;
-	i2c_dev->adapter.nr = i2cgroup;
-	i2c_dev->adapter.dev.of_node = pdev->dev.of_node;
-    HWI2C_DBG_INFO(" i2c_dev->adapter.nr=%d\n",i2c_dev->adapter.nr);
-	i2c_set_adapdata(&i2c_dev->adapter, i2c_dev);
-
-	ret = i2c_add_numbered_adapter(&i2c_dev->adapter);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to add I2C adapter\n");
-		goto out;
-    }
-
-	return 0;
-
+#endif
 out:
-	//clk_unprepare(i2c_dev->div_clk);
-	return ret;
+	if(ret)
+		return FALSE;
+	else
+		return TRUE;
 }
 
-static int mstar_i2c_remove(struct platform_device *pdev)
+static int i2c_remove_srcclk(struct platform_device *pdev)
 {
-	struct mstar_i2c_dev *i2c_dev = platform_get_drvdata(pdev);
-	i2c_del_adapter(&i2c_dev->adapter);
-	return 0;
-}
-
-#if 0
-static int mstar_i2c_suspend(struct platform_device *pdev, pm_message_t state)
-{
-	struct mstar_i2c_dev *i2c_dev = platform_get_drvdata(pdev);
-
-#if defined(CONFIG_OF)
+    int ret = 0;
     int num_parents, i;
+#ifndef CONFIG_CAM_CLK
     struct clk **iic_clks;
+    struct clk *parent; 
+#else
+    int *iic_clks;
+#endif
 
+#ifndef CONFIG_CAM_CLK 
     num_parents = of_clk_get_parent_count(pdev->dev.of_node);
     iic_clks = kzalloc((sizeof(struct clk *) * num_parents), GFP_KERNEL);
 
@@ -1408,60 +1678,251 @@ static int mstar_i2c_suspend(struct platform_device *pdev, pm_message_t state)
         }
         else
         {
+            //force clock parent to 0, otherwise set rate to 12MHz in resume will not take effect
+            parent = clk_hw_get_parent_by_index(__clk_get_hw(iic_clks[i]), 0)->clk;
+            //pr_err("%s parent 0 clk: %ld\n", pdev->name, clk_get_rate(parent));
+            clk_set_parent(iic_clks[i], parent);
             clk_disable_unprepare(iic_clks[i]);
+            clk_put(iic_clks[i]);
         }
     }
     kfree(iic_clks);
-#endif
+#else
+    if(of_find_property(pdev->dev.of_node,"camclk",&num_parents))
+    {
+        num_parents /= sizeof(int);
+        //printk( "[%s] Number : %d\n", __func__, num_parents);
+        if(num_parents < 0)
+        {
+            printk( "[%s] Fail to get parent count! Error Number : %d\n", __func__, num_parents);
+            goto out;
+        }
+        iic_clks = kzalloc((sizeof(int) * num_parents), GFP_KERNEL);
+        if(!iic_clks){
+            goto out;
+        }
+        for(i = 0; i < num_parents; i++)
+        {
+            of_property_read_u32_index(pdev->dev.of_node,"camclk", i,&iic_clks[i]);
+            if (!iic_clks[i])
+            {
+                printk( "[%s] Fail to get clk!\n", __func__);
+            }
+            else
+            {
+                CamClkSetOnOff(pvhandler[i],0);
+                CamClkUnregister(pvhandler[i]);
+            }
+        }
+        kfree(iic_clks);
+        kfree(pvhandler);
+        pvhandler = NULL;
+    }
+    else
+    {
+        printk( "[%s] W/O Camclk \n", __func__);
+    }
+    out:
+#endif	
+    return ret;
+}
 
-	i2c_lock_adapter(&i2c_dev->adapter);
-	i2c_dev->is_suspended = true;
-	i2c_unlock_adapter(&i2c_dev->adapter);
+static int mstar_i2c_probe(struct platform_device *pdev)
+{
+	struct mstar_i2c_dev *i2c_dev;
+	struct resource *res;
+	void __iomem *base;
+	void __iomem *chipbase;
+	void __iomem *clkbase;
+	struct device_node	*node = pdev->dev.of_node;
+    int ret = 0;
+    int i2cgroup = 0;
+    int i2cpadmux = 1;
+    int i2c_speed = E_HWI2C_CLK_400KHZ;
+    int i2c_en_dma = -1;
+    //char i2cname[8] = {0};
+	
+    i2c_dev_data *data = NULL;
 
+    data = kzalloc(sizeof(i2c_dev_data), GFP_KERNEL);
+    if(!data){
+        ret = -ENOMEM;
+        goto out;
+    }
+    HWI2C_DBG_INFO(" mstar_i2c_probe\n");
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if(!res)
+	{
+		ret = -ENOENT;
+		goto out;
+	}
+	base = (void *)(IO_ADDRESS(res->start));
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+    if(!res)
+    {
+    	ret = -ENOENT;
+		goto out;
+    }
+	chipbase = (void *)(IO_ADDRESS(res->start));
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+    if(!res)
+    {
+    	ret = -ENOENT;
+		goto out; 
+    }
+	clkbase = (void *)(IO_ADDRESS(res->start));
+
+	i2c_dev = devm_kzalloc(&pdev->dev, sizeof(*i2c_dev), GFP_KERNEL);
+	if (!i2c_dev)
+	{
+		ret = -ENOMEM;
+		goto out;
+	}
+	i2c_dev->base = base;
+	i2c_dev->chipbase = chipbase;
+	i2c_dev->adapter.algo = &sg_ms_i2c_algorithm;
+	i2c_dev->cont_id = pdev->id;
+	i2c_dev->dev = &pdev->dev;
+	i2c_dev->clkbase = clkbase;
+
+	of_property_read_u32(node, "i2c-group", &i2cgroup);
+	//i2cgroup = of_alias_get_id(pdev->dev.of_node, "iic");
+    HWI2C_DBG_INFO("i2cgroup=%d\n",i2cgroup);
+	i2c_dev->i2cgroup = i2cgroup;
+
+    of_property_read_u32(node, "i2c-padmux", &i2cpadmux);
+    HWI2C_DBG_INFO("i2cpadmux=%d\n",i2cpadmux);
+    i2c_dev->i2cpadmux = i2cpadmux;
+
+    of_property_read_u32(node, "i2c-speed", &i2c_speed);
+    HWI2C_DBG_INFO("i2c_speed=%d\n",i2c_speed);
+    i2c_dev->i2c_speed = i2c_speed;
+
+    of_property_read_u32(node, "i2c-en-dma", &i2c_en_dma);
+    HWI2C_DBG_INFO("i2c_en_dma=%d\n",i2c_en_dma);
+    i2c_dev->i2c_en_dma = i2c_en_dma;
+
+	if (pdev->dev.of_node) {
+		const struct of_device_id *match;
+		match = of_match_device(mstar_i2c_of_match, &pdev->dev);
+		//i2c_dev->is_dvc = of_device_is_compatible(pdev->dev.of_node,
+		//				"sstar,cedric-i2c-dvc");
+	} else if (pdev->id == 3) {
+		i2c_dev->is_dvc = 1;
+	}
+ 
+	#ifdef CONFIG_MS_I2C_INT_ISR
+	#if 0 //tmp cancel request ISR
+	//init isr
+	data->i2cgroup = i2c_dev->i2cgroup;
+	data->i2cirq = CamIrqOfParseAndMap(node, 0);
+	HAL_HWI2C_IrqRequest(data->i2cirq, i2c_dev->i2cgroup, (void*)pdev);
+	//init tcond
+	HAL_HWI2C_DMA_TsemInit((u8)i2c_dev->i2cgroup);
+	//HWI2C_DBG_ERR("1mstar_i2c_probe i2cirq %d\n", data->i2cirq);
+	#endif 
+	#endif
+
+	init_completion(&i2c_dev->msg_complete);
+
+	platform_set_drvdata(pdev, i2c_dev);
+
+    MDrv_HW_IIC_Init(i2c_dev->base,i2c_dev->chipbase,i2cgroup,clkbase, i2cpadmux, i2c_speed, i2c_en_dma, (void*)pdev);
+
+	//i2c_set_adapdata(&i2c_dev->adapter, i2c_dev);
+	i2c_dev->adapter.owner = THIS_MODULE;
+	i2c_dev->adapter.class = I2C_CLASS_DEPRECATED;
+	//strlcpy(i2c_dev->adapter.name, "Sstar I2C adapter",
+	//	sizeof(i2c_dev->adapter.name));
+	scnprintf(i2c_dev->adapter.name, sizeof(i2c_dev->adapter.name),
+		 "Sstar I2C adapter %d", i2cgroup);
+	i2c_dev->adapter.algo = &sg_ms_i2c_algorithm;
+
+	i2c_dev->adapter.dev.parent = &pdev->dev;
+	i2c_dev->adapter.nr = i2cgroup;
+	i2c_dev->adapter.dev.of_node = pdev->dev.of_node;
+
+	pdev->dev.platform_data = (void*)data;
+	
+    HWI2C_DBG_INFO(" i2c_dev->adapter.nr=%d\n",i2c_dev->adapter.nr);
+	i2c_set_adapdata(&i2c_dev->adapter, i2c_dev);
+
+	ret = i2c_add_numbered_adapter(&i2c_dev->adapter);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to add I2C adapter\n");
+		goto out;
+    }
+    #if 0
+    //dev register
+    sprintf(i2cname, "%s%d%s", I2CNAME, i2c_dev->i2cgroup, "\0");
+    data->i2c_miscdev.minor = MISC_DYNAMIC_MINOR;
+    data->i2c_miscdev.name = i2cname;
+    data->i2c_miscdev.fops = &i2c_fops;
+    data->i2c_miscdev.parent = &pdev->dev;
+    if(misc_register(&data->i2c_miscdev)){
+        printk("regist NG: %x\n", data->i2c_miscdev.minor);
+    }
+    else{
+        printk("regist ok: %x\n", data->i2c_miscdev.minor);
+    }
+    #endif 
 	return 0;
+//err return 
+out:
+	if(data){
+		kfree(data);
+	}
+	//clk_unprepare(i2c_dev->div_clk);
+	return ret;
+}
+
+static int mstar_i2c_remove(struct platform_device *pdev)
+{
+	struct mstar_i2c_dev *i2c_dev = platform_get_drvdata(pdev);
+	i2c_dev_data *data;
+
+	data = (i2c_dev_data*)pdev->dev.platform_data;
+
+	MDrv_HW_IIC_DeInit(i2c_dev->adapter.nr);
+	#ifdef CONFIG_MS_I2C_INT_ISR
+	//free isr and uninit I2c DMA
+	HAL_HWI2C_IrqFree(data->i2cirq);
+	HAL_HWI2C_DMA_TsemDeinit(data->i2cgroup);
+	#endif
+
+	i2c_remove_srcclk(pdev);
+	kfree(data);
+	i2c_del_adapter(&i2c_dev->adapter);
+	
+	return 0;
+}
+
+#ifdef CONFIG_PM_SLEEP
+static int mstar_i2c_suspend(struct platform_device *pdev, pm_message_t state)
+{
+    struct mstar_i2c_dev *i2c_dev = platform_get_drvdata(pdev);
+
+    i2c_remove_srcclk(pdev);
+    MDrv_HW_IIC_DeInit(i2c_dev->adapter.nr);
+    i2c_lock_adapter(&i2c_dev->adapter);
+    i2c_dev->is_suspended = true;
+    i2c_unlock_adapter(&i2c_dev->adapter);
+
+    return 0;
 }
 
 static int mstar_i2c_resume(struct platform_device *pdev)
 {
-	struct mstar_i2c_dev *i2c_dev = platform_get_drvdata(pdev);
+    struct mstar_i2c_dev *i2c_dev = platform_get_drvdata(pdev);
 
-	//int ret;
-#if defined(CONFIG_OF)
-    int num_parents, i;
-    struct clk **iic_clks;
+    i2c_lock_adapter(&i2c_dev->adapter);
+    MDrv_HW_IIC_Init(i2c_dev->base,i2c_dev->chipbase,i2c_dev->adapter.nr,i2c_dev->clkbase, i2c_dev->i2cpadmux, i2c_dev->i2c_speed, i2c_dev->i2c_en_dma, (void*)pdev);
+    i2c_dev->is_suspended = false;
+    i2c_unlock_adapter(&i2c_dev->adapter);
 
-    num_parents = of_clk_get_parent_count(pdev->dev.of_node);
-    iic_clks = kzalloc((sizeof(struct clk *) * num_parents), GFP_KERNEL);
-
-    //enable all clk
-    for(i = 0; i < num_parents; i++)
-    {
-        iic_clks[i] = of_clk_get(pdev->dev.of_node, i);
-        if (IS_ERR(iic_clks[i]))
-        {
-            printk( "[iic_clks] Fail to get clk!\n" );
-            kfree(iic_clks);
-            return -1;
-        }
-        else
-        {
-            clk_prepare_enable(iic_clks[i]);
-            if(i == 0)
-	            clk_set_rate(iic_clks[i], 12000000);
-        }
-        kfree(iic_clks);
-    }
-#endif
-
-	i2c_lock_adapter(&i2c_dev->adapter);
-
-    MDrv_HW_IIC_Init(i2c_dev->base,i2c_dev->chipbase,i2c_dev->i2cgroup,i2c_dev->clkbase, i2c_dev->i2cpadmux);
-
-	i2c_dev->is_suspended = false;
-
-	i2c_unlock_adapter(&i2c_dev->adapter);
-
-	return 0;
+    return 0;
 }
 #endif
 MODULE_DEVICE_TABLE(of, mstar_i2c_of_match);
@@ -1470,7 +1931,7 @@ MODULE_DEVICE_TABLE(of, mstar_i2c_of_match);
 static struct platform_driver mstar_i2c_driver = {
 	.probe   = mstar_i2c_probe,
 	.remove  = mstar_i2c_remove,
-#if 0
+#ifdef CONFIG_PM_SLEEP
     .suspend = mstar_i2c_suspend,
     .resume = mstar_i2c_resume,
 #endif
