@@ -147,6 +147,9 @@
 //XTX
 #define FLASH_IC_XT25F128B      0x1300UL
 
+//End of table
+#define FLASH_IC_ENDTABLE       0x0000UL
+
 // Flash Manufacture ID
 #define MID_MXIC                0xC2UL
 #define MID_WB                  0xEFUL
@@ -196,6 +199,7 @@
 typedef struct
 {
     MS_U8   u8BlockProtectBits;  // Block Protection Bits
+    MS_U8   u8BlockProtectMask;  // Block Protection Mask
     MS_U32  u32LowerBound;
     MS_U32  u32UpperBound;
 } ST_WRITE_PROTECT;

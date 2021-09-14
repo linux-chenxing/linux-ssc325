@@ -7,6 +7,15 @@ config MS_SPINAND
 Enable compilation option for driver SPI NAND Flash.
 
 if MS_SPINAND
+config SS_SPINAND_WP
+    bool "SPINAND Flash Write Protect Support"
+    default n
+    depends on MS_SPINAND
+    help
+      Support SPINAND flash write protect function.
+endif
+
+if MS_SPINAND
 choice
 	prompt "READ"
 	default AUTO_DETECT

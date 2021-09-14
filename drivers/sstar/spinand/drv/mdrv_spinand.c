@@ -266,6 +266,11 @@ int spi_nand_dev_ready(struct mtd_info *mtd)
 
 void spi_nand_cmdfunc(struct mtd_info *mtd, unsigned command, int column, int page_addr)
 {
+#ifdef CONFIG_SS_SPINAND_WP
+    U32 lower;
+    U32 upper;
+    U8  is_cross;
+#endif
     U32 ret = 0;
     SPI_NAND_DRIVER_t *pSpiNandDrv = (SPI_NAND_DRIVER_t*)drvSPINAND_get_DrvContext_address();
     pSpiNandDrv->u8_statusRequest = FALSE;
@@ -303,6 +308,22 @@ void spi_nand_cmdfunc(struct mtd_info *mtd, unsigned command, int column, int pa
         break;
 
     case NAND_CMD_ERASE1:
+
+#ifdef CONFIG_SS_SPINAND_WP
+        lower = (U32)(page_addr*pSpiNandDrv->tSpinandInfo.u16_PageByteCnt);
+        upper = (U32)((page_addr + pSpiNandDrv->tSpinandInfo.u16_BlkPageCnt)*pSpiNandDrv->tSpinandInfo.u16_PageByteCnt - 1);
+
+        if(MDrv_SPINAND_WriteProtect_Check(lower, upper, &is_cross))
+        {
+            gtSpiNandDrv.u8_status |= NAND_STATUS_FAIL;
+            break;
+        }
+        if(is_cross)
+        {
+            gtSpiNandDrv.u8_status |= NAND_STATUS_WP;
+            break;
+        }
+#endif
         spi_nand_debug("NAND_CMD_ERASE1");
 //	        spi_nand_msg("NAND_CMD_ERASE1, page_addr: 0x%X\n", page_addr);
         gtSpiNandDrv.u8_status = NAND_STATUS_READY|NAND_STATUS_TRUE_READY;
@@ -339,6 +360,26 @@ int spi_nand_write_page(struct mtd_info *mtd, struct nand_chip *chip,
                         int oob_required, int page, int cached, int raw)
 {
     U32 ret;
+
+#ifdef CONFIG_SS_SPINAND_WP
+    U32 lower;
+    U32 upper;
+    U8  is_cross;
+    SPI_NAND_DRIVER_t *pSpiNandDrv = (SPI_NAND_DRIVER_t*)drvSPINAND_get_DrvContext_address();
+
+    lower = (U32)(page*pSpiNandDrv->tSpinandInfo.u16_PageByteCnt);
+    upper = (U32)((page+1)*pSpiNandDrv->tSpinandInfo.u16_PageByteCnt - 1);
+
+    if(MDrv_SPINAND_WriteProtect_Check(lower, upper, &is_cross))
+    {
+        return -EIO;
+    }
+    if(is_cross)
+    {
+        return -EPERM;
+    }
+
+#endif
 
     spi_nand_debug("0x%X", page);
 
@@ -525,6 +566,27 @@ int spi_nand_ecc_read_oob(struct mtd_info *mtd, struct nand_chip *chip, int page
 
 int spi_nand_ecc_write_oob(struct mtd_info *mtd, struct nand_chip *chip, int page)
 {
+
+#ifdef CONFIG_SS_SPINAND_WP
+    U32 lower;
+    U32 upper;
+    U8  is_cross;
+    SPI_NAND_DRIVER_t *pSpiNandDrv = (SPI_NAND_DRIVER_t*)drvSPINAND_get_DrvContext_address();
+
+    lower = (U32)(page*pSpiNandDrv->tSpinandInfo.u16_PageByteCnt);
+    upper = (U32)((page+1)*pSpiNandDrv->tSpinandInfo.u16_PageByteCnt - 1);
+
+    if(MDrv_SPINAND_WriteProtect_Check(lower, upper, &is_cross))
+    {
+        return -EIO;
+    }
+    if(is_cross)
+    {
+        return -EPERM;
+    }
+
+#endif
+
     U32 ret;
 
     spi_nand_debug("0x%X", page);
@@ -971,6 +1033,13 @@ static int mstar_spinand_probe(struct platform_device *pdev)
         gtSpiNandDrv.u8_HasPNI = 1;
         memcpy((void *)&gtSpiNandDrv.tPartInfo, (const void *) ptPartInfo, 0x200);
     }
+
+#ifdef CONFIG_SS_SPINAND_WP
+    if(MDrv_SPINAND_WriteProtect_Disable_Range_Set(0x00000000, 0x00000000))
+    {
+        spi_nand_msg("SPINAND Write Protect Unlock Failed!\n");
+    }
+#endif
 
     /* please refer to include/linux/nand.h for more info. */
     nand->read_byte = spi_nand_read_byte;

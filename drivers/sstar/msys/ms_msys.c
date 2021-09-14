@@ -49,6 +49,13 @@
 #ifdef CONFIG_MS_CPU_FREQ
 #include "cpu_freq.h"
 #endif
+#ifdef CONFIG_SS_FLASH_ISP_WP
+#include "drvSERFLASH.h"
+#include "drvDeviceInfo.h"
+#endif
+#ifdef CONFIG_SS_SPINAND_WP
+#include "mdrv_spinand_dev.h"
+#endif
 #include "cam_os_wrapper.h"
 
 //#define CONFIG_MS_SYSTEM_PART_STRING /*used to in I3*/
@@ -1922,6 +1929,130 @@ static ssize_t ms_dump_chip_version(struct device *dev, struct device_attribute 
 
 DEVICE_ATTR(CHIP_VERSION, 0444, ms_dump_chip_version, NULL);
 
+#if defined(CONFIG_SS_FLASH_ISP_WP) || defined(CONFIG_SS_SPINAND_WP)
+
+static ssize_t flash_protect_valid_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    char *str = buf;
+    char *end = buf + PAGE_SIZE;
+
+#ifdef CONFIG_SS_FLASH_ISP_WP
+    extern hal_SERFLASH_t _hal_SERFLASH;
+    u8 i;
+
+    ST_WRITE_PROTECT *protect_table = &_hal_SERFLASH.pWriteProtectTable[0];
+    if(protect_table)
+    {
+        str += scnprintf(str, end - str, "Flash Valid Protect Area:\n");
+        for (i = 0; protect_table->u32LowerBound != 0xFFFFFFFF && protect_table->u32UpperBound != 0xFFFFFFFF; i++)
+        {
+            str += scnprintf(str, end - str, " %2d : 0x%08X - 0x%08X\n", i, protect_table->u32LowerBound, protect_table->u32UpperBound);
+            protect_table = &_hal_SERFLASH.pWriteProtectTable[i + 1];
+        }
+    }
+    else
+    {
+        str += scnprintf(str, end - str, "Flash Write Protect Info Not Find\n");
+    }
+
+#endif
+
+#ifdef CONFIG_SS_SPINAND_WP
+    extern SPI_NAND_DEVICE_t *_gtSpinandWpInfo;
+    u8 i;
+
+    SPI_NAND_WP_t *protect_table;
+
+    if(_gtSpinandWpInfo)
+    {
+        protect_table = &_gtSpinandWpInfo->pWriteProtectTable[0];
+        str += scnprintf(str, end - str, "Flash Valid Protect Area:\n");
+        for (i = 0; protect_table->u32LowerBound != 0xFFFFFFFF && protect_table->u32UpperBound != 0xFFFFFFFF; i++)
+        {
+            str += scnprintf(str, end - str, " %2d : 0x%08X - 0x%08X\n", i, protect_table->u32LowerBound, protect_table->u32UpperBound);
+            protect_table = &_gtSpinandWpInfo->pWriteProtectTable[i + 1];
+        }
+    }
+    else
+    {
+        str += scnprintf(str, end - str, "Flash Write Protect Info Not Find\n");
+    }
+
+#endif
+
+    return (str - buf);
+}
+
+DEVICE_ATTR(protect_valid, 0444, flash_protect_valid_show, NULL);
+
+static ssize_t flash_protect_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    char *str = buf;
+    char *end = buf + PAGE_SIZE;
+
+#ifdef CONFIG_SS_FLASH_ISP_WP
+    MS_U32 upper;
+    MS_U32 lower;
+
+    if(MDrv_SERFLASH_WriteProtect_Disable_Range_Get(&lower, &upper))
+    {
+        str += scnprintf(str, end - str, "Flash Protect Area:\n");
+        str += scnprintf(str, end - str, " 0x%08X - 0x%08X\n", (u32)lower, (u32)upper);
+    }
+    else
+    {
+        str += scnprintf(str, end - str, "Read Flash Protect Area Failed !\n");
+    }
+
+#endif
+
+#ifdef CONFIG_SS_SPINAND_WP
+    extern U32 MDrv_SPINAND_WriteProtect_Disable_Range_Get(U32* u32DisableLowerBound, U32* u32DisableUpperBound);
+    U32 upper;
+    U32 lower;
+
+    if(!MDrv_SPINAND_WriteProtect_Disable_Range_Get(&lower, &upper))
+    {
+        str += scnprintf(str, end - str, "Flash Protect Area:\n");
+        str += scnprintf(str, end - str, " 0x%08X - 0x%08X\n", (u32)lower, (u32)upper);
+    }
+    else
+    {
+        str += scnprintf(str, end - str, "Read Flash Protect Area Failed !\n");
+    }
+
+#endif
+
+
+    return (str - buf);
+}
+
+static ssize_t flash_protect_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t n)
+{
+#ifdef CONFIG_SS_FLASH_ISP_WP
+    u32 upper;
+    u32 lower;
+    if(sscanf(buf, "%x %x", &lower, &upper) != 2)
+        return -EINVAL;
+    if(!MDrv_SERFLASH_WriteProtect_Disable_Range_Set(lower, upper))
+        return -EINVAL;
+#endif
+
+#ifdef CONFIG_SS_SPINAND_WP
+    u32 upper;
+    u32 lower;
+    extern U32 MDrv_SPINAND_WriteProtect_Disable_Range_Set(U32 u32DisableLowerBound, U32 u32DisableUpperBound);
+    if(sscanf(buf, "%x %x", &lower, &upper) != 2)
+        return -EINVAL;
+    if(MDrv_SPINAND_WriteProtect_Disable_Range_Set(lower, upper))
+        return -EINVAL;
+#endif
+
+    return n;
+}
+
+DEVICE_ATTR(protect, 0644, flash_protect_show, flash_protect_store);
+#endif
 
 #ifdef CONFIG_SS_PROFILING_TIME
 extern void recode_timestamp(int mark, const char* name);
@@ -2383,6 +2514,10 @@ static int __init msys_init(void)
 #endif
 
     device_create_file(sys_dev.this_device, &dev_attr_CHIP_VERSION);
+#if defined(CONFIG_SS_FLASH_ISP_WP) || defined(CONFIG_SS_SPINAND_WP)
+    device_create_file(sys_dev.this_device, &dev_attr_protect);
+    device_create_file(sys_dev.this_device, &dev_attr_protect_valid);
+#endif
 
 #ifdef CONFIG_MS_US_TICK_API
     device_create_file(sys_dev.this_device, &dev_attr_us_ticks);
