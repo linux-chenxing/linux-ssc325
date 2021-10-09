@@ -227,6 +227,15 @@ phys_addr_t __init arm_memblock_steal(phys_addr_t size, phys_addr_t align)
 	return phys;
 }
 
+#ifdef CONFIG_MSTAR_MMAHEAP
+extern void __init deal_with_reserve_mma_heap(void);
+#endif
+
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+extern phys_addr_t arm_lowmem_limit;
+void reserve_page_trace_mem(phys_addr_t beg,phys_addr_t end);
+#endif
+
 void __init arm_memblock_init(const struct machine_desc *mdesc)
 {
 	/* Register the kernel text, kernel data and initrd with memblock. */
@@ -272,6 +281,15 @@ void __init arm_memblock_init(const struct machine_desc *mdesc)
 	early_init_fdt_reserve_self();
 	early_init_fdt_scan_reserved_mem();
 
+// first reserve for mstar,
+//not place call this deal_with_reserve_mma_heap function in the end of arm_memblock_init.
+#ifdef CONFIG_MSTAR_MMAHEAP
+	deal_with_reserve_mma_heap();
+#endif
+
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+    reserve_page_trace_mem(PHYS_OFFSET, arm_lowmem_limit);
+#endif
 	/* reserve memory for DMA contiguous allocations */
 	dma_contiguous_reserve(arm_dma_limit);
 
@@ -307,7 +325,7 @@ void __init bootmem_init(void)
 	 * the sparse mem_map arrays initialized by sparse_init()
 	 * for memmap_init_zone(), otherwise all PFNs are invalid.
 	 */
-	zone_sizes_init(min, max_low, max_high);
+        zone_sizes_init(min, max_low, max_high);
 
 	/*
 	 * This doesn't seem to be used by the Linux memory manager any
@@ -481,7 +499,6 @@ void __init mem_init(void)
 	extern u32 dtcm_end;
 	extern u32 itcm_end;
 #endif
-
 	set_max_mapnr(pfn_to_page(max_pfn) - mem_map);
 
 	/* this will put all unused low memory onto the freelists */

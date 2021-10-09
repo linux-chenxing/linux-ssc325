@@ -305,6 +305,14 @@ void unmask_irq(struct irq_desc *desc)
 	}
 }
 
+int __irq_set_priority(struct irq_desc *desc, irqpriority_t priority)
+{
+    if (!desc->irq_data.chip->irq_set_priority)
+        return -ENOSYS;
+
+    return desc->irq_data.chip->irq_set_priority(&desc->irq_data, priority);
+}
+
 void unmask_threaded_irq(struct irq_desc *desc)
 {
 	struct irq_chip *chip = desc->irq_data.chip;
@@ -626,7 +634,9 @@ void handle_edge_irq(struct irq_desc *desc)
 
 	if (!irq_may_run(desc)) {
 		desc->istate |= IRQS_PENDING;
+        #ifndef CONFIG_SS_PM_WAKEUP_PATCH
 		mask_ack_irq(desc);
+        #endif
 		goto out_unlock;
 	}
 
@@ -1072,6 +1082,24 @@ int irq_chip_set_affinity_parent(struct irq_data *data,
 	data = data->parent_data;
 	if (data->chip->irq_set_affinity)
 		return data->chip->irq_set_affinity(data, dest, force);
+
+	return -ENOSYS;
+}
+
+/**
+ * irq_chip_set_priority_parent - Set priority on the parent interrupt
+ * @data:	Pointer to interrupt specific data
+ * @dest:	The affinity mask to set
+ * @force:	Flag to enforce setting (disable online checks)
+ *
+ * Conditinal, as the underlying parent chip might not implement it.
+ */
+int irq_chip_set_priority_parent(struct irq_data *data,
+				 irqpriority_t prio)
+{
+	data = data->parent_data;
+	if (data->chip->irq_set_priority)
+		return data->chip->irq_set_priority(data, prio);
 
 	return -ENOSYS;
 }

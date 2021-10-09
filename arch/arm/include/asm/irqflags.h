@@ -5,6 +5,11 @@
 
 #include <asm/ptrace.h>
 
+#if defined(CONFIG_MP_IRQ_TRACE)
+extern void ms_irq_disable_debug(void);
+extern void ms_irq_enable_debug(void);
+#endif
+
 /*
  * CPU interrupt mask handling.
  */
@@ -29,17 +34,27 @@ static inline unsigned long arch_local_irq_save(void)
 		"	mrs	%0, " IRQMASK_REG_NAME_R "	@ arch_local_irq_save\n"
 		"	cpsid	i"
 		: "=r" (flags) : : "memory", "cc");
+#if defined(CONFIG_MP_IRQ_TRACE)
+	ms_irq_disable_debug();
+#endif
 	return flags;
 }
 
 #define arch_local_irq_enable arch_local_irq_enable
 static inline void arch_local_irq_enable(void)
 {
+#if defined(CONFIG_MP_IRQ_TRACE)
+	ms_irq_enable_debug();
+#endif
+
 	asm volatile(
 		"	cpsie i			@ arch_local_irq_enable"
 		:
 		:
 		: "memory", "cc");
+#if defined(CONFIG_MP_IRQ_TRACE)
+	ms_irq_disable_debug();
+#endif
 }
 
 #define arch_local_irq_disable arch_local_irq_disable
@@ -167,6 +182,10 @@ static inline unsigned long arch_local_save_flags(void)
 #define arch_local_irq_restore arch_local_irq_restore
 static inline void arch_local_irq_restore(unsigned long flags)
 {
+#if defined(CONFIG_MP_IRQ_TRACE)
+	ms_irq_enable_debug();
+#endif
+
 	asm volatile(
 		"	msr	" IRQMASK_REG_NAME_W ", %0	@ local_irq_restore"
 		:

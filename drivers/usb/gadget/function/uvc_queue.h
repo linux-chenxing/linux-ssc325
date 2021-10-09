@@ -12,6 +12,7 @@
 #define UVC_MAX_FRAME_SIZE	(16*1024*1024)
 /* Maximum number of video buffers. */
 #define UVC_MAX_VIDEO_BUFFERS	32
+#define UVC_MAX_REQ_SG_LIST_NUM 12
 
 /* ------------------------------------------------------------------------
  * Structures.
@@ -31,8 +32,18 @@ struct uvc_buffer {
 
 	enum uvc_buffer_state state;
 	void *mem;
+#ifdef CONFIG_USB_WEBCAM_UVC_SUPPORT_SG_TABLE
+	struct sg_table sgt;
+#endif
 	unsigned int length;
 	unsigned int bytesused;
+#if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)
+#define UVC_BUFFER_FLAGS_FRAME_NOEND    (1 << 0)
+#define UVC_BUFFER_FLAGS_STILL_IMAGE    (1 << 1)
+
+#define UVC_BUFFER_FLAGS_FRAME_END(flags) ((UVC_BUFFER_FLAGS_FRAME_NOEND & flags)==0)
+	__u32 reserved;
+#endif
 };
 
 #define UVC_QUEUE_DISCONNECTED		(1 << 0)
@@ -46,7 +57,17 @@ struct uvc_video_queue {
 	__u32 sequence;
 
 	unsigned int buf_used;
-
+#ifdef CONFIG_USB_WEBCAM_UVC_SUPPORT_SG_TABLE
+	struct scatterlist *cur_sg;
+#endif
+#if defined(CONFIG_SS_GADGET) ||defined(CONFIG_SS_GADGET_MODULE)
+	__u32 reserved;
+#endif
+#if defined(CONFIG_UVC_STREAM_ERR_SUPPORT)
+	/* Use to inform host to drop the receiving frame
+	 * now it is only suitable for MJPEG format */
+	bool bFrameErr;
+#endif
 	spinlock_t irqlock;	/* Protects flags and irqqueue */
 	struct list_head irqqueue;
 };
@@ -89,6 +110,14 @@ struct uvc_buffer *uvcg_queue_next_buffer(struct uvc_video_queue *queue,
 					  struct uvc_buffer *buf);
 
 struct uvc_buffer *uvcg_queue_head(struct uvc_video_queue *queue);
+
+#ifdef CONFIG_USB_WEBCAM_UVC_SUPPORT_SG_TABLE
+
+void uvcg_complete_sg(struct uvc_video_queue *queue);
+
+struct uvc_buffer *uvcg_prepare_sg(struct uvc_video_queue *queue);
+
+#endif
 
 #endif /* __KERNEL__ */
 

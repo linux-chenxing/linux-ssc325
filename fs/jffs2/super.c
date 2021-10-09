@@ -269,6 +269,9 @@ static const struct super_operations jffs2_super_operations =
  */
 static int jffs2_fill_super(struct super_block *sb, void *data, int silent)
 {
+#ifdef CONFIG_MS_FLASH_ISP
+    u32 u32_erasesize = 0;
+#endif
 	struct jffs2_sb_info *c;
 	int ret;
 
@@ -306,7 +309,22 @@ static int jffs2_fill_super(struct super_block *sb, void *data, int silent)
 #ifdef CONFIG_JFFS2_FS_POSIX_ACL
 	sb->s_flags |= MS_POSIXACL;
 #endif
+
+#ifdef CONFIG_MS_FLASH_ISP
+    /*patch for 4k erase size,change the erase size of jffs2 to 64k*/
+    u32_erasesize = c->mtd->erasesize;
+    c->mtd->erasesize = 0x10000;//64k(BLOCK_ERASE_SIZE)
+#endif
+
 	ret = jffs2_do_fill_super(sb, data, silent);
+
+#ifdef CONFIG_MS_FLASH_ISP
+    if(ret)
+    {
+        c->mtd->erasesize = u32_erasesize;
+    }
+#endif
+
 	return ret;
 }
 

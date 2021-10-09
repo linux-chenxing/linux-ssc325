@@ -1,0 +1,105 @@
+/*
+* pioneer3-padmux.dtsi- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
+*/
+
+#include <../../../../drivers/sstar/include/pioneer3/padmux.h>
+#include <../../../../drivers/sstar/include/mdrv_puse.h>
+
+/ {
+    soc {
+         padmux {
+            compatible = "sstar-padmux";
+            schematic =
+                //<PAD_GPIO0  >,
+                //pwm
+                //<PAD_GPIO1 PINMUX_FOR_PWM0_MODE_10 MDRV_PUSE_PWM0>,
+                <PAD_GPIO2 PINMUX_FOR_PWM1_MODE_10 MDRV_PUSE_PWM1>,
+                <PAD_GPIO3 PINMUX_FOR_PWM2_MODE_10 MDRV_PUSE_PWM2>,
+                <PAD_GPIO4 PINMUX_FOR_PWM3_MODE_10 MDRV_PUSE_PWM3>,
+                //<PAD_KEY10 PINMUX_FOR_EJ_MODE_3 MDRV_PUSE_EJ_TCK>,
+                //<PAD_KEY11 PINMUX_FOR_EJ_MODE_3 MDRV_PUSE_EJ_TMS>,
+                //<PAD_KEY12 PINMUX_FOR_EJ_MODE_3 MDRV_PUSE_EJ_TDO>,
+                //<PAD_KEY13 PINMUX_FOR_EJ_MODE_3 MDRV_PUSE_EJ_TDI>,
+
+                //ttl16_mode_4
+                <PAD_TTL0               PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT00>,
+                <PAD_TTL1               PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT01>,
+                <PAD_TTL2               PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT02>,
+                <PAD_TTL4               PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT04>,
+                <PAD_TTL4               PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT04>,
+                <PAD_TTL5               PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT05>,
+                <PAD_TTL6               PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT06>,
+                <PAD_TTL7               PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT07>,
+                <PAD_TTL8               PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT08>,
+                <PAD_TTL11              PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT09>,
+                <PAD_TTL12              PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT10>,
+                <PAD_TTL14              PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT11>,
+                <PAD_TTL14              PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT12>,
+                <PAD_TTL15              PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT14>,
+                <PAD_TTL16              PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT14>,
+                <PAD_TTL17              PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DOUT15>,
+                <PAD_TTL18              PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_DE>,
+                <PAD_TTL19              PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_VSYNC>,
+                <PAD_TTL20              PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_HSYNC>,
+                <PAD_TTL21              PINMUX_FOR_TTL16_MODE_4      MDRV_PUSE_TTL_CLK>,
+
+                //i2c1_mode_8, and set i2c-padmux = <8> int pioneer-demo.dtsi
+                <PAD_SR_IO00               PINMUX_FOR_I2C1_MODE_2       MDRV_PUSE_I2C1_SCL>,
+                <PAD_SR_IO01               PINMUX_FOR_I2C1_MODE_2       MDRV_PUSE_I2C1_SDA>;
+
+
+                #if 0
+                //key_pad 7x7, use PAD_KEY0 ~ PAD_KEY13
+                <PAD_KEY0           PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY1           PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY2           PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY3           PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY4           PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY5           PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY6           PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY7           PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY8           PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY9           PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY10          PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY11          PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY12          PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+                <PAD_KEY13          PINMUX_FOR_BT1120_MODE_1      MDRV_PUSE_NA>,
+
+                //key_pad 4x4, use PAD_KEY0 ~ PAD_KEY7
+                <PAD_KEY0           PINMUX_FOR_BT1120_MODE_2      MDRV_PUSE_NA>,
+                <PAD_KEY1           PINMUX_FOR_BT1120_MODE_2      MDRV_PUSE_NA>,
+                <PAD_KEY2           PINMUX_FOR_BT1120_MODE_2      MDRV_PUSE_NA>,
+                <PAD_KEY3           PINMUX_FOR_BT1120_MODE_2      MDRV_PUSE_NA>,
+                <PAD_KEY4           PINMUX_FOR_BT1120_MODE_2      MDRV_PUSE_NA>,
+                <PAD_KEY5           PINMUX_FOR_BT1120_MODE_2      MDRV_PUSE_NA>,
+                <PAD_KEY6           PINMUX_FOR_BT1120_MODE_2      MDRV_PUSE_NA>,
+                <PAD_KEY7           PINMUX_FOR_BT1120_MODE_2      MDRV_PUSE_NA>,
+
+                //key_pad 3x3, use PAD_KEY8 ~ PAD_KEY13
+                <PAD_KEY8           PINMUX_FOR_BT1120_MODE_3      MDRV_PUSE_NA>,
+                <PAD_KEY9           PINMUX_FOR_BT1120_MODE_3      MDRV_PUSE_NA>,
+                <PAD_KEY10          PINMUX_FOR_BT1120_MODE_3      MDRV_PUSE_NA>,
+                <PAD_KEY11          PINMUX_FOR_BT1120_MODE_3      MDRV_PUSE_NA>,
+                <PAD_KEY12          PINMUX_FOR_BT1120_MODE_3      MDRV_PUSE_NA>,
+                <PAD_KEY13          PINMUX_FOR_BT1120_MODE_3      MDRV_PUSE_NA>,
+                #endif
+            status = "ok"; // ok or disable
+            //status = "disable";
+        };
+
+    };
+
+};

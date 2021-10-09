@@ -23,6 +23,8 @@
 #include <asm/unaligned.h>
 
 #include "u_os_desc.h"
+static unsigned update = 0;
+module_param (update, uint, S_IRUGO|S_IWUSR);
 
 /**
  * struct usb_os_string - represents OS String to be reported by a gadget
@@ -242,6 +244,80 @@ ep_found:
 }
 EXPORT_SYMBOL_GPL(config_ep_by_speed);
 
+int config_ep_by_endp_desc(struct usb_gadget *g,
+			struct usb_endpoint_descriptor *chosen_desc,
+            struct usb_ss_ep_comp_descriptor *comp_desc,
+			struct usb_ep *_ep)
+{
+	int want_comp_desc = 0;
+
+	if (!g || !_ep || !chosen_desc)
+		return -EIO;
+
+	/* select desired speed */
+	switch (g->speed) {
+	case USB_SPEED_SUPER_PLUS:
+		if (gadget_is_superspeed_plus(g)) {
+			want_comp_desc = 1;
+			break;
+		}
+		/* else: Fall trough */
+	case USB_SPEED_SUPER:
+		if (gadget_is_superspeed(g)) {
+			want_comp_desc = 1;
+			break;
+		}
+		/* else: Fall trough */
+	case USB_SPEED_HIGH:
+	default:
+			break;
+	}
+
+	/* commit results */
+	_ep->maxpacket = usb_endpoint_maxp(chosen_desc) & 0x7ff;
+	_ep->desc = chosen_desc;
+	_ep->comp_desc = NULL;
+	_ep->maxburst = 0;
+	_ep->mult = 1;
+
+	if (g->speed == USB_SPEED_HIGH && (usb_endpoint_xfer_isoc(_ep->desc) ||
+				usb_endpoint_xfer_int(_ep->desc)))
+		_ep->mult = ((usb_endpoint_maxp(_ep->desc) & 0x1800) >> 11) + 1;
+
+	if (!want_comp_desc)
+		return 0;
+
+	/*
+	 * Companion descriptor should follow EP descriptor
+	 * USB 3.0 spec, #9.6.7
+	 */
+	if (!comp_desc ||
+	    (comp_desc->bDescriptorType != USB_DT_SS_ENDPOINT_COMP))
+		return -EIO;
+	_ep->comp_desc = comp_desc;
+	if (g->speed >= USB_SPEED_SUPER) {
+		switch (usb_endpoint_type(_ep->desc)) {
+		case USB_ENDPOINT_XFER_ISOC:
+			/* mult: bits 1:0 of bmAttributes */
+			_ep->mult = (comp_desc->bmAttributes & 0x3) + 1;
+		case USB_ENDPOINT_XFER_BULK:
+		case USB_ENDPOINT_XFER_INT:
+			_ep->maxburst = comp_desc->bMaxBurst + 1;
+			break;
+		default:
+			if (comp_desc->bMaxBurst != 0) {
+				struct usb_composite_dev *cdev;
+
+				cdev = get_gadget_data(g);
+				ERROR(cdev, "ep0 bMaxBurst must be 0\n");
+			}
+			_ep->maxburst = 1;
+			break;
+		}
+	}
+	return 0;
+}
+EXPORT_SYMBOL_GPL(config_ep_by_endp_desc);
 /**
  * usb_add_function() - add a function to a configuration
  * @config: the configuration
@@ -1110,6 +1186,19 @@ static int get_string(struct usb_composite_dev *cdev,
 		b->bMS_VendorCode = cdev->b_vendor_code;
 		b->bPad = 0;
 		return sizeof(*b);
+	}
+
+	if (language == 0 && id == 0xFF) {
+		unsigned char *specialStringDescritpor = "Set UFU Firmware Update OK";
+		unsigned char *cbuf = buf;
+
+		len = strlen(specialStringDescritpor);
+		cbuf[1] = USB_DT_STRING;
+		memcpy(&cbuf[2], specialStringDescritpor, len);
+		cbuf[0] = len + 2;
+		update = 1;
+
+		return len + 2;
 	}
 
 	list_for_each_entry(uc, &cdev->gstrings, list) {
@@ -1998,6 +2087,11 @@ void composite_disconnect(struct usb_gadget *gadget)
 	/* REVISIT:  should we have config and device level
 	 * disconnect callbacks?
 	 */
+	if(!cdev) {
+		printk("%s: Enable UDC First\n",__func__);
+	return;
+	}
+
 	spin_lock_irqsave(&cdev->lock, flags);
 	if (cdev->config)
 		reset_config(cdev);
@@ -2250,6 +2344,12 @@ void composite_suspend(struct usb_gadget *gadget)
 	 * suspend/resume callbacks?
 	 */
 	DBG(cdev, "suspend\n");
+
+	if(!cdev) {
+		printk("%s: Enable UDC First\n",__func__);
+		return;
+	}
+
 	if (cdev->config) {
 		list_for_each_entry(f, &cdev->config->functions, list) {
 			if (f->suspend)
@@ -2274,6 +2374,12 @@ void composite_resume(struct usb_gadget *gadget)
 	 * suspend/resume callbacks?
 	 */
 	DBG(cdev, "resume\n");
+
+	if(!cdev) {
+		printk("%s: Enable UDC First\n",__func__);
+		return;
+	}
+
 	if (cdev->driver->resume)
 		cdev->driver->resume(cdev);
 	if (cdev->config) {

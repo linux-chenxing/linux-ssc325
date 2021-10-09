@@ -37,6 +37,10 @@
 #include <asm/tls.h>
 #include <asm/vdso.h>
 
+#if defined(CONFIG_MP_IRQ_TRACE)
+extern void ms_irq_debug_ignore(void);
+#endif
+
 #ifdef CONFIG_CC_STACKPROTECTOR
 #include <linux/stackprotector.h>
 unsigned long __stack_chk_guard __read_mostly;
@@ -70,6 +74,9 @@ void arch_cpu_idle(void)
 		arm_pm_idle();
 	else
 		cpu_do_idle();
+#if defined(CONFIG_MP_IRQ_TRACE)
+	ms_irq_debug_ignore();
+#endif
 	local_irq_enable();
 }
 

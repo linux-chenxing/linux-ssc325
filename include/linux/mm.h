@@ -24,6 +24,32 @@
 #include <linux/err.h>
 #include <linux/page_ref.h>
 
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_MONITOR
+enum {
+	CNT_FREE_PAGES,
+	CNT_FREE_CMA_PAGES,
+	CNT_FILE_PAGES,
+	CNT_PAGES_TYPE,
+};
+
+/* this is for counting memory usage */
+#define DB_MAX_CNT 8
+
+typedef struct
+{
+    char name[30];
+    atomic_t lone_time;
+    atomic_t do_cnt;
+    atomic_t pass_cnt;
+    atomic_t failed_cnt;
+    atomic_t min_page_cnt[CNT_PAGES_TYPE];
+    atomic_t max_page_cnt[CNT_PAGES_TYPE];
+    atomic_t order0_cnt[MIGRATE_TYPES];
+    atomic_t failed_order[MAX_ORDER];
+    atomic_t pass_order[MAX_ORDER];
+}db_time_table;
+#endif
+
 struct mempolicy;
 struct anon_vma;
 struct anon_vma_chain;

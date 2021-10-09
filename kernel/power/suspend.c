@@ -32,8 +32,49 @@
 
 #include "power.h"
 
+
 const char *pm_labels[] = { "mem", "standby", "freeze", NULL };
 const char *pm_states[PM_SUSPEND_MAX];
+
+#ifdef CONFIG_SS_PROFILING_TIME
+extern void recode_timestamp_init(void);
+extern void recode_timestamp(int mark, const char* name);
+#endif
+
+#ifdef CONFIG_MP_USB_STR_PATCH
+typedef enum
+{
+    E_STR_NONE,
+    E_STR_IN_SUSPEND,
+    E_STR_IN_RESUME
+}EN_STR_STATUS;
+
+static EN_STR_STATUS enStrStatus=E_STR_NONE;
+
+bool is_suspending(void)
+{
+    return (enStrStatus == E_STR_IN_SUSPEND);
+}
+EXPORT_SYMBOL_GPL(is_suspending);
+#endif
+
+#ifdef CONFIG_SS_STRDEBUG
+typedef struct {
+    char magic[8];
+    unsigned int resume_entry;
+    unsigned int count;
+    unsigned int status;
+    unsigned int password;
+#ifdef CONFIG_SS_STRDEBUG
+    unsigned int checksum;
+#endif
+} suspend_keep_info;
+
+#include <asm-generic/sections.h>
+extern int calc_checksum(void *buf, int size);
+extern suspend_keep_info *pStr_info;
+#endif
+
 
 unsigned int pm_suspend_global_flags;
 EXPORT_SYMBOL_GPL(pm_suspend_global_flags);
@@ -382,28 +423,66 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 		} else if (*wakeup) {
 			error = -EBUSY;
 		}
+#ifdef CONFIG_MP_USB_STR_PATCH
+		enStrStatus=E_STR_IN_RESUME;
+#endif
+        #ifdef CONFIG_SS_PROFILING_TIME
+		recode_timestamp_init();
+		recode_timestamp(__LINE__, "resume+");
+        #endif
 		syscore_resume();
 	}
-
+        #ifdef CONFIG_SS_PROFILING_TIME
+		recode_timestamp(__LINE__, "en_irqs+");
+        #endif
 	arch_suspend_enable_irqs();
 	BUG_ON(irqs_disabled());
 
  Enable_cpus:
+        #ifdef CONFIG_SS_PROFILING_TIME
+		recode_timestamp(__LINE__, "en_cpus+");
+        #endif
 	enable_nonboot_cpus();
 
  Platform_wake:
+        #ifdef CONFIG_SS_PROFILING_TIME
+		recode_timestamp(__LINE__, "plat_noirq+");
+        #endif
 	platform_resume_noirq(state);
+        #ifdef CONFIG_SS_PROFILING_TIME
+		recode_timestamp(__LINE__, "dpm_noirq+");
+        #endif
+	pr_info("PM: dpm_noirq\n");
 	dpm_resume_noirq(PMSG_RESUME);
 
  Platform_early_resume:
+        #ifdef CONFIG_SS_PROFILING_TIME
+            recode_timestamp(__LINE__, "plat_early+");
+        #endif
 	platform_resume_early(state);
 
  Devices_early_resume:
+        #ifdef CONFIG_SS_PROFILING_TIME
+            recode_timestamp(__LINE__, "dev_early+");
+        #endif              
 	dpm_resume_early(PMSG_RESUME);
 
  Platform_finish:
 	platform_resume_finish(state);
-	return error;
+        #ifdef CONFIG_SS_PROFILING_TIME
+            recode_timestamp(__LINE__, "plat_finish-");
+        #endif    
+
+#ifdef CONFIG_SS_STRDEBUG
+        if(pStr_info->checksum != calc_checksum(_text, __init_begin-1-_text)){
+			pr_err("====================\n");
+            pr_err("||[ERROR] STR checksum Fail ||\n");
+            pr_err("==================== \n");
+        }
+        else
+            pr_err("STR checksum Pass r\n");
+#endif
+    return error;
 }
 
 /**
@@ -438,14 +517,26 @@ int suspend_devices_and_enter(suspend_state_t state)
 	} while (!error && !wakeup && platform_suspend_again(state));
 
  Resume_devices:
+        #ifdef CONFIG_SS_PROFILING_TIME
+            recode_timestamp(__LINE__, "resume_end+");
+        #endif
 	suspend_test_start();
+	pr_info("PM: dpm_resume_end\n");
 	dpm_resume_end(PMSG_RESUME);
 	suspend_test_finish("resume devices");
+        #ifdef CONFIG_SS_PROFILING_TIME
+            recode_timestamp(__LINE__, "resume_end-");
+        #endif
 	trace_suspend_resume(TPS("resume_console"), state, true);
 	resume_console();
 	trace_suspend_resume(TPS("resume_console"), state, false);
-
+        #ifdef CONFIG_SS_PROFILING_TIME
+            recode_timestamp(__LINE__, "console-");
+        #endif
  Close:
+        #ifdef CONFIG_SS_PROFILING_TIME
+            recode_timestamp(__LINE__, "plat_end+");
+        #endif
 	platform_resume_end(state);
 	return error;
 
@@ -492,6 +583,9 @@ static int enter_state(suspend_state_t state)
 	}
 	if (!mutex_trylock(&pm_mutex))
 		return -EBUSY;
+#ifdef CONFIG_MP_USB_STR_PATCH
+        enStrStatus=E_STR_IN_SUSPEND;
+#endif
 
 	if (state == PM_SUSPEND_FREEZE)
 		freeze_begin();
@@ -523,6 +617,9 @@ static int enter_state(suspend_state_t state)
 	pr_debug("PM: Finishing wakeup.\n");
 	suspend_finish();
  Unlock:
+#ifdef CONFIG_MP_USB_STR_PATCH
+        enStrStatus=E_STR_NONE;
+#endif
 	mutex_unlock(&pm_mutex);
 	return error;
 }

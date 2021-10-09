@@ -160,9 +160,18 @@ static void __kthread_parkme(struct kthread *self)
 {
 	__set_current_state(TASK_PARKED);
 	while (test_bit(KTHREAD_SHOULD_PARK, &self->flags)) {
+#ifdef CONFIG_WAIT_TASK_INACTIVE_SPEED_UP
+		preempt_disable();
+		if (!test_and_set_bit(KTHREAD_IS_PARKED, &self->flags))
+			complete(&self->parked);
+		//schedule();
+		schedule_preempt_disabled();
+		preempt_enable();
+#else
 		if (!test_and_set_bit(KTHREAD_IS_PARKED, &self->flags))
 			complete(&self->parked);
 		schedule();
+#endif
 		__set_current_state(TASK_PARKED);
 	}
 	clear_bit(KTHREAD_IS_PARKED, &self->flags);
@@ -200,8 +209,16 @@ static int kthread(void *_create)
 	/* OK, tell user we're spawned, wait for stop or wakeup */
 	__set_current_state(TASK_UNINTERRUPTIBLE);
 	create->result = current;
+#ifdef CONFIG_WAIT_TASK_INACTIVE_SPEED_UP
+	preempt_disable();
+	complete(done);
+	//schedule();
+	schedule_preempt_disabled();
+	preempt_enable();
+#else
 	complete(done);
 	schedule();
+#endif
 
 	ret = -EINTR;
 

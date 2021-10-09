@@ -51,12 +51,21 @@ static int __init rtc_hctosys(void)
 
 	err = do_settimeofday64(&tv64);
 
+#ifdef CONFIG_DEFERRED_RTC_HCTOSYS
+	dev_err(rtc->dev.parent,
+		"setting system clock to "
+		"%d-%02d-%02d %02d:%02d:%02d UTC (%lld)\n",
+		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec,
+		(long long) tv64.tv_sec);
+#else
 	dev_info(rtc->dev.parent,
 		"setting system clock to "
 		"%d-%02d-%02d %02d:%02d:%02d UTC (%lld)\n",
 		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 		tm.tm_hour, tm.tm_min, tm.tm_sec,
 		(long long) tv64.tv_sec);
+#endif
 
 err_read:
 	rtc_class_close(rtc);
@@ -67,4 +76,9 @@ err_open:
 	return err;
 }
 
+#ifdef CONFIG_DEFERRED_RTC_HCTOSYS
+deferred_module_init(rtc_hctosys);
+//late_initcall(rtc_hctosys);
+#else
 late_initcall(rtc_hctosys);
+#endif

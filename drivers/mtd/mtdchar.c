@@ -40,6 +40,9 @@
 #include <asm/uaccess.h>
 
 #include "mtdcore.h"
+#if defined(CONFIG_MS_SPINAND)
+#include <spinand_bbt.h>
+#endif
 
 static DEFINE_MUTEX(mtd_mutex);
 
@@ -919,7 +922,42 @@ static int mtdchar_ioctl(struct file *file, u_int cmd, u_long arg)
 		return mtd_block_markbad(mtd, offs);
 		break;
 	}
+#if defined(CONFIG_MS_SPINAND)
+	case MEMGETBBTBLKINFO:
+	{
+		struct sstar_bbt_info_user st_bbt_info_user;
+		int type;
 
+		if (copy_from_user(&st_bbt_info_user, argp,
+				   sizeof(struct sstar_bbt_info_user)))
+			return -EFAULT;
+
+		type = nand_bbt_get_blk_info(mtd, st_bbt_info_user.u32_offset);
+		if (type < 0)
+			return -ENOTTY;
+		st_bbt_info_user.u8_type = type;
+
+		if (copy_to_user(argp, &st_bbt_info_user,
+				 sizeof(struct sstar_bbt_info_user)))
+			return -EFAULT;
+		break;
+	}
+
+	case MEMSETBBTBLKINFO:
+	{
+		struct sstar_bbt_info_user st_bbt_info_user;
+		BBT_INFO_t st_bbt_info;
+
+		if (copy_from_user(&st_bbt_info_user, argp, sizeof(struct sstar_bbt_info_user)))
+			return -EFAULT;
+
+		nand_load_bbt(mtd,(u32)&st_bbt_info);
+		nand_bbt_fill_blk_info(mtd, st_bbt_info_user.u32_offset, (u32)&st_bbt_info,
+                                       st_bbt_info_user.u8_type);
+		return nand_save_bbt(mtd,(u32)&st_bbt_info, 0);
+		break;
+	}
+#endif
 	case OTPSELECT:
 	{
 		int mode;

@@ -24,6 +24,7 @@
  * extended chip ID.
  */
 struct nand_flash_dev nand_flash_ids[] = {
+    EXTENDED_ID_NAND("nand0",  0xEE, 128, LP_OPTIONS),
 	/*
 	 * Some incompatible NAND chips share device ID's and so must be
 	 * listed by full ID. We list them first so that we can easily identify

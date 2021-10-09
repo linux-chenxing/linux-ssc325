@@ -14,6 +14,7 @@
 #include <linux/hrtimer.h>
 #include <linux/kref.h>
 #include <linux/workqueue.h>
+#include <linux/irqpriority.h>
 
 #include <linux/atomic.h>
 #include <asm/ptrace.h>
@@ -74,6 +75,7 @@
 #define IRQF_NO_THREAD		0x00010000
 #define IRQF_EARLY_RESUME	0x00020000
 #define IRQF_COND_SUSPEND	0x00040000
+#define IRQF_HIGH_PRIORITY  0x00080000
 
 #define IRQF_TIMER		(__IRQF_TIMER | IRQF_NO_SUSPEND | IRQF_NO_THREAD)
 
@@ -325,6 +327,8 @@ irq_calc_affinity_vectors(const struct cpumask *affinity, int maxvec)
 }
 
 #endif /* CONFIG_SMP */
+
+extern int irq_set_priority(unsigned int irq, irqpriority_t prio);
 
 /*
  * Special lockdep variants of irq disabling/enabling.

@@ -1,0 +1,72 @@
+/*
+* pioneer3-ssc01xa.dts- Sigmastar
+*
+* Copyright (c) [2019~2020] SigmaStar Technology.
+*
+*
+* This software is licensed under the terms of the GNU General Public
+* License version 2, as published by the Free Software Foundation, and
+* may be copied, distributed, and modified under those terms.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License version 2 for more details.
+*
+*/
+
+/dts-v1/;
+#include "pioneer3.dtsi"
+#include "pioneer3-ssc021a-s01a-padmux.dtsi"
+
+/ {
+    model = "PIONEER3 SSC021A-S01A-S";
+    compatible = "sstar,pioneer3";
+
+    /* memory setting will be replaced with LX_MEM*/
+    memory {
+        reg = <0x20000000 0x03E00000>;
+    };
+	/* this cmdline will be replaced with uboot bootargs*/
+    chosen {
+        bootargs = "console=ttyS0,115200n8r androidboot.console=ttyS0 root=/dev/mtdblock2 init=/linuxrc cma=16m earlyprintk";
+    };
+
+    /*!!IMPORTANT!! The reserved memory must be 1MB aligned*/
+    reserved-memory {
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+
+        /*cma0 {
+            compatible = "shared-dma-pool";
+            size = <0x400000>;
+            reusable;
+            alignment = <0x1000>;
+            linux,cma-default;
+        };*/
+    };
+    soc {
+            sdmmc {
+                compatible = "sstar,sdmmc";
+                slot-fakecdzs = <0>,<0>,<0>;
+                //QFN68-CFG
+                slot-pad-orders = <1>,<0>,<0>;
+                slot-cdzs-gpios = <PAD_TTL0>,<0>,<0>;
+                slot-pwr-gpios = <PAD_TTL7>,<0>,<0>;
+                slot-sdio-use = <0>,<0>,<0>;
+                slot-sdio-rst-delay = <0>,<0>,<0>;
+                slot-removable = <1>,<1>,<1>;
+            };
+
+            emac0: emac0 {
+                compatible = "sstar-emac";
+                reg = <0x1F2A2000 0x800>, <0x1F343C00 0x600>, <0x00000000 0x600>; //for external phy
+                pad = <0x1F2079B8 0x000F 0x0007>;  //for external phy
+                status = "ok";
+                phy-mode = "rmii";
+                fixed-link = <0 1 100 0 0>;
+            };
+        };
+
+};

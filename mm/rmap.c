@@ -68,6 +68,11 @@
 
 #include "internal.h"
 
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+extern void show_page_trace(unsigned long pfn);
+#endif
+
+
 static struct kmem_cache *anon_vma_cachep;
 static struct kmem_cache *anon_vma_chain_cachep;
 
@@ -1692,6 +1697,14 @@ int try_to_unmap(struct page *page, enum ttu_flags flags)
 		ret = rmap_walk_locked(page, &rwc);
 	else
 		ret = rmap_walk(page, &rwc);
+
+#ifdef CONFIG_MP_DEBUG_TOOL_MEMORY_USAGE_TRACE
+                if(page_mapped(page)){
+
+                        printk(KERN_ERR "[MIG]m21 %d\n", ret);
+                        show_page_trace(page_to_pfn(page));
+                }
+#endif
 
 	if (ret != SWAP_MLOCK && !page_mapcount(page)) {
 		ret = SWAP_SUCCESS;
