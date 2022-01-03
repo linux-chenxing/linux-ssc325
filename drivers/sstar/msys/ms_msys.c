@@ -44,6 +44,7 @@
 #include "mdrv_msys_io.h"
 #include "platform_msys.h"
 #include "mdrv_verchk.h"
+#include "ms_msys.h"
 
 #include "mdrv_system.h"
 #ifdef CONFIG_MS_CPU_FREQ
@@ -1186,6 +1187,35 @@ int msys_read_uuid(unsigned long long* udid)
 }
 EXPORT_SYMBOL(msys_read_uuid);
 
+void msys_set_rebootType(u16 arg)
+{
+    if (arg==MSYS_REBOOT_BY_SW_RST)
+    {
+        SETREG16(BASE_REG_PMPOR_PA+REG_ID_01, BIT0); //assign bit to bank por, POR will be clear to 0 only when hw reset or power on
+        SETREG16(BASE_REG_WDT_PA+REG_ID_02,BIT0);    //clear wdt before sw reset to recognize reset type correctly
+    }
+}
+EXPORT_SYMBOL(msys_set_rebootType);
+
+int msys_get_rebootType(void)
+{
+    U16 RegVal = 0,rebootType=0;
+
+    RegVal = INREG16(BASE_REG_WDT_PA+REG_ID_02);
+    if(RegVal&0x01)
+        rebootType=MSYS_REBOOT_BY_WDT_RST;
+    else
+    {
+        RegVal = INREG16(BASE_REG_PMPOR_PA+REG_ID_01);
+        if(RegVal&0x01)
+            rebootType=MSYS_REBOOT_BY_SW_RST;
+        else
+            rebootType=MSYS_REBOOT_BY_HW_RST;
+    }
+    return rebootType;
+}
+EXPORT_SYMBOL(msys_get_rebootType);
+
 CHIP_VERSION msys_get_chipVersion(void)
 {
     CHIP_VERSION eRet = U01;
@@ -1917,6 +1947,18 @@ static ssize_t TEMP_show(struct device *dev, struct device_attribute *attr, char
 DEVICE_ATTR(TEMP_R, 0444, TEMP_show, NULL);
 #endif
 
+static ssize_t ms_dump_reboot_type(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    char *str = buf;
+    char *end = buf + PAGE_SIZE;
+
+    str += scnprintf(str, end - str, "Reboot_Type: %d\n", msys_get_rebootType());
+
+    return (str - buf);
+}
+
+DEVICE_ATTR(REBOOT_TYPE, 0444, ms_dump_reboot_type, NULL);
+
 static ssize_t ms_dump_chip_version(struct device *dev, struct device_attribute *attr, char *buf)
 {
     char *str = buf;
@@ -2512,7 +2554,7 @@ static int __init msys_init(void)
 #ifdef CONFIG_MS_CPU_FREQ
     device_create_file(sys_dev.this_device, &dev_attr_TEMP_R);
 #endif
-
+    device_create_file(sys_dev.this_device, &dev_attr_REBOOT_TYPE);
     device_create_file(sys_dev.this_device, &dev_attr_CHIP_VERSION);
 #if defined(CONFIG_SS_FLASH_ISP_WP) || defined(CONFIG_SS_SPINAND_WP)
     device_create_file(sys_dev.this_device, &dev_attr_protect);

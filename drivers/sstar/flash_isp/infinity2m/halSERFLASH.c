@@ -198,7 +198,12 @@ MS_U32 BASE_FLASH_OFFSET = 0;
 #define BDMA_SIZE_WARNING (128*1024+BDMA_ALIGN) //print message for unresonable size
 
 //E_QUAD_MODE;//E_FAST_MODE;
-const static SPI_READ_MODE gReadMode = E_QUAD_MODE;
+#ifdef CONFIG_NOR_QUAL_READ
+    const static SPI_READ_MODE gReadMode = E_QUAD_MODE;
+#else
+    const static SPI_READ_MODE gReadMode = E_FAST_MODE;
+#endif
+
 static MS_U32 u32BdmaSize = 64 * 1024 + BDMA_ALIGN;//default size
 static MSYS_DMEM_INFO mem_info;
 
@@ -1323,6 +1328,9 @@ MS_BOOL HAL_SERFLASH_DetectType(void)
     }
 
 #endif
+
+    if(_hal_SERFLASH.u8DID0 == 0x40 && _hal_SERFLASH.u8DID1 == 0x18)
+        HAL_FSP_WriteProtect(0);
 
     return bDetect;
 
@@ -4148,9 +4156,18 @@ MS_BOOL HAL_QUAD_Enable(MS_BOOL bEnable)
             bRet = HAL_FSP_ReadStatus(0x04, 1, &u8data);//exit otp mode
         }
     }
-    else if(_hal_SERFLASH.u8MID == MID_WB  || _hal_SERFLASH.u8MID == MID_EON)
+    else if(_hal_SERFLASH.u8MID == MID_WB  || _hal_SERFLASH.u8MID == MID_EON  ||  _hal_SERFLASH.u8MID == MID_BY)
     {
         MS_U8 u8status[1]={0xff};
+
+        // Status Reg 1
+        if (_hal_SERFLASH.u8MID == MID_WB)
+        {
+            u8data = 0x00; // Status Reg 1 = 0, Bill has asked WB and WB's suggest.
+            HAL_FSP_WriteStatus(SPI_CMD_WRSR, 1, &u8data);
+        }
+
+        // Status Reg 2
         if(bEnable)
             u8data =  BITS(1:1, 1);
         else
@@ -4184,6 +4201,29 @@ MS_BOOL HAL_QUAD_Enable(MS_BOOL bEnable)
         DEBUG_SER_FLASH(E_SERFLASH_DBGLV_DEBUG, printk("[FSP] XTX status2:0x%x\n",u8data));
 
     }
+    else if(_hal_SERFLASH.u8MID == MID_25Q)
+    {
+        bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR2, 1, &u8data);
+        if(bEnable)
+        {
+            if((u8data & BIT1) == 0)
+            {
+                u8data |= BIT1;
+                bRet = HAL_FSP_WriteStatus(SPI_CMD_WRSR2,1,&u8data);
+            }
+        }
+        else
+        {
+            if((u8data & BIT1) != 0)
+            {
+                u8data &= ~BIT1;
+                bRet = HAL_FSP_WriteStatus(SPI_CMD_WRSR2,1,&u8data);
+            }
+        }
+        bRet = HAL_FSP_ReadStatus(SPI_CMD_RDSR2, 1, &u8data);
+        printk("[FSP] 25Q status2:0x%x\n",u8data);
+    }
+
     return bRet;
 }
 
@@ -4438,16 +4478,27 @@ MS_BOOL HAL_FSP_WriteProtect(MS_BOOL bEnable)
     if(bRet == FALSE)
         return bRet;
 
-    u8Status |= SF_SR_SRWD;//checked on WB/GD/MX
+    if(_hal_SERFLASH.u8MID == MID_WB)
+    {
+        u8Status = 0x00; // Status Reg 1 = 0, Bill has asked WB and WB's suggest.
+    }
+    else
+    {
+        u8Status |= SF_SR_SRWD;//checked on WB/GD/MX
+    }
 //quad mode should be handled in read/write
 #if 0 //device dependent
     if (gReadMode==E_QUAD_MODE)
         u8Status |= SF_SR_QUAD;
 #endif
     //clear BP bits
-    if(_hal_SERFLASH.u8MID == MID_GD)
+    if((_hal_SERFLASH.u8MID == MID_GD) || (_hal_SERFLASH.u8MID == MID_XTX) || (_hal_SERFLASH.u8MID == MID_WUHAN))
     {
         u8Status &= ~BITS(6:2,0x1F);
+    }
+    else if(_hal_SERFLASH.u8DID0 == 0x40 && _hal_SERFLASH.u8DID1 == 0x18)
+    {
+        u8Status &= ~BITS(7:2,0x3F);
     }
     else {//check on WB/MX
         u8Status &= ~BITS(5:2,0xF);
@@ -4968,7 +5019,7 @@ MS_BOOL CompareMemory(MS_U32 u32Addr, MS_U32 u32Addr2, MS_U32 u32Size)
     return TRUE;
 }
 
-static MS_BOOL _HAL_QP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u32Len)
+MS_BOOL _HAL_QP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u32Len)
 {
     //struct timeval time_st;
     MS_U16 u16data;
@@ -5158,7 +5209,7 @@ static MS_BOOL _HAL_QP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u3
     return bRet;
 }
 
-static MS_BOOL _HAL_4PP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u32Len)
+MS_BOOL _HAL_4PP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u32Len)
 {
     MS_U16 u16data;
     MS_BOOL bRet=FALSE;
@@ -5332,8 +5383,8 @@ static MS_BOOL _HAL_4PP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u
     return bRet;
 }
 
-#if 0
-static MS_BOOL _HAL_PP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u32Len)
+
+MS_BOOL _HAL_PP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u32Len)
 {
     //struct timeval time_st;
     MS_U16 u16data;
@@ -5456,7 +5507,7 @@ static MS_BOOL _HAL_PP_BDMAToFSP(MS_U32 u32Src_off, MS_U32 u32Dst_off, MS_U32 u3
 
     return bRet;
 }
-#endif
+
 
 MS_BOOL HAL_FSP_Write_BDMA(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
 {
@@ -5477,7 +5528,7 @@ MS_BOOL HAL_FSP_Write_BDMA(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
         {
             u16WriteBytes = u32Size;
         }
-
+#if  defined(CONFIG_NOR_QUAL_WRITE)
         if(_hal_SERFLASH.u8MID == MID_MXIC)
         {
             bRet = _HAL_4PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
@@ -5486,7 +5537,9 @@ MS_BOOL HAL_FSP_Write_BDMA(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
         {
             bRet = _HAL_QP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
         }
-        //bRet = _HAL_PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
+#else
+        bRet = _HAL_PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
+#endif
 
         if ( bRet == TRUE )
         {
@@ -5503,7 +5556,8 @@ MS_BOOL HAL_FSP_Write_BDMA(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
     while(u32Size)
     {
         u16WriteBytes =(u32Size>SERFLASH_PAGE_SIZE) ? SERFLASH_PAGE_SIZE:u32Size;
-        //bRet = _HAL_PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
+
+#if  defined(CONFIG_NOR_QUAL_WRITE)
         if(_hal_SERFLASH.u8MID == MID_MXIC)
         {
             bRet = _HAL_4PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
@@ -5512,6 +5566,9 @@ MS_BOOL HAL_FSP_Write_BDMA(MS_U32 u32Addr, MS_U32 u32Size, MS_U8 *pu8Data)
         {
             bRet = _HAL_QP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
         }
+#else
+        bRet = _HAL_PP_BDMAToFSP((MS_U32)u8Buf, u32Addr, u16WriteBytes);
+#endif
 
         if ( bRet == TRUE  )
         {

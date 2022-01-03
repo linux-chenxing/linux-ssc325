@@ -15,6 +15,9 @@ menuconfig DLA_DRIVER
     bool "SStar DLA driver"
     depends on MSTAR_DRIVERS
     default n
+if ( DLA_DRIVER )
+source "drivers/sstar/cambricon/Kconfig"
+endif
 
 if ( MSTAR_DRIVERS )
 

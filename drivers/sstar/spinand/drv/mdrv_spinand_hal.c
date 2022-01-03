@@ -253,6 +253,18 @@ BOOL MDrv_SPINAND_Init(SPINAND_FLASH_INFO_t *tSpinandInfo)
         }
     }
 
+    if (_gtSpinandInfo.au8_ID[0] == 0x01 &&
+        (_gtSpinandInfo.au8_ID[1] == 0x25 || _gtSpinandInfo.au8_ID[1] == 0x35)) /*S35ML NAND flash need setting A[0] 1BIT to unlock A[0]reg*/
+    {
+        U8 u8Status;
+        HAL_SPINAND_ReadStatusRegister(&u8Status, SPI_NAND_REG_PROT);
+        if(~(u8Status & 0x2))
+        {
+            u8Status |= (0x2);
+            HAL_SPINAND_WriteStatusRegister(&u8Status, SPI_NAND_REG_PROT);
+        }
+    }
+
 #if defined(SUPPORT_SPINAND_QUAD) && SUPPORT_SPINAND_QUAD
     printk("\r\nQuad mode enabled\r\n");
     {
@@ -434,6 +446,34 @@ U32 MDrv_SPINAND_SetMode(SPINAND_MODE eMode)
 
     MS_SPINAND_RELEASE_MUTEX(_s32SPINAND_Mutex);
     return u32Ret;
+}
+
+U32 MDrv_SPINAND_program(U32 u32_page, U16 u16_offset, U8 *pu8_buf, U32 u32_size)
+{
+    U32 u32Ret;
+
+    MS_ASSERT( MS_SPINAND_IN_INTERRUPT() == FALSE );
+
+    if (FALSE == MS_SPINAND_OBTAIN_MUTEX(_s32SPINAND_Mutex, SPINAND_MUTEX_WAIT_TIME))
+    {
+        spi_nand_err("%s ENTRY fails!\n", __FUNCTION__);
+        return FALSE;
+    }
+
+    if ((ID1 == 0xEF) && (ID2 == 0xAB) && (ID3 == 0x21))
+    {
+        U16 u16DiePageCnt = MDrv_SPINAND_CountBits(BLOCKCNT * BLOCK_PAGE_SIZE);
+        HAL_SPINAND_DieSelect((U8)(u32_page >> (u16DiePageCnt - 1)));
+    }
+#if defined(SPINAND_MEASURE_PERFORMANCE) && SPINAND_MEASURE_PERFORMANCE
+        u64_TotalWriteBytes += _gtSpinandInfo.u16_PageByteCnt;
+#endif
+    u32Ret=HAL_SPINAND_program(u32_page, u16_offset, pu8_buf, u32_size);
+
+    MS_SPINAND_RELEASE_MUTEX(_s32SPINAND_Mutex);
+
+    return u32Ret;
+
 }
 
 U32 MDrv_SPINAND_Write(U32 u32_PageIdx, U8 *u8Data, U8 *pu8_SpareBuf)

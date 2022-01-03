@@ -290,12 +290,12 @@ void spi_nand_cmdfunc(struct mtd_info *mtd, unsigned command, int column, int pa
         spi_nand_debug("NAND_CMD_READOOB");
         ret = MDrv_SPINAND_Read(page_addr, (U8 *)gtSpiNandDrv.pu8_pagebuf, (U8 *)gtSpiNandDrv.pu8_sparebuf);
 
-        if(ret == ECC_NOT_CORRECTED)
+        if(ret == ERR_SPINAND_ECC_ERROR)
         {
             mtd->ecc_stats.failed++;
             spi_nand_err("MDrv_SPINAND_Read=%lx, P: %d", ret, page_addr);
         }
-        else if((ret != ERR_SPINAND_SUCCESS) && (ret != ECC_NOT_CORRECTED))
+        else if((ret != ERR_SPINAND_SUCCESS) && (ret != ERR_SPINAND_ECC_ERROR))
         {
             mtd->ecc_stats.corrected += 1;
         }
@@ -333,6 +333,10 @@ void spi_nand_cmdfunc(struct mtd_info *mtd, unsigned command, int column, int pa
             spi_nand_err("MDrv_SPINAND_Erase= %ld \n", ret);
             gtSpiNandDrv.u8_status |= NAND_STATUS_FAIL;
         }
+        break;
+
+    case NAND_CMD_RESET:   //add this to avoid print "unsupported command" fo jffs2
+        spi_nand_debug("NAND_CMD_RESET");
         break;
 
     case NAND_CMD_READ0:
@@ -432,12 +436,12 @@ int spi_nand_ecc_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 
     ret = MDrv_SPINAND_Read(page, (U8 *)u8_DmaBuf, (U8 *)chip->oob_poi);
 
-    if(ret == ECC_NOT_CORRECTED)
+    if(ret == ERR_SPINAND_ECC_ERROR)
     {
 //        spi_nand_err("MDrv_SPINAND_Read=%x, P: 0x%x", ret, page);
         mtd->ecc_stats.failed++;
     }
-    else if((ret != ERR_SPINAND_SUCCESS) && (ret != ECC_NOT_CORRECTED))
+    else if((ret != ERR_SPINAND_SUCCESS) && (ret != ERR_SPINAND_ECC_ERROR))
     {
         mtd->ecc_stats.corrected += 1;
     }
@@ -480,12 +484,12 @@ int spi_nand_ecc_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 
     ret = MDrv_SPINAND_Read(page, (U8 *)u8_DmaBuf, (U8 *)chip->oob_poi);
 
-    if(ret == ECC_NOT_CORRECTED)
+    if(ret == ERR_SPINAND_ECC_ERROR)
     {
         spi_nand_err("MDrv_SPINAND_Read=0x%lx, P: %d", ret, page);
         mtd->ecc_stats.failed++;
     }
-    else if((ret != ERR_SPINAND_SUCCESS) && (ret != ECC_NOT_CORRECTED))
+    else if((ret != ERR_SPINAND_SUCCESS) && (ret != ERR_SPINAND_ECC_ERROR))
     {
         mtd->ecc_stats.corrected += 1;
     }
@@ -523,9 +527,9 @@ int spi_nand_ecc_read_subpage(struct mtd_info *mtd, struct nand_chip *chip,
     {
         //printk("read subpage %ld success\n", u32_curRow);
     }
-    else if (ret == ECC_NOT_CORRECTED)
+    else if (ret == ERR_SPINAND_ECC_ERROR)
         mtd->ecc_stats.failed++;
-    else if ((ret != ERR_SPINAND_SUCCESS) && (ret != ECC_NOT_CORRECTED))
+    else if ((ret != ERR_SPINAND_SUCCESS) && (ret != ERR_SPINAND_ECC_ERROR))
         mtd->ecc_stats.corrected += 1;
 
     if (u8_DmaBuf != buf)
@@ -554,7 +558,7 @@ int spi_nand_ecc_read_oob(struct mtd_info *mtd, struct nand_chip *chip, int page
 
     ret = MDrv_SPINAND_Read(page, (U8 *)gtSpiNandDrv.pu8_pagebuf, (U8 *)chip->oob_poi);
 
-    if ((ret != ERR_SPINAND_SUCCESS) && (ret == ECC_NOT_CORRECTED))
+    if (ret == ERR_SPINAND_ECC_ERROR)
     {
         spi_nand_err("MDrv_SPINAND_Read=%ld", ret);
         ret = MDrv_SPINAND_Read(page, (U8 *)gtSpiNandDrv.pu8_pagebuf, (U8 *)chip->oob_poi);
@@ -566,6 +570,7 @@ int spi_nand_ecc_read_oob(struct mtd_info *mtd, struct nand_chip *chip, int page
 
 int spi_nand_ecc_write_oob(struct mtd_info *mtd, struct nand_chip *chip, int page)
 {
+#if 1
 
 #ifdef CONFIG_SS_SPINAND_WP
     U32 lower;
@@ -587,9 +592,17 @@ int spi_nand_ecc_write_oob(struct mtd_info *mtd, struct nand_chip *chip, int pag
 
 #endif
 
-    U32 ret;
-
     spi_nand_debug("0x%X", page);
+
+    //printk("write page 0x%X's oob, writesize(%d) oobsize(%d)\n", page, mtd->writesize, mtd->oobsize);
+    if (ERR_SPINAND_SUCCESS != MDrv_SPINAND_program(page, mtd->writesize, chip->oob_poi, mtd->oobsize))
+    {
+        spi_nand_err("MDrv_SPINAND_program err!\n");
+        return -EIO;
+    }
+
+#else
+    U32 ret;
 
     memset((void *)gtSpiNandDrv.pu8_pagebuf, 0xFF, mtd->writesize);
     ret = MDrv_SPINAND_Write(page, (U8 *)gtSpiNandDrv.pu8_pagebuf, (U8 *)chip->oob_poi);
@@ -598,20 +611,8 @@ int spi_nand_ecc_write_oob(struct mtd_info *mtd, struct nand_chip *chip, int pag
         spi_nand_err("MDrv_SPINAND_Write=%ld", ret);
         return -EIO;
     }
-    memset((void *)gtSpiNandDrv.pu8_pagechkbuf, 0xFF, mtd->writesize);
-    MDrv_SPINAND_Read(page, gtSpiNandDrv.pu8_pagechkbuf, (U8 *)chip->oob_poi);
 
-    if(memcmp((void*)(gtSpiNandDrv.pu8_pagechkbuf), (void*)(gtSpiNandDrv.pu8_pagebuf), mtd->writesize))
-    {
-        spi_nand_err("cmp fail!! retry");
-
-        ret = MDrv_SPINAND_Write(page, (U8 *)gtSpiNandDrv.pu8_pagebuf, (U8 *)chip->oob_poi);
-        if (ret != ERR_SPINAND_SUCCESS)
-        {
-            spi_nand_err("MDrv_SPINAND_Write=%ld", ret);
-            return -EIO;
-        }
-    }
+#endif
     return 0;
 }
 
@@ -1108,7 +1109,7 @@ static int mstar_spinand_probe(struct platform_device *pdev)
             add_mtd_partitions(mtd, pparts.parts, pparts.nr_parts);
         }
         else if (IS_ERR_VALUE(err))
-        {  
+        {
             spi_nand_msg("parse_mtd_partitions error!!! %d\r\n", err);
         }
 #else

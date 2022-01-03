@@ -6,17 +6,17 @@ config MS_FLASH_ISP
   #select NFTL
   #select NFTL_RW
   #select MTD_OOPS
-  
+
   #select MTD_COMPLEX_MAPPINGS
   #select MTD_BLOCK2MTD
   #select MTD_CMDLINE_PARTS
   #select SCSI_LOWLEVEL
   #select AUTOFS_FS
-  
+
   #select FAT_FS
   #select MSDOS_FS
   #select VFAT_FS
-  
+
   #select MTD_DEBUG
   #select MTD_DEBUG_VERBOSE
   #select MTD_CONCAT
@@ -31,12 +31,29 @@ default n
 ---help---
     Enable compilation option for Serial Flash.
     FSP support Quadread/Daulread/write with BDMA.
-    
+
 if MS_FLASH_ISP
 config MS_FLASH_ISP_MXP_PARTS
     bool
     default y
 
+choice
+    prompt "READ "
+    default NOR_SINGLE_READ
+    config NOR_SINGLE_READ
+        bool "Use fast read"
+    config NOR_QUAL_READ
+        bool "Use quad read"
+endchoice
+
+choice
+    prompt "WRITE"
+    default NOR_SINGLE_WRITE
+    config NOR_SINGLE_WRITE
+        bool "Use fast write"
+    config NOR_QUAL_WRITE
+        bool "Use quad write"
+endchoice
 
 config SS_FLASH_ISP_WP
     bool "Serial Flash Write Protect Support"
@@ -47,4 +64,4 @@ config SS_FLASH_ISP_WP
 
 endif
 
-	
+

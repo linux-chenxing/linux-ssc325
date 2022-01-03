@@ -9,7 +9,6 @@ SSTAR_CHIP_FILE := '.sstar_chip.txt'
 
 %_defconfig: force
 	@echo "Extract CHIP NAME ($(firstword $(subst _, ,$@))) to $(SSTAR_CHIP_FILE)"
-	@if [[ "$(shell which git)" != "" ]];then if [[ "$(shell git ls-remote 2>&1 | grep fatal)" == "" ]];then git update-index --assume-unchanged $(SSTAR_CHIP_FILE);fi;fi
 	@echo $(strip $(firstword $(subst _, ,$@))) > $(SSTAR_CHIP_FILE)
 	@$(MAKE) -f Makefile $(filter-out w,$(MAKEFLAGS)) $@
 
